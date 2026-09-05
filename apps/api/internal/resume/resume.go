@@ -104,6 +104,12 @@ func NewRepository(pool *database.Pool) *Repository {
 	return newRepository(pool.Queries())
 }
 
+// NewRepositoryFromQueries builds a Repository directly from generated
+// Queries — used by tests that run against a transaction-scoped connection.
+func NewRepositoryFromQueries(q *db.Queries) *Repository {
+	return newRepository(q)
+}
+
 func newRepository(q *db.Queries) *Repository {
 	return &Repository{q: q}
 }

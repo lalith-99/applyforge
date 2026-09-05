@@ -13,7 +13,7 @@ Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) 
 - [x] **Phase 7** — Resume tailoring: STRICT/GROWTH/MAX_MATCH, suggestions, diff UI, approvals, Resume
       Alignment (this delivery).
 - [x] **Phase 8** — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans.
-- [ ] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
+- [x] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
 - [ ] **Phase 10** — Applications: tracking, Kanban, application answers, events.
 - [ ] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
 - [ ] **Phase 12** — Production hardening: security, observability, performance, deployment, CI/CD, docs.
@@ -169,9 +169,35 @@ Actions CI skeleton that lints/tests/builds all three services.
   (generic fallback), cache-hit on second request, defend-bullet for a real suggestion, learning-plan and
   make-me-qualified against a real ingested job.
 
-## Next up: Phase 9 (not started)
+## Phase 9 — what was actually delivered
 
-Resume generation: PDF, DOCX, versioning, preview. Do not begin this until explicitly requested.
+* **AI worker**: `app/documents/generator.py` — deterministic PDF (fpdf2) and DOCX (python-docx)
+  rendering directly from the existing `ResumeProfile` model (no new schema needed — the same shape
+  used for resume parsing). `POST /v1/documents/pdf`, `POST /v1/documents/docx`.
+* **Go**: `internal/resumeversion` — `mergeContent` (pure function: applies only APPROVED/EDITED
+  tailoring suggestions onto a base resume's parsed profile; summary suggestions replace the summary,
+  skills suggestions append new skills without case-insensitive duplicates, experience suggestions
+  replace the exact bullet matching their `original_text`), `Service.GenerateVersion` (fetches the
+  resume's `parsed_profile` directly as the merge input, computes the next version number, generates
+  PDF/DOCX via the AI worker, stores both in MinIO under `resume-versions/{id}/resume.{pdf,docx}`),
+  `Service.Download` (proxies the stored bytes back through the Go API rather than issuing presigned
+  URLs, to keep bucket access private). Routes: `POST /resumes/{id}/versions`,
+  `GET /resumes/{id}/versions`, `GET /resume-versions/{id}`, `GET /resume-versions/{id}/download`.
+* **Frontend**: a "Generate Tailored Resume" panel on the tailoring page — one button generates both
+  documents for the current run, with Download PDF/DOCX links once ready.
+* **Bug found and fixed during live verification**: fpdf2's `multi_cell()` does not reset the cursor's
+  x position to the left margin afterward (unlike `cell()`), so a second `multi_cell()` call in a row
+  (e.g. the second bullet point) failed with `"Not enough horizontal space to render a single
+  character"`. Fixed by passing `new_x="LMARGIN", new_y="NEXT"` explicitly to every `multi_cell()` call.
+* Verified live end-to-end via docker-compose: uploaded a real generated PDF resume, parsed it, ran
+  tailoring against a real ingested job, approved all suggestions, generated a resume version, and
+  downloaded both the PDF and DOCX — the tailored bullet text and expanded summary were correctly
+  merged into the rendered documents.
+
+## Next up: Phase 10 (not started)
+
+Applications: tracking, Kanban, application answers, events. Do not begin this until explicitly
+requested.
 
 ## Known scope limitations after Phases 2-7 (see DECISIONS.md for full list)
 

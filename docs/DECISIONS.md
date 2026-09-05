@@ -230,4 +230,38 @@ held throughout, rather than discovered ad hoc partway through:
   are lightweight heuristic calls (no real AI cost), but that will need revisiting if a real AI provider is
   ever plugged in.
 
+## Phase 9 — Resume generation (PDF, DOCX, versioning, preview)
+
+1. **Reused the existing `ResumeProfile` model for document generation instead of a new schema.** The
+   PDF/DOCX generator endpoints (`POST /v1/documents/pdf`, `POST /v1/documents/docx`) take the exact same
+   `ResumeProfile` Pydantic model already used for resume parsing (`app/resume/models.py`). This avoids a
+   parallel "document content" schema that would need to be kept in sync, and means the Go side's
+   `mergeContent` function only has to produce one shape (`aiclient.ResumeProfile`), not a second
+   document-specific one.
+2. **The merge step reads the base resume's `parsed_profile` directly, not the `resume_experiences` table.**
+   Both are populated from the same parse operation with identical shape (see `resume/worker.go`), so
+   re-deriving experiences from the separate table would be redundant. `mergeContent` unmarshals
+   `parsed_profile` straight into `aiclient.ResumeProfile` and merges suggestions onto it in memory.
+3. **Experience-section suggestions are matched back to their bullet by an exact `original_text` string
+   match**, not a stored bullet ID/index. The tailoring heuristics already set `original_text` to the exact
+   bullet text sent to the AI worker (`app/tailoring/heuristics.py`), so this is a reliable match without
+   adding a new foreign key from `tailoring_suggestions` to `resume_experiences`.
+4. **Downloads are proxied through the Go API, not served via presigned MinIO URLs.** `GET
+   /resume-versions/{id}/download?format=pdf|docx` fetches the bytes from storage server-side and streams
+   them with the right `Content-Type`/`Content-Disposition`, keeping the storage bucket itself private and
+   avoiding the extra complexity of presigned-URL expiry handling for what is a low-traffic download path.
+5. **`resume.NewRepositoryFromQueries` was added** (previously missing, unlike `users`/`jobs`/
+   `jobrequirements`) so `internal/resumeversion`'s integration tests could create a fixture resume row
+   without depending on a full `*database.Pool`.
+
+### Remaining technical debt after Phase 9
+
+* PDF/DOCX rendering is a single fixed template (no user-selectable resume design/theme, no page-count
+  awareness beyond fpdf2's automatic page breaks).
+* No resume version diff/preview UI yet in the frontend beyond the download links — a future pass could
+  render an inline HTML preview before download.
+* `mergeContent`'s bullet matching is an exact string match; if a user edits a bullet's text in their
+  master resume after a tailoring run was created but before generating a version, the match would silently
+  fail to apply that suggestion (falls back to leaving the original bullet in place, not an error).
+
 

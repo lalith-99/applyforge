@@ -264,3 +264,18 @@ export interface QualifiedResult {
   ReadinessComponents: ReadinessComponents;
   LearningPlan: LearningPlanResult;
 }
+
+export interface ResumeVersion {
+  ID: string;
+  UserID: string;
+  BaseResumeID: string;
+  JobID: string | null;
+  TailoringRunID: string | null;
+  VersionNumber: number;
+  MatchScore: number | null;
+  AlignmentScore: number | null;
+  TailoringMode: string | null;
+  PDFStorageKey: string | null;
+  DocxStorageKey: string | null;
+  CreatedAt: string;
+}

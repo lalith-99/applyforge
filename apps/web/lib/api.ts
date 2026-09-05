@@ -1,6 +1,6 @@
 // Thin fetch wrapper for the ApplyForge Go API. Always sends credentials so
 // the af_session cookie set by the API is included on every request.
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 export class ApiError extends Error {

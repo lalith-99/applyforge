@@ -3,10 +3,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { use, useState } from "react";
 import { AppNav } from "@/components/AppNav";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, API_BASE_URL } from "@/lib/api";
 import { DefendBulletDrawer } from "@/features/learning/DefendBulletDrawer";
 import { QuickPrepDrawer } from "@/features/learning/QuickPrepDrawer";
-import type { ResumeSummary, TailoringRun, TailoringSuggestion } from "@/types/api";
+import type { ResumeSummary, ResumeVersion, TailoringRun, TailoringSuggestion } from "@/types/api";
 
 const MODES = ["STRICT", "GROWTH", "MAX_MATCH"] as const;
 
@@ -41,6 +41,14 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
   const approveAll = useMutation({
     mutationFn: () => api.post<TailoringSuggestion[]>(`/tailoring/${run!.id}/approve-all`),
     onSuccess: (updated) => setRun((prev) => (prev ? { ...prev, suggestions: updated } : prev)),
+  });
+
+  const generateResume = useMutation({
+    mutationFn: () =>
+      api.post<ResumeVersion>(`/resumes/${run!.resume_id}/versions`, {
+        job_id: jobId,
+        tailoring_run_id: run!.id,
+      }),
   });
 
   const parsedResumes = resumesQuery.data?.filter((r) => r.status === "PARSED") ?? [];
@@ -128,6 +136,45 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                   onReject={() => updateSuggestion.mutate({ suggestionId: s.ID, status: "REJECTED" })}
                 />
               ))}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-md border border-black/10 p-4 dark:border-white/15">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Generate Tailored Resume</p>
+                <button
+                  type="button"
+                  onClick={() => generateResume.mutate()}
+                  disabled={generateResume.isPending}
+                  className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
+                >
+                  {generateResume.isPending ? "Generating…" : "Generate PDF/DOCX"}
+                </button>
+              </div>
+              {generateResume.isError && (
+                <p className="text-sm text-red-600">
+                  {generateResume.error instanceof ApiError ? generateResume.error.message : "Could not generate resume documents."}
+                </p>
+              )}
+              {generateResume.data && (
+                <div className="flex gap-4 text-sm">
+                  <a
+                    href={`${API_BASE_URL}/resume-versions/${generateResume.data.ID}/download?format=pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
+                  >
+                    Download PDF
+                  </a>
+                  <a
+                    href={`${API_BASE_URL}/resume-versions/${generateResume.data.ID}/download?format=docx`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
+                  >
+                    Download DOCX
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -20,6 +20,23 @@ func PGToUUID(id pgtype.UUID) uuid.UUID {
 	return uuid.UUID(id.Bytes)
 }
 
+// PGUUID converts a nullable uuid.UUID into pgtype.UUID.
+func PGUUID(id *uuid.UUID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *id, Valid: true}
+}
+
+// UUIDOrNil converts pgtype.UUID into a nullable uuid.UUID.
+func UUIDOrNil(id pgtype.UUID) *uuid.UUID {
+	if !id.Valid {
+		return nil
+	}
+	v := uuid.UUID(id.Bytes)
+	return &v
+}
+
 // PGText converts a nullable string into pgtype.Text.
 func PGText(s *string) pgtype.Text {
 	if s == nil {

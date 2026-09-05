@@ -25,6 +25,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
+	"github.com/lalithlochan/applyforge/apps/api/internal/resumeversion"
 	"github.com/lalithlochan/applyforge/apps/api/internal/scheduler"
 	"github.com/lalithlochan/applyforge/apps/api/internal/skills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/storage"
@@ -130,12 +131,16 @@ func run() error {
 	learningService := learning.NewService(learningRepo, aiWorkerClient, candidateSkillsRepo, matchingRepo, matchingService)
 	learningHandlers := learning.NewHandlers(learningService)
 
+	resumeVersionRepo := resumeversion.NewRepository(db)
+	resumeVersionService := resumeversion.NewService(resumeVersionRepo, resumeRepo, tailoringRepo, aiWorkerClient, storageClient, matchingService)
+	resumeVersionHandlers := resumeversion.NewHandlers(resumeVersionService, resumeVersionRepo, resumeRepo)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers},
 	})
 
 	server := &http.Server{

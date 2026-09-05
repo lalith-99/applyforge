@@ -5,7 +5,7 @@
 All product endpoints are served under `/api/v1` by the Go API (`apps/api`). The Python AI worker
 (`apps/ai-worker`) exposes an internal-only API consumed solely by the Go API, not by the browser.
 
-## Implemented endpoints (through Phase 8)
+## Implemented endpoints (through Phase 9)
 
 Authentication (`internal/auth`), all under `/api/v1/auth`:
 
@@ -79,7 +79,16 @@ POST   /api/v1/jobs/{id}/learning-plan           learning plan for the caller's 
 POST   /api/v1/jobs/{id}/make-me-qualified       aggregated current/target match, high/low-value gaps,
                                                   Interview Readiness score, and a learning plan
 ```
+Resume versions (`internal/resumeversion`):
 
+```
+POST   /api/v1/resumes/{id}/versions             body: {job_id?, tailoring_run_id?}; merges any
+                                                  approved/edited suggestions from the given run onto
+                                                  the base resume and generates PDF + DOCX
+GET    /api/v1/resumes/{id}/versions             list versions for a base resume, newest first
+GET    /api/v1/resume-versions/{id}              version detail (content, scores, storage keys)
+GET    /api/v1/resume-versions/{id}/download     ?format=pdf|docx (default pdf); streams the file
+```
 ## Planned endpoint surface (later phases)
 
 ```
