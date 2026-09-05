@@ -1,0 +1,41 @@
+name: applyforge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: applyforge
+      POSTGRES_PASSWORD: applyforge
+      POSTGRES_DB: applyforge
+    ports:
+      - "5433:5432"
+    volumes:
+      - applyforge-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applyforge -d applyforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+    environment:
+      API_ADDR: ":8080"
+      DATABASE_URL: "postgres://applyforge:applyforge@postgres:5432/applyforge?sslmode=disable"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ai-worker:
+    build:
+      context: ./apps/ai-worker
+    environment:
+      LOG_LEVEL: "info"
+    ports:
+      - "8000:8000"
+
+volumes:
+  applyforge-postgres-data:
