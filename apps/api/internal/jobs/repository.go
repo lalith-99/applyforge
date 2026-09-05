@@ -73,6 +73,7 @@ type ListFilter struct {
 	RemoteType     string
 	EmploymentType string
 	PostedAfter    *time.Time
+	Location       string // matched against location_text/city/state/country
 	Sort           string // "newest" | "salary" | "" (default: first_seen_at desc)
 	Limit          int32
 	Offset         int32
@@ -191,7 +192,8 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column2: filter.RemoteType,
 		Column3: filter.EmploymentType,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
-		Column5: filter.Sort,
+		Column5: filter.Location,
+		Column6: filter.Sort,
 		Limit:   limit,
 		Offset:  filter.Offset,
 	})
@@ -204,6 +206,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column2: filter.RemoteType,
 		Column3: filter.EmploymentType,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
+		Column5: filter.Location,
 	})
 	if err != nil {
 		return nil, 0, err

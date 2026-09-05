@@ -39,7 +39,8 @@ WHERE status = 'ACTIVE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
-  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4));
+  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%');
 
 -- name: ListJobs :many
 SELECT * FROM jobs
@@ -48,8 +49,9 @@ WHERE status = 'ACTIVE'
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%')
 ORDER BY
-  CASE WHEN $5::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
-  CASE WHEN $5::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
+  CASE WHEN $6::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
+  CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
   first_seen_at DESC
-LIMIT $6 OFFSET $7;
+LIMIT $7 OFFSET $8;

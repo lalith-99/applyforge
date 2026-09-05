@@ -58,6 +58,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		RemoteType:     q.Get("remote_type"),
 		EmploymentType: q.Get("employment_type"),
 		PostedAfter:    postedAfter,
+		Location:       q.Get("location"),
 		Sort:           q.Get("sort"),
 		Limit:          limit,
 		Offset:         offset,

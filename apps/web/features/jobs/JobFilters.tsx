@@ -2,6 +2,7 @@
 
 export interface JobFiltersState {
   search: string;
+  location: string;
   remoteType: string;
   employmentType: string;
   postedWithin: string;
@@ -10,6 +11,7 @@ export interface JobFiltersState {
 
 export const DEFAULT_FILTERS: JobFiltersState = {
   search: "",
+  location: "",
   remoteType: "",
   employmentType: "",
   postedWithin: "",
@@ -29,6 +31,12 @@ export function JobFilters({
         placeholder="Search title or company"
         value={value.search}
         onChange={(e) => onChange({ ...value, search: e.target.value })}
+        className="rounded-md border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/15"
+      />
+      <input
+        placeholder="Location (city, state, country)"
+        value={value.location}
+        onChange={(e) => onChange({ ...value, location: e.target.value })}
         className="rounded-md border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/15"
       />
       <select

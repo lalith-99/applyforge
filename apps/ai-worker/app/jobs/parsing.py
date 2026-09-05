@@ -64,23 +64,44 @@ def _extract_seniority(title: str, description: str) -> str | None:
     return match.group(1).title() if match else None
 
 
-def _extract_responsibilities(description: str) -> list[str]:
-    marker = _RESPONSIBILITY_MARKERS.search(description)
-    if not marker:
-        return []
-    section = description[marker.end() : marker.end() + 1500]
-    # Stop at the next likely section header.
-    next_section = _PREFERRED_MARKERS.search(section) or _REQUIRED_MARKERS.search(section)
-    if next_section:
-        section = section[: next_section.start()]
+def _split_into_sentences(text: str) -> list[str]:
+    """Crude sentence splitter used when a description has no bullet
+    markers at all (plain-prose postings)."""
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    return [p.strip() for p in parts if len(p.strip()) > 25]
 
+
+def _extract_bullets(section: str) -> list[str]:
     lines = [line.strip() for line in section.splitlines() if line.strip()]
-    responsibilities = []
+    bullets = []
     for line in lines:
         bullet_match = _BULLET_RE.match(line)
         if bullet_match:
-            responsibilities.append(bullet_match.group(1).strip())
-    return responsibilities[:10]
+            bullets.append(bullet_match.group(1).strip())
+    return bullets
+
+
+def _extract_responsibilities(description: str) -> list[str]:
+    marker = _RESPONSIBILITY_MARKERS.search(description)
+    if marker:
+        section = description[marker.end() : marker.end() + 1500]
+        # Stop at the next likely section header.
+        next_section = _PREFERRED_MARKERS.search(section) or _REQUIRED_MARKERS.search(section)
+        if next_section:
+            section = section[: next_section.start()]
+    else:
+        # No explicit "Responsibilities"/"What you'll do" header - many real
+        # postings still list duties, just without that exact heading. Fall
+        # back to the whole description instead of returning nothing.
+        section = description
+
+    bullets = _extract_bullets(section)
+    if bullets:
+        return bullets[:10]
+
+    # No bullet markers either (plain-prose posting) - sentence-split so we
+    # still surface something instead of an empty responsibilities list.
+    return _split_into_sentences(section)[:10]
 
 
 def parse_job_requirements(title: str, description: str) -> JobRequirements:

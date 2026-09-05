@@ -18,6 +18,7 @@ WHERE status = 'ACTIVE'
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%')
 `
 
 type CountJobsParams struct {
@@ -25,6 +26,7 @@ type CountJobsParams struct {
 	Column2 string             `json:"column_2"`
 	Column3 string             `json:"column_3"`
 	Column4 pgtype.Timestamptz `json:"column_4"`
+	Column5 string             `json:"column_5"`
 }
 
 func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, error) {
@@ -33,6 +35,7 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 		arg.Column2,
 		arg.Column3,
 		arg.Column4,
+		arg.Column5,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -85,11 +88,12 @@ WHERE status = 'ACTIVE'
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%')
 ORDER BY
-  CASE WHEN $5::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
-  CASE WHEN $5::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
+  CASE WHEN $6::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
+  CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
   first_seen_at DESC
-LIMIT $6 OFFSET $7
+LIMIT $7 OFFSET $8
 `
 
 type ListJobsParams struct {
@@ -98,6 +102,7 @@ type ListJobsParams struct {
 	Column3 string             `json:"column_3"`
 	Column4 pgtype.Timestamptz `json:"column_4"`
 	Column5 string             `json:"column_5"`
+	Column6 string             `json:"column_6"`
 	Limit   int32              `json:"limit"`
 	Offset  int32              `json:"offset"`
 }
@@ -109,6 +114,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 		arg.Column3,
 		arg.Column4,
 		arg.Column5,
+		arg.Column6,
 		arg.Limit,
 		arg.Offset,
 	)

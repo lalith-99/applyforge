@@ -93,6 +93,40 @@ def _summary_suggestion(
     )
 
 
+def _transfer_experience_suggestion(
+    transfer: TransferableMatchInput, experiences: list[ExperienceInput], job_title: str
+) -> TailoringSuggestion | None:
+    """When a skill is suggested for the skills section on the strength of a
+    transferable_matches entry, also surface the specific existing bullet
+    that provides that evidence — otherwise the added skill sits in
+    isolation in the skills section with nothing backing it up elsewhere."""
+    source_lower = transfer.source_skill.lower()
+    for exp in experiences:
+        if not exp.bullets or source_lower not in _lower_set(exp.detected_skills):
+            continue
+        original = exp.bullets[0]
+        suggested = (
+            f"{original.rstrip('.')}, a foundation directly transferable to "
+            f"{transfer.target_skill} for this {job_title} role."
+        )
+        return TailoringSuggestion(
+            section="experience",
+            original_text=original,
+            suggested_text=suggested,
+            requirements_addressed=[transfer.target_skill],
+            skills_added=[transfer.target_skill],
+            source="AI_SUGGESTED",
+            reason=(
+                f"Connects your existing {transfer.source_skill} experience to the "
+                f"{transfer.target_skill} skill suggested above, so it isn't only "
+                "listed in isolation in the skills section."
+            ),
+            confidence=0.6,
+            risk_level="MEDIUM",
+        )
+    return None
+
+
 def _most_relevant_experience(
     experiences: list[ExperienceInput], relevant_skills: set[str]
 ) -> ExperienceInput | None:
@@ -152,18 +186,23 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     preferred_matched = [s for s in request.preferred_skills if s.lower() in have]
 
     skill_suggestions: list[TailoringSuggestion] = []
-    for skill in required_missing:
-        suggestion = _skill_suggestion(
-            skill, "required", request.mode, _transfer_for(skill, request.transferable_matches)
-        )
-        if suggestion:
-            skill_suggestions.append(suggestion)
-    for skill in preferred_missing:
-        suggestion = _skill_suggestion(
-            skill, "preferred", request.mode, _transfer_for(skill, request.transferable_matches)
-        )
-        if suggestion:
-            skill_suggestions.append(suggestion)
+    transfer_experience_suggestions: list[TailoringSuggestion] = []
+    for skill in required_missing + preferred_missing:
+        importance = "required" if skill in required_missing else "preferred"
+        transfer = _transfer_for(skill, request.transferable_matches)
+        suggestion = _skill_suggestion(skill, importance, request.mode, transfer)
+        if not suggestion:
+            continue
+        skill_suggestions.append(suggestion)
+        # A skill added to the skills section on the strength of a transfer
+        # should also show up in the experience bullet that evidences it,
+        # not just sit in isolation in the skills list.
+        if transfer is not None:
+            transfer_exp = _transfer_experience_suggestion(
+                transfer, request.experiences, request.job_title
+            )
+            if transfer_exp:
+                transfer_experience_suggestions.append(transfer_exp)
 
     summary_suggestion = _summary_suggestion(
         request.master_summary, request.job_title, required_matched + preferred_matched
@@ -171,7 +210,9 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     experience_suggestion = _experience_suggestion(
         request.experiences, request.required_skills, request.preferred_skills, request.job_title
     )
-    experience_suggestions = [experience_suggestion] if experience_suggestion else []
+    experience_suggestions = (
+        [experience_suggestion] if experience_suggestion else []
+    ) + transfer_experience_suggestions
 
     total_reqs = len(request.required_skills) + len(request.preferred_skills)
     before_matched = len(required_matched) + len(preferred_matched)
@@ -226,12 +267,19 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "this job's stated requirements/responsibilities — set its section to 'experience' and "
         "original_text to the exact existing bullet text you're improving. For any skill you suggest "
         "adding, create a suggestion with section='skills', original_text=null, and list the skill in "
-        "skills_added. Always populate requirements_addressed with the specific required/preferred "
-        "skills or responsibilities each suggestion relates to. Set source to 'MASTER_RESUME' if a "
-        "suggestion only rephrases content already fully evidenced by the resume, or 'AI_SUGGESTED' if "
-        "it adds something (like a new skill) not already directly stated. Compute "
-        "keyword_coverage_before and keyword_coverage_after as the fraction (0.0-1.0) of "
-        "required_skills+preferred_skills reflected in the resume before vs. after your suggestions."
+        "skills_added. IMPORTANT: whenever a skill you add to the skills section is backed by a "
+        "transferable_matches entry (a genuine transfer from a skill the candidate already has), also "
+        "add a SEPARATE experience-section suggestion for the bullet that demonstrates the source "
+        "skill, rephrased to honestly connect it to the newly added skill — a skill should never be "
+        "suggested in the skills section without also being reflected in the experience section it's "
+        "evidenced by. Never do this for a skill with no transferable_matches evidence (e.g. a pure "
+        "keyword-coverage MAX_MATCH suggestion) since that would fabricate experience. Always populate "
+        "requirements_addressed with the specific required/preferred skills or responsibilities each "
+        "suggestion relates to. Set source to 'MASTER_RESUME' if a suggestion only rephrases content "
+        "already fully evidenced by the resume, or 'AI_SUGGESTED' if it adds something (like a new "
+        "skill) not already directly stated. Compute keyword_coverage_before and "
+        "keyword_coverage_after as the fraction (0.0-1.0) of required_skills+preferred_skills "
+        "reflected in the resume before vs. after your suggestions."
     )
     user = request.model_dump_json(indent=2)
     return structured_completion(system, user, TailoringResponse)

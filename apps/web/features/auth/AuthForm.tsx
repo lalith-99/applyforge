@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { api, ApiError } from "@/lib/api";
 import { credentialsSchema, type CredentialsInput } from "@/lib/schemas/auth";
-import type { User } from "@/types/api";
+import type { Profile, User } from "@/types/api";
 
 interface AuthFormProps {
   mode: "signup" | "login";
@@ -24,9 +24,24 @@ export function AuthForm({ mode }: AuthFormProps) {
   const mutation = useMutation({
     mutationFn: (data: CredentialsInput) =>
       api.post<User>(`/auth/${mode}`, data),
-    onSuccess: (user) => {
+    onSuccess: async (user) => {
       queryClient.setQueryData(["auth", "session"], user);
-      router.push("/onboarding");
+
+      // Signups never have a profile yet - always send them to onboarding.
+      // Logins must NOT unconditionally do this: it used to send every
+      // returning user back through the onboarding wizard, whose blank
+      // form then overwrote their saved profile on resubmission.
+      if (mode === "signup") {
+        router.push("/onboarding");
+        return;
+      }
+
+      try {
+        const profile = await api.get<Profile>("/profile");
+        router.push(profile.onboarding_completed_at ? "/dashboard" : "/onboarding");
+      } catch {
+        router.push("/onboarding");
+      }
     },
   });
 
