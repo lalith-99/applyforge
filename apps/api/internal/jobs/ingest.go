@@ -28,22 +28,43 @@ type IngestResult struct {
 }
 
 // Ingest fetches all postings from source and upserts them, attributing them
-// to the given company (companies are configured via job_sources, not
-// inferred from connector responses — most board APIs don't include a
-// company display name in their payload).
+// to the given company by default (companies are configured via job_sources,
+// since most board APIs don't include a company display name in their
+// payload). Aggregator sources (e.g. Arbeitnow) that DO return a per-job
+// company name via raw.CompanyName have that company dynamically
+// upserted/reused instead, so a single job_sources row can ingest postings
+// from many different companies.
 func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source JobSource, companyID uuid.UUID, companyName string) (IngestResult, error) {
 	rawJobs, _, err := source.Fetch(ctx, nil)
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("fetch from %s: %w", sourceName, err)
 	}
 
+	// Cache resolved companies within this poll to avoid re-upserting the
+	// same company for every one of its postings.
+	resolvedCompanies := map[string]uuid.UUID{}
+
 	result := IngestResult{Fetched: len(rawJobs)}
 	for _, raw := range rawJobs {
+		jobCompanyID, jobCompanyName := companyID, companyName
+		if raw.CompanyName != "" {
+			normalized := normalizeCompanyName(raw.CompanyName)
+			if id, ok := resolvedCompanies[normalized]; ok {
+				jobCompanyID = id
+			} else if id, err := s.repo.UpsertCompany(ctx, raw.CompanyName, normalized); err == nil {
+				jobCompanyID = id
+				resolvedCompanies[normalized] = id
+			} else {
+				slog.Error("upsert company failed, falling back to source company", "source", sourceName, "company_name", raw.CompanyName, "error", err)
+			}
+			jobCompanyName = raw.CompanyName
+		}
+
 		job := Job{
 			Source:          sourceName,
 			ExternalID:      raw.ExternalID,
-			CompanyID:       companyID,
-			CompanyName:     companyName,
+			CompanyID:       jobCompanyID,
+			CompanyName:     jobCompanyName,
 			Title:           raw.Title,
 			NormalizedTitle: normalizeTitle(raw.Title),
 			Description:     raw.Description,
@@ -53,7 +74,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			ApplyURL:        strOrNil(raw.ApplyURL),
 			SourceURL:       strOrNil(raw.SourceURL),
 			PostedAt:        raw.PostedAt,
-			ContentHash:     contentHash(companyName, raw.Title, raw.LocationText, raw.Description),
+			ContentHash:     contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
 		}
 
 		upserted, err := s.repo.UpsertJob(ctx, job)
@@ -68,6 +89,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		}
 	}
 
+
 	return result, nil
 }
 
@@ -80,6 +102,8 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 		return NewLeverSource(cfg.BoardToken), "LEVER", nil
 	case "ASHBY":
 		return NewAshbySource(cfg.BoardToken), "ASHBY", nil
+	case "ARBEITNOW":
+		return NewArbeitnowSource(), "ARBEITNOW", nil
 	default:
 		return nil, "", fmt.Errorf("unknown source type: %s", cfg.SourceType)
 	}

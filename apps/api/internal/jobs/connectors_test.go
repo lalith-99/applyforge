@@ -114,3 +114,60 @@ func TestConnectors_FetchError_OnNon200(t *testing.T) {
 		t.Fatalf("expected error for 404 response")
 	}
 }
+
+func TestArbeitnowSource_Fetch_PaginatesAcrossCompanies(t *testing.T) {
+	var page1URL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = w.Write([]byte(`{"data":[{"slug":"job-2","company_name":"Beta Inc","title":"Data Engineer","description":"<p>Crunch data</p>","remote":false,"url":"https://arbeitnow.com/jobs/job-2","location":"Berlin","created_at":1700000000}],"links":{"next":null}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"slug":"job-1","company_name":"Acme GmbH","title":"Backend Engineer","description":"<p>Build things</p>","remote":true,"url":"https://arbeitnow.com/jobs/job-1","location":"Remote","created_at":1700000000}],"links":{"next":"` + page1URL + `?page=2"}}`))
+	}))
+	defer server.Close()
+	page1URL = server.URL
+
+	source := NewArbeitnowSource()
+	source.BaseURL = server.URL
+	source.MaxPages = 5
+
+	raw, cursor, err := source.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if cursor != nil {
+		t.Fatalf("expected nil cursor")
+	}
+	if len(raw) != 2 {
+		t.Fatalf("expected 2 jobs across both pages, got %d", len(raw))
+	}
+	if raw[0].CompanyName != "Acme GmbH" || raw[0].RemoteType != "remote" || raw[0].Description != "Build things" {
+		t.Fatalf("unexpected job 1: %+v", raw[0])
+	}
+	if raw[1].CompanyName != "Beta Inc" || raw[1].RemoteType != "onsite" {
+		t.Fatalf("unexpected job 2: %+v", raw[1])
+	}
+}
+
+func TestArbeitnowSource_Fetch_StopsAtMaxPages(t *testing.T) {
+	var callCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"slug":"job","company_name":"Acme","title":"Engineer","description":"","remote":false,"url":"https://x","location":"","created_at":0}],"links":{"next":"http://` + r.Host + `?page=next"}}`))
+	}))
+	defer server.Close()
+
+	source := NewArbeitnowSource()
+	source.BaseURL = server.URL
+	source.MaxPages = 2
+
+	if _, _, err := source.Fetch(context.Background(), nil); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected exactly MaxPages=2 requests, got %d", callCount)
+	}
+}
+
