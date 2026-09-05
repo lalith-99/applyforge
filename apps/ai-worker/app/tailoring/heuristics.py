@@ -93,37 +93,13 @@ def _summary_suggestion(
     )
 
 
-def _transfer_experience_suggestion(
-    transfer: TransferableMatchInput, experiences: list[ExperienceInput], job_title: str
-) -> TailoringSuggestion | None:
-    """When a skill is suggested for the skills section on the strength of a
-    transferable_matches entry, also surface the specific existing bullet
-    that provides that evidence — otherwise the added skill sits in
-    isolation in the skills section with nothing backing it up elsewhere."""
-    source_lower = transfer.source_skill.lower()
+def _find_experience_by_skill(
+    skill: str, experiences: list[ExperienceInput]
+) -> ExperienceInput | None:
+    skill_lower = skill.lower()
     for exp in experiences:
-        if not exp.bullets or source_lower not in _lower_set(exp.detected_skills):
-            continue
-        original = exp.bullets[0]
-        suggested = (
-            f"{original.rstrip('.')}, a foundation directly transferable to "
-            f"{transfer.target_skill} for this {job_title} role."
-        )
-        return TailoringSuggestion(
-            section="experience",
-            original_text=original,
-            suggested_text=suggested,
-            requirements_addressed=[transfer.target_skill],
-            skills_added=[transfer.target_skill],
-            source="AI_SUGGESTED",
-            reason=(
-                f"Connects your existing {transfer.source_skill} experience to the "
-                f"{transfer.target_skill} skill suggested above, so it isn't only "
-                "listed in isolation in the skills section."
-            ),
-            confidence=0.6,
-            risk_level="MEDIUM",
-        )
+        if exp.bullets and skill_lower in _lower_set(exp.detected_skills):
+            return exp
     return None
 
 
@@ -140,6 +116,48 @@ def _most_relevant_experience(
             best = exp
             best_overlap = overlap
     return best or (experiences[0] if experiences else None)
+
+
+def _added_skills_experience_suggestion(
+    bullet: str, transfer_skills: list[str], growth_skills: list[str], job_title: str
+) -> TailoringSuggestion:
+    """Combine every skill newly added to the skills section that maps to
+    this bullet into one honest suggestion, naming every merged skill
+    rather than just the first one encountered."""
+    clauses = []
+    if transfer_skills:
+        clauses.append(
+            f"a foundation directly transferable to {', '.join(transfer_skills)} "
+            f"for this {job_title} role"
+        )
+    if growth_skills:
+        clauses.append(f"related exposure to {', '.join(growth_skills)} as a growth area")
+    suggested_text = f"{bullet.rstrip('.')}, with {'; and '.join(clauses)}."
+
+    reason_parts = []
+    if transfer_skills:
+        reason_parts.append(f"transferable evidence for {', '.join(transfer_skills)}")
+    if growth_skills:
+        reason_parts.append(
+            f"{', '.join(growth_skills)} framed honestly as a growth area, not a claimed "
+            "accomplishment, since it isn't yet evidenced"
+        )
+    reason = (
+        "Connects skill(s) added to the skills section (" + "; ".join(reason_parts) + ") to this "
+        "existing bullet instead of leaving them isolated in the skills list."
+    )
+
+    return TailoringSuggestion(
+        section="experience",
+        original_text=bullet,
+        suggested_text=suggested_text,
+        requirements_addressed=transfer_skills + growth_skills,
+        skills_added=transfer_skills + growth_skills,
+        source="AI_SUGGESTED",
+        reason=reason,
+        confidence=0.6 if transfer_skills and not growth_skills else 0.3,
+        risk_level="HIGH" if growth_skills else "MEDIUM",
+    )
 
 
 def _experience_suggestion(
@@ -186,7 +204,11 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     preferred_matched = [s for s in request.preferred_skills if s.lower() in have]
 
     skill_suggestions: list[TailoringSuggestion] = []
-    transfer_experience_suggestions: list[TailoringSuggestion] = []
+    # Group every newly-added skill by the bullet it should be reflected
+    # against, so a bullet that picks up several skills gets ONE combined,
+    # honestly-worded suggestion instead of several near-duplicates.
+    bullet_transfer_skills: dict[str, list[str]] = {}
+    bullet_growth_skills: dict[str, list[str]] = {}
     for skill in required_missing + preferred_missing:
         importance = "required" if skill in required_missing else "preferred"
         transfer = _transfer_for(skill, request.transferable_matches)
@@ -194,15 +216,25 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
         if not suggestion:
             continue
         skill_suggestions.append(suggestion)
-        # A skill added to the skills section on the strength of a transfer
-        # should also show up in the experience bullet that evidences it,
-        # not just sit in isolation in the skills list.
+
+        # A skill added to the skills section should also show up in the
+        # experience section, not just sit in isolation in the skills list.
         if transfer is not None:
-            transfer_exp = _transfer_experience_suggestion(
-                transfer, request.experiences, request.job_title
-            )
-            if transfer_exp:
-                transfer_experience_suggestions.append(transfer_exp)
+            exp = _find_experience_by_skill(transfer.source_skill, request.experiences)
+            if exp:
+                bullet_transfer_skills.setdefault(exp.bullets[0], []).append(skill)
+        elif request.mode == "MAX_MATCH":
+            relevant = _lower_set(request.required_skills) | _lower_set(request.preferred_skills)
+            exp = _most_relevant_experience(request.experiences, relevant)
+            if exp and exp.bullets:
+                bullet_growth_skills.setdefault(exp.bullets[0], []).append(skill)
+
+    linked_experience_suggestions = [
+        _added_skills_experience_suggestion(
+            bullet, bullet_transfer_skills.get(bullet, []), bullet_growth_skills.get(bullet, []), request.job_title
+        )
+        for bullet in dict.fromkeys(list(bullet_transfer_skills) + list(bullet_growth_skills))
+    ]
 
     summary_suggestion = _summary_suggestion(
         request.master_summary, request.job_title, required_matched + preferred_matched
@@ -212,7 +244,7 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     )
     experience_suggestions = (
         [experience_suggestion] if experience_suggestion else []
-    ) + transfer_experience_suggestions
+    ) + linked_experience_suggestions
 
     total_reqs = len(request.required_skills) + len(request.preferred_skills)
     before_matched = len(required_matched) + len(preferred_matched)
@@ -267,18 +299,20 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "this job's stated requirements/responsibilities — set its section to 'experience' and "
         "original_text to the exact existing bullet text you're improving. For any skill you suggest "
         "adding, create a suggestion with section='skills', original_text=null, and list the skill in "
-        "skills_added. IMPORTANT: whenever a skill you add to the skills section is backed by a "
-        "transferable_matches entry (a genuine transfer from a skill the candidate already has), also "
-        "add a SEPARATE experience-section suggestion for the bullet that demonstrates the source "
-        "skill, rephrased to honestly connect it to the newly added skill — a skill should never be "
-        "suggested in the skills section without also being reflected in the experience section it's "
-        "evidenced by. Never do this for a skill with no transferable_matches evidence (e.g. a pure "
-        "keyword-coverage MAX_MATCH suggestion) since that would fabricate experience. Always populate "
-        "requirements_addressed with the specific required/preferred skills or responsibilities each "
-        "suggestion relates to. Set source to 'MASTER_RESUME' if a suggestion only rephrases content "
-        "already fully evidenced by the resume, or 'AI_SUGGESTED' if it adds something (like a new "
-        "skill) not already directly stated. Compute keyword_coverage_before and "
-        "keyword_coverage_after as the fraction (0.0-1.0) of required_skills+preferred_skills "
+        "skills_added. IMPORTANT: a skill should never be suggested in the skills section without "
+        "also being reflected in the experience section — for every skill you add, also create a "
+        "SEPARATE experience-section suggestion against the most relevant existing bullet: (a) if the "
+        "skill is backed by a transferable_matches entry, rephrase the bullet that demonstrates the "
+        "source skill to honestly connect it to the newly added skill (LOW/MEDIUM risk_level); (b) if "
+        "the skill has no transferable_matches evidence (a pure keyword-coverage MAX_MATCH addition), "
+        "still add it to the most relevant bullet but phrase it as a growth area or related exposure "
+        "(e.g. '...with related exposure to X as a growth area'), NEVER as a claimed accomplishment or "
+        "hands-on ownership since that would fabricate experience, and mark it risk_level='HIGH'. "
+        "Always populate requirements_addressed with the specific required/preferred skills or "
+        "responsibilities each suggestion relates to. Set source to 'MASTER_RESUME' if a suggestion "
+        "only rephrases content already fully evidenced by the resume, or 'AI_SUGGESTED' if it adds "
+        "something (like a new skill) not already directly stated. Compute keyword_coverage_before "
+        "and keyword_coverage_after as the fraction (0.0-1.0) of required_skills+preferred_skills "
         "reflected in the resume before vs. after your suggestions."
     )
     user = request.model_dump_json(indent=2)
