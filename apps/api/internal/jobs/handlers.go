@@ -9,17 +9,20 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
+	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 )
 
 // Handlers wires the jobs Repository/IngestionService to HTTP routes.
 type Handlers struct {
-	repo *Repository
-	svc  *IngestionService
+	repo         *Repository
+	svc          *IngestionService
+	requirements *jobrequirements.Service
 }
 
-// NewHandlers builds jobs Handlers.
-func NewHandlers(repo *Repository, svc *IngestionService) *Handlers {
-	return &Handlers{repo: repo, svc: svc}
+// NewHandlers builds jobs Handlers. requirements may be nil if JD parsing
+// (Phase 4) isn't wired up yet; the job detail response simply omits it.
+func NewHandlers(repo *Repository, svc *IngestionService, requirements *jobrequirements.Service) *Handlers {
+	return &Handlers{repo: repo, svc: svc, requirements: requirements}
 }
 
 // Mount registers job routes onto r. Callers must apply auth.RequireAuth
@@ -88,7 +91,17 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "job not found")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, toDetail(job))
+
+	detail := toDetail(job)
+	if h.requirements != nil {
+		reqs, err := h.requirements.GetOrParse(r.Context(), job.ID, job.Title, job.Description, job.ContentHash)
+		if err != nil {
+			httpx.WriteError(w, http.StatusBadGateway, "could not analyze job requirements")
+			return
+		}
+		detail["requirements"] = reqs
+	}
+	httpx.WriteJSON(w, http.StatusOK, detail)
 }
 
 func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {

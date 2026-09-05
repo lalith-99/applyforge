@@ -88,6 +88,13 @@ func NewRepository(pool *database.Pool) *Repository {
 	return &Repository{q: pool.Queries()}
 }
 
+// NewRepositoryFromQueries builds a Repository from an existing sqlc Queries
+// value (e.g. bound to a transaction). Primarily for other packages'
+// integration tests that need fixture jobs/companies.
+func NewRepositoryFromQueries(q *db.Queries) *Repository {
+	return &Repository{q: q}
+}
+
 // UpsertCompany creates or reuses a company row by normalized name.
 func (r *Repository) UpsertCompany(ctx context.Context, name, normalizedName string) (uuid.UUID, error) {
 	row, err := r.q.UpsertCompany(ctx, db.UpsertCompanyParams{

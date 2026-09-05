@@ -18,6 +18,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
@@ -100,7 +101,9 @@ func run() error {
 
 	jobsRepo := jobs.NewRepository(db)
 	ingestionService := jobs.NewIngestionService(jobsRepo)
-	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService)
+	jobRequirementsRepo := jobrequirements.NewRepository(db)
+	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient)
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService)
 
 	pollMinutes := 60
 	if v := os.Getenv("JOB_POLL_INTERVAL_MINUTES"); v != "" {
