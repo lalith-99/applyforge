@@ -40,7 +40,7 @@ export function JobCard({ job }: { job: JobSummary }) {
 
       {matchQuery.data && matchQuery.data.MatchedSkills.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {matchQuery.data.MatchedSkills.slice(0, 5).map((skill) => (
+          {Array.from(new Set(matchQuery.data.MatchedSkills)).slice(0, 5).map((skill) => (
             <span key={skill} className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
               {skill}
             </span>

@@ -46,7 +46,10 @@ func Score(in Input) Result {
 
 	allTransfers := mergeTransfers(requiredTransfers, preferredTransfers)
 
-	matchedSkills := append(append([]string{}, requiredMatched...), preferredMatched...)
+	// A skill can legitimately appear in both RequiredSkills and
+	// PreferredSkills (imperfect JD parsing can classify the same skill
+	// both ways) - dedupe so callers never see the same skill twice.
+	matchedSkills := dedupeStrings(append(append([]string{}, requiredMatched...), preferredMatched...))
 	sort.Strings(matchedSkills)
 
 	currentMatch, targetMatch, suggestedAdditions := profileMatch(in, requiredMatched, requiredMissing, allTransfers)
@@ -93,6 +96,18 @@ func creditRatio(total int, credit float64) float64 {
 		ratio = 1
 	}
 	return ratio
+}
+
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func indexTransferable(skills []TransferableSkill) map[string][]TransferableSkill {
