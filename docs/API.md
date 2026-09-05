@@ -5,7 +5,7 @@
 All product endpoints are served under `/api/v1` by the Go API (`apps/api`). The Python AI worker
 (`apps/ai-worker`) exposes an internal-only API consumed solely by the Go API, not by the browser.
 
-## Implemented endpoints (through Phase 9)
+## Implemented endpoints (through Phase 10)
 
 Authentication (`internal/auth`), all under `/api/v1/auth`:
 
@@ -89,13 +89,23 @@ GET    /api/v1/resumes/{id}/versions             list versions for a base resume
 GET    /api/v1/resume-versions/{id}              version detail (content, scores, storage keys)
 GET    /api/v1/resume-versions/{id}/download     ?format=pdf|docx (default pdf); streams the file
 ```
+
+Applications (`internal/applications`):
+
+```
+POST   /api/v1/applications                       body: {job_id, resume_version_id?, match_score?};
+                                                   idempotent upsert on (user_id, job_id) — "Save Job"
+GET    /api/v1/applications                       list, joined with job display fields, newest-updated first
+GET    /api/v1/applications/{id}
+PATCH  /api/v1/applications/{id}                  body: {status?, notes?, next_action?}; a status change
+                                                   logs an application_events row (from/to status)
+GET    /api/v1/applications/{id}/events           status-change history, oldest first
+GET    /api/v1/application-answers                zero-value defaults if none saved yet, not a 404
+PATCH  /api/v1/application-answers
+```
 ## Planned endpoint surface (later phases)
 
 ```
-POST   /api/v1/jobs/{id}/save
-POST   /api/v1/applications
-GET    /api/v1/applications
-PATCH  /api/v1/applications/{id}
 GET    /api/v1/analytics/dashboard
 ```
 

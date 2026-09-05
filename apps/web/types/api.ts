@@ -279,3 +279,67 @@ export interface ResumeVersion {
   DocxStorageKey: string | null;
   CreatedAt: string;
 }
+
+export type ApplicationStatus =
+  | "SAVED"
+  | "READY_TO_APPLY"
+  | "APPLIED"
+  | "RECRUITER_SCREEN"
+  | "ASSESSMENT"
+  | "TECHNICAL_INTERVIEW"
+  | "FINAL_INTERVIEW"
+  | "OFFER"
+  | "REJECTED"
+  | "WITHDRAWN";
+
+export interface Application {
+  ID: string;
+  UserID: string;
+  JobID: string;
+  ResumeVersionID: string | null;
+  Status: ApplicationStatus;
+  MatchScore: number | null;
+  Notes: string | null;
+  NextAction: string | null;
+  AppliedAt: string | null;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export interface ApplicationWithJob extends Application {
+  CompanyName: string;
+  Title: string;
+  NormalizedTitle: string;
+  Source: string;
+  FirstSeenAt: string;
+  PostedAt: string | null;
+}
+
+export interface ApplicationEvent {
+  ID: string;
+  ApplicationID: string;
+  EventType: string;
+  FromStatus: string | null;
+  ToStatus: string | null;
+  Notes: string | null;
+  CreatedAt: string;
+}
+
+export interface ApplicationAnswers {
+  UserID: string;
+  FullName: string | null;
+  Phone: string | null;
+  Email: string | null;
+  Location: string | null;
+  DesiredLocation: string | null;
+  WorkAuthorization: string | null;
+  Sponsorship: string | null;
+  SalaryExpectation: string | null;
+  NoticePeriod: string | null;
+  LinkedinURL: string | null;
+  GithubURL: string | null;
+  PortfolioURL: string | null;
+  CommonAnswers: Record<string, unknown>;
+  CreatedAt: string;
+  UpdatedAt: string;
+}

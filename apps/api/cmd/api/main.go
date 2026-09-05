@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
+	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/background"
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
@@ -135,12 +136,16 @@ func run() error {
 	resumeVersionService := resumeversion.NewService(resumeVersionRepo, resumeRepo, tailoringRepo, aiWorkerClient, storageClient, matchingService)
 	resumeVersionHandlers := resumeversion.NewHandlers(resumeVersionService, resumeVersionRepo, resumeRepo)
 
+	applicationsRepo := applications.NewRepository(db)
+	applicationsService := applications.NewService(applicationsRepo)
+	applicationsHandlers := applications.NewHandlers(applicationsService, applicationsRepo)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers},
 	})
 
 	server := &http.Server{

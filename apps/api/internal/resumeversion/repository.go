@@ -1,4 +1,3 @@
-package resumeversion
 // Package resumeversion generates versioned, downloadable PDF/DOCX resumes
 // by merging approved tailoring suggestions onto a base master resume (see
 // MASTER_REQUIREMENTS.md §36-§38).

@@ -14,7 +14,7 @@ Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) 
       Alignment (this delivery).
 - [x] **Phase 8** — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans.
 - [x] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
-- [ ] **Phase 10** — Applications: tracking, Kanban, application answers, events.
+- [x] **Phase 10** — Applications: tracking, Kanban, application answers, events.
 - [ ] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
 - [ ] **Phase 12** — Production hardening: security, observability, performance, deployment, CI/CD, docs.
 
@@ -193,7 +193,33 @@ Actions CI skeleton that lints/tests/builds all three services.
   tailoring against a real ingested job, approved all suggestions, generated a resume version, and
   downloaded both the PDF and DOCX — the tailored bullet text and expanded summary were correctly
   merged into the rendered documents.
+## Phase 10 — what was actually delivered
 
+* **Go**: `internal/applications` — `Repository` wrapping applications/application_events/
+  application_answers (all sqlc queries were already written in the Phase 8 pass), `Service.Save`
+  (create-or-reattach-resume-version upsert, unique on user+job so "Save Job" is idempotent),
+  `Service.ChangeStatus` (validates the target status, logs a `STATUS_CHANGE` event with from/to status,
+  skips logging for no-op transitions, sets `applied_at` automatically on first transition to APPLIED via
+  the existing SQL `CASE` in `UpdateApplicationStatus`). Routes: `POST /applications` (save/attach),
+  `GET /applications` (joined with job display fields for the list/Kanban/table UI), `GET /applications/{id}`,
+  `PATCH /applications/{id}` (status and/or notes/next_action), `GET /applications/{id}/events`,
+  `GET /application-answers` (zero-value defaults, not 404, matching the profile/preferences convention),
+  `PATCH /application-answers`.
+* **Frontend**: `/applications` page with a Kanban view (status columns, "Move to next stage" button per
+  card — click-to-advance rather than full drag-and-drop, to avoid a new DnD dependency for a single-user
+  MVP) and a table view (inline status dropdown per row) toggled by a header control; a "Save Job" button
+  added to the job detail page.
+* **Tests**: 4 new Go integration tests — upsert-not-duplicate on repeated Save, status-change event
+  logging + invalid-status rejection, no-op transitions never logging a spurious event, application-answers
+  upsert/get round-trip.
+* **Bug found and fixed during live verification**: `UpsertAnswersInput` had no `json` struct tags, so the
+  API's `DisallowUnknownFields` strict JSON decoder rejected any real request body (e.g. `{"full_name": ...}`)
+  with "invalid request body", even though the Go code compiled fine. This is the kind of bug that's
+  invisible until you actually exercise the endpoint with real JSON — added the missing tags and
+  re-verified live.
+* Verified live end-to-end via docker-compose: save a job, list applications (joined with job fields),
+  change status to APPLIED (`applied_at` set, one `STATUS_CHANGE` event logged), reject an invalid status
+  with 400, get default application answers, then update and confirm they persist.
 ## Next up: Phase 10 (not started)
 
 Applications: tracking, Kanban, application answers, events. Do not begin this until explicitly

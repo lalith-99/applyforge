@@ -6,7 +6,7 @@ import { use } from "react";
 import { AppNav } from "@/components/AppNav";
 import { api, ApiError } from "@/lib/api";
 import { QuickPrepDrawer } from "@/features/learning/QuickPrepDrawer";
-import type { JobDetail, MatchResult, QualifiedResult } from "@/types/api";
+import type { Application, JobDetail, MatchResult, QualifiedResult } from "@/types/api";
 
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,6 +21,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   });
   const qualifyMutation = useMutation({
     mutationFn: () => api.post<QualifiedResult>(`/jobs/${id}/make-me-qualified`),
+  });
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.post<Application>("/applications", { job_id: id, match_score: match?.TotalScore ?? null }),
   });
 
   if (jobQuery.isLoading) {
@@ -58,6 +62,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
             className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-60 dark:border-white/15"
           >
             {qualifyMutation.isPending ? "Analyzing…" : "Make Me Qualified"}
+          </button>
+          <button
+            type="button"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || saveMutation.isSuccess}
+            className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-60 dark:border-white/15"
+          >
+            {saveMutation.isSuccess ? "Saved ✓" : saveMutation.isPending ? "Saving…" : "Save Job"}
           </button>
           {job.apply_url && (
             <a

@@ -1,4 +1,3 @@
-package resumeversion
 package resumeversion_test
 
 import (

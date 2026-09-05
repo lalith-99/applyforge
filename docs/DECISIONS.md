@@ -264,4 +264,29 @@ held throughout, rather than discovered ad hoc partway through:
   master resume after a tailoring run was created but before generating a version, the match would silently
   fail to apply that suggestion (falls back to leaving the original bullet in place, not an error).
 
+## Phase 10 — Applications tracking (Kanban, table, application answers, events)
+
+1. **"Save Job" is an idempotent upsert, not a plain insert.** `CreateApplication` (written in the Phase 8
+   pass) is `INSERT ... ON CONFLICT (user_id, job_id) DO UPDATE`, so calling Save again for the same job
+   (e.g. after generating a new resume version) just re-attaches the resume version without resetting an
+   in-progress application back to SAVED or duplicating the row.
+2. **Status transitions are click-to-advance, not full drag-and-drop, in the Kanban view.** A real DnD
+   library is a meaningfully sized new frontend dependency for a single-user MVP; each card has a "Move to
+   next stage" button (and the table view has a plain status dropdown) that calls the same
+   `PATCH /applications/{id}` endpoint. Revisit if multi-column reordering ends up mattering in practice.
+3. **Every status change is logged as an `application_events` row, but no-op transitions are not.**
+   `Service.ChangeStatus` compares the current and requested status before logging, so re-saving the same
+   status (e.g. from a stale frontend state) doesn't pollute the history with duplicate identical events.
+4. **`GET /application-answers` returns zero-value defaults for a user with no saved answers, not a 404**,
+   matching the same convention already established for `/profile` and `/preferences` — the frontend can
+   render the answers form immediately without a loading branch for "not found yet".
+
+### Remaining technical debt after Phase 10
+
+* No bulk "apply with saved answers" flow yet — application answers are stored but nothing auto-fills an
+  external ATS form with them (that would require per-ATS integration, out of scope here).
+* Kanban view has no drag-and-drop; status changes are single-step "move to next" or a dropdown, not
+  free-form column-to-column dragging.
+* No application-level attachments (cover letter, etc.) beyond the linked `resume_version_id`.
+
 

@@ -1,5 +1,4 @@
 package resumeversion
-package resumeversion
 
 import (
 	"testing"
