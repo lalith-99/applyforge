@@ -97,3 +97,85 @@ export interface ResumeDetail extends ResumeSummary {
   parsed_profile: ResumeParsedProfile | null;
   experiences: ResumeExperience[];
 }
+
+export interface JobSummary {
+  id: string;
+  source: string;
+  company_name: string;
+  title: string;
+  normalized_title: string;
+  location_text: string | null;
+  remote_type: string | null;
+  employment_type: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string | null;
+  apply_url: string | null;
+  posted_at: string | null;
+  first_seen_at: string;
+}
+
+export interface JobDetail extends JobSummary {
+  description: string;
+  source_url: string | null;
+  status: string;
+  requirements?: {
+    RoleFamily: string | null;
+    NormalizedTitle: string | null;
+    Seniority: string | null;
+    RequiredSkills: { normalized_name: string; importance: string }[];
+    PreferredSkills: { normalized_name: string; importance: string }[];
+    RequiredExperienceYears: number | null;
+    Responsibilities: string[];
+    Keywords: string[];
+    ClearanceRequirements: string | null;
+    WorkAuthorizationRequirements: string | null;
+  };
+}
+
+export interface JobsListResponse {
+  items: JobSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ComponentScores {
+  MustHaveSkillCoverage: number;
+  ResponsibilityAlignment: number;
+  RoleSeniority: number;
+  PreferredSkills: number;
+  DomainAlignment: number;
+  LocationWorkArrangement: number;
+  EducationCertifications: number;
+  CandidatePreferences: number;
+}
+
+export interface TransferableMatch {
+  SourceSkill: string;
+  TargetSkill: string;
+  Level: string;
+  PrepClassification: string;
+}
+
+export interface MatchResult {
+  TotalScore: number;
+  Grade: string;
+  Components: ComponentScores;
+  MatchedSkills: string[];
+  TransferableSkills: TransferableMatch[] | null;
+  MissingRequiredSkills: string[] | null;
+  MissingPreferredSkills: string[] | null;
+  PositiveEvidence: string[] | null;
+  Concerns: string[] | null;
+  Explanation: string;
+  OpportunityScore: number;
+  CurrentProfileMatch: number;
+  TargetProfileMatch: number;
+  SuggestedTargetAdditions: string[] | null;
+  Eligibility: {
+    Eligible: boolean;
+    HardFailures: string[] | null;
+    Warnings: string[] | null;
+  };
+}
