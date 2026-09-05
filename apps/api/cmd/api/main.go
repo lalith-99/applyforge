@@ -20,6 +20,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
+	"github.com/lalithlochan/applyforge/apps/api/internal/matching"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
@@ -115,12 +116,16 @@ func run() error {
 	defer stopScheduler()
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
 
+	matchingRepo := matching.NewRepository(db)
+	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo)
+	matchingHandlers := matching.NewHandlers(matchingService)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers},
 	})
 
 	server := &http.Server{
