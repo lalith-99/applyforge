@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lalithlochan/applyforge/apps/api/internal/account"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
 	"github.com/lalithlochan/applyforge/apps/api/internal/analytics"
 	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
@@ -145,12 +146,15 @@ func run() error {
 	analyticsService := analytics.NewService(analyticsRepo, applicationsRepo)
 	analyticsHandlers := analytics.NewHandlers(analyticsService)
 
+	accountService := account.NewService(userRepo, resumeRepo, resumeVersionRepo, storageClient)
+	accountHandlers := account.NewHandlers(accountService, environment == "production")
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers},
 	})
 
 	server := &http.Server{

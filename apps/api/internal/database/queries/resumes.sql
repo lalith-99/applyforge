@@ -12,6 +12,9 @@ SELECT * FROM resumes WHERE id = $1 AND user_id = $2;
 -- name: ListResumesForUser :many
 SELECT * FROM resumes WHERE user_id = $1 ORDER BY created_at DESC;
 
+-- name: DeleteResume :exec
+DELETE FROM resumes WHERE id = $1 AND user_id = $2;
+
 -- name: MarkResumeParsing :exec
 UPDATE resumes SET status = 'PARSING', updated_at = now() WHERE id = $1;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { api, ApiError } from "@/lib/api";
@@ -34,6 +35,20 @@ export default function ResumePage() {
       queryClient.invalidateQueries({ queryKey: ["resumes"] });
       setSelectedId(resume.id);
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/resumes/${id}`),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["resumes"] });
+      if (selectedId === id) setSelectedId(null);
+    },
+  });
+
+  const router = useRouter();
+  const deleteAccountMutation = useMutation({
+    mutationFn: () => api.delete("/account"),
+    onSuccess: () => router.push("/login"),
   });
 
   return (
@@ -75,20 +90,55 @@ export default function ResumePage() {
           <p className="text-sm text-black/60 dark:text-white/60">No resumes uploaded yet.</p>
         )}
         {resumesQuery.data?.map((r) => (
-          <button
+          <div
             key={r.id}
-            onClick={() => setSelectedId(r.id)}
-            className={`flex items-center justify-between rounded-md border px-4 py-3 text-left text-sm ${
+            className={`flex items-center justify-between rounded-md border px-4 py-3 text-sm ${
               selectedId === r.id ? "border-black/30 dark:border-white/30" : "border-black/10 dark:border-white/15"
             }`}
           >
-            <span>{r.original_filename}</span>
-            <StatusBadge status={r.status} />
-          </button>
+            <button onClick={() => setSelectedId(r.id)} className="flex-1 text-left">
+              {r.original_filename}
+            </button>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={r.status} />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`Delete "${r.original_filename}"? This cannot be undone.`)) {
+                    deleteMutation.mutate(r.id);
+                  }
+                }}
+                className="text-xs text-red-600 hover:underline"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         ))}
       </section>
 
       {selectedId && detailQuery.data && <ResumeReview resume={detailQuery.data} />}
+
+      <section className="mt-8 flex flex-col gap-2 rounded-md border border-red-200 p-4">
+        <p className="text-sm font-medium text-red-700">Danger Zone</p>
+        <p className="text-xs text-black/60 dark:text-white/60">
+          Permanently deletes your account and everything associated with it: resumes, job matches,
+          tailoring runs, applications, and analytics. This cannot be undone.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm("Permanently delete your account? This cannot be undone.")) {
+              deleteAccountMutation.mutate();
+            }
+          }}
+          disabled={deleteAccountMutation.isPending}
+          className="self-start rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 disabled:opacity-60"
+        >
+          {deleteAccountMutation.isPending ? "Deleting…" : "Delete Account"}
+        </button>
+      </section>
       </main>
     </>
   );

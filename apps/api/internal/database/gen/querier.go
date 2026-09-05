@@ -32,8 +32,10 @@ type Querier interface {
 	CreateUserWithGoogle(ctx context.Context, arg CreateUserWithGoogleParams) (User, error)
 	CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (User, error)
 	DeleteExpiredSessions(ctx context.Context) error
+	DeleteResume(ctx context.Context, arg DeleteResumeParams) error
 	DeleteResumeExperiences(ctx context.Context, resumeID pgtype.UUID) error
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error
+	DeleteUser(ctx context.Context, id pgtype.UUID) error
 	EnqueueJob(ctx context.Context, arg EnqueueJobParams) (BackgroundJob, error)
 	FailJob(ctx context.Context, arg FailJobParams) error
 	FailTailoringRun(ctx context.Context, id pgtype.UUID) error

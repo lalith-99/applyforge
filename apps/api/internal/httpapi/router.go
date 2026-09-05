@@ -52,15 +52,25 @@ func NewRouter(cfg Config) http.Handler {
 		MaxAge:           300,
 	}))
 
+	// Rate limiting (see DECISIONS.md, Phase 12): a stricter per-IP limit on
+	// /auth guards against credential-stuffing/brute-force, and a more
+	// generous global limit protects the rest of the API from abuse.
+	authRateLimiter := newRateLimiter(20, time.Minute)
+	apiRateLimiter := newRateLimiter(300, time.Minute)
+
 	r.Get("/health", handleHealth)
 	r.Get("/ready", handleReady(cfg.DB))
 
 	r.Route("/api/v1", func(r chi.Router) {
 		if cfg.Auth != nil {
-			r.Route("/auth", cfg.Auth.Mount)
+			r.Route("/auth", func(r chi.Router) {
+				r.Use(authRateLimiter.middleware)
+				cfg.Auth.Mount(r)
+			})
 		}
 
 		r.Group(func(r chi.Router) {
+			r.Use(apiRateLimiter.middleware)
 			if cfg.RequireAuth != nil {
 				r.Use(cfg.RequireAuth)
 			}

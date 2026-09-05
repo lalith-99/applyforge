@@ -16,7 +16,7 @@ Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) 
 - [x] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
 - [x] **Phase 10** — Applications: tracking, Kanban, application answers, events.
 - [x] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
-- [ ] **Phase 12** — Production hardening: security, observability, performance, deployment, CI/CD, docs.
+- [x] **Phase 12** — Production hardening: security, observability, performance, deployment, CI/CD, docs.
 
 Each phase is implemented independently, per the working style in MASTER_REQUIREMENTS.md §73: review the
 repo and docs first, state assumptions, identify DB/API/test impact, implement, then run formatters, lint,
@@ -244,12 +244,43 @@ Actions CI skeleton that lints/tests/builds all three services.
   counts, 100% response rate (1 of 1 applied reached recruiter screen), and average match score all
   correct.
 
-## Next up: Phase 12 (not started)
+## Phase 12 — what was actually delivered
+
+* **Go**: `internal/httpapi/ratelimit.go` — a simple in-memory, per-IP fixed-window rate limiter (no new
+  dependency). Applied as two tiers: a strict 20 requests/minute limit on `/api/v1/auth/*` (brute-force /
+  credential-stuffing protection) and a generous 300 requests/minute limit across the rest of the
+  authenticated API. `internal/account` — `Service.DeleteResume` (deletes a resume's uploaded file and any
+  generated PDF/DOCX version files from object storage, then the resume row — cascading its experiences
+  and versions in the database) and `Service.DeleteAccount` (deletes every resume's storage files across
+  the account, then the user row — cascading sessions, profile, preferences, resumes, tailoring runs,
+  applications, and everything else that references `users(id)`, since every such foreign key uses
+  `ON DELETE CASCADE`). Routes: `DELETE /resumes/{id}`, `DELETE /account` (also clears the session cookie).
+  A `StorageDeleter` interface (rather than the concrete storage client type) lets tests inject a fake
+  in-memory recorder instead of talking to real MinIO.
+* **Frontend**: a delete button per resume row on `/resume`, and a "Danger Zone" section at the bottom of
+  that page with a confirmed "Delete Account" button that logs the user out and redirects to `/login`.
+* **Tests**: 3 new rate-limiter unit tests (allows-up-to-limit-then-blocks, independent per-key tracking,
+  429 via the actual middleware) and 3 new `internal/account` integration tests (resume deletion leaves
+  other resumes untouched, deleting another user's resume returns not-found, account deletion cascades both
+  the user row and their resumes while recording the storage keys that were "deleted").
+* **Docs**: this pass — README status/scope-limitations sections rewritten for all 12 phases, `API.md`
+  brought current, `DECISIONS.md` given a Phase 12 entry, and a formatting bug from earlier phase edits in
+  `IMPLEMENTATION_PLAN.md` fixed (see Phase 11 entry above).
+* Verified live end-to-end via docker-compose: uploaded and deleted a resume (404 on subsequent
+  get/re-delete), sent 25 rapid login attempts and confirmed the 20th+ were rejected with 429, deleted a
+  full account and confirmed both the API 401s on the now-invalid session cookie and a direct `SELECT`
+  against Postgres show zero matching rows.
+
+## All 12 phases are now complete (MVP feature-complete)
+
+See [DECISIONS.md](DECISIONS.md) for the full technical-debt list accumulated across phases (no real AI
+provider, no Immigration-Aware Job Matching sub-system, in-memory non-distributed rate limiting, etc.) —
+these are documented, deliberate scope boundaries for this build, not oversights.
 
 Production hardening: security, observability, performance, deployment, CI/CD, docs. Do not begin this
 until explicitly requested.
 
-## Known scope limitations after Phases 2-7 (see DECISIONS.md for full list)
+## Known scope limitations (see DECISIONS.md for the full, per-phase list)
 
 * No real AI provider integration yet — resume parsing, JD parsing, and tailoring all use deterministic
   heuristic stand-ins behind the same interface shape a real `AIProvider` would use. This was a deliberate,
@@ -260,4 +291,9 @@ until explicitly requested.
 * Education/certification cross-referencing in match scoring is a flat partial-credit default, not a real
   comparison against parsed resume education/certifications.
 * Domain alignment in the match score uses a flat default (no domain extraction in the heuristic JD parser).
+* Rate limiting (Phase 12) is a simple in-memory, per-IP fixed-window limiter — correct for a single API
+  instance but not distributed; a multi-replica production deployment would need a shared store (e.g. Redis).
+* See the "Remaining technical debt after Phase N" sections in [DECISIONS.md](DECISIONS.md) for the
+  complete list across Phases 8-12 (Interview Readiness approximation, no resume-version diff/preview UI,
+  no Kanban drag-and-drop, no time-series analytics, etc.).
 

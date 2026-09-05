@@ -5,7 +5,7 @@
 All product endpoints are served under `/api/v1` by the Go API (`apps/api`). The Python AI worker
 (`apps/ai-worker`) exposes an internal-only API consumed solely by the Go API, not by the browser.
 
-## Implemented endpoints (through Phase 11)
+## Implemented endpoints (through Phase 12 — feature-complete)
 
 Authentication (`internal/auth`), all under `/api/v1/auth`:
 
@@ -112,10 +112,26 @@ GET    /api/v1/analytics/dashboard                jobs discovered, applications 
                                                    average match score
 ```
 
-## Planned endpoint surface (later phases)
+Account (`internal/account`):
 
-None — the endpoint surface for Phases 0-11 is complete. Phase 12 (production hardening) adds
-middleware/ops concerns, not new product endpoints.
+```
+DELETE /api/v1/resumes/{id}                       deletes the resume's uploaded file + any generated
+                                                   PDF/DOCX version files from object storage, then the
+                                                   DB row (cascades resume_experiences/resume_versions)
+DELETE /api/v1/account                            deletes every resume's object-storage files, then the
+                                                   user row (cascades everywhere else in the schema);
+                                                   also clears the af_session cookie
+```
+
+## Rate limiting
+
+All `/api/v1` routes are rate limited per client IP (in-memory, fixed-window, not distributed — see
+DECISIONS.md Phase 12): `/api/v1/auth/*` at 20 requests/minute, everything else at 300 requests/minute.
+Exceeding the limit returns `429 {"error": "too many requests"}`.
+
+## Planned endpoint surface
+
+None — the endpoint surface for Phases 0-12 is complete (this was the final planned phase).
 
 OpenAPI docs are deferred until the endpoint surface stabilizes further — not worth generating/maintaining
 yet (tracked as technical debt, see DECISIONS.md).

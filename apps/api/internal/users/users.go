@@ -132,3 +132,12 @@ func (r *Repository) LinkGoogleAccount(ctx context.Context, id uuid.UUID, google
 	}
 	return fromRow(row), nil
 }
+
+// Delete permanently removes a user and (via ON DELETE CASCADE) every row
+// that references them across the schema — sessions, profile, preferences,
+// resumes, tailoring runs, applications, etc. Object storage files are not
+// covered by the database cascade and must be deleted separately by the
+// caller before calling Delete.
+func (r *Repository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.q.DeleteUser(ctx, database.UUIDToPG(id))
+}

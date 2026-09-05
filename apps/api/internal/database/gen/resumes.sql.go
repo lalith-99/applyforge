@@ -52,6 +52,20 @@ func (q *Queries) CreateResume(ctx context.Context, arg CreateResumeParams) (Res
 	return i, err
 }
 
+const deleteResume = `-- name: DeleteResume :exec
+DELETE FROM resumes WHERE id = $1 AND user_id = $2
+`
+
+type DeleteResumeParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteResume(ctx context.Context, arg DeleteResumeParams) error {
+	_, err := q.db.Exec(ctx, deleteResume, arg.ID, arg.UserID)
+	return err
+}
+
 const getResumeByID = `-- name: GetResumeByID :one
 SELECT id, user_id, original_filename, mime_type, size_bytes, storage_key, status, parse_error, raw_text, parsed_profile, parsed_at, created_at, updated_at FROM resumes WHERE id = $1
 `

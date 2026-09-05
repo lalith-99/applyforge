@@ -14,6 +14,9 @@ SELECT * FROM users WHERE lower(email) = lower($1);
 -- name: GetUserByGoogleID :one
 SELECT * FROM users WHERE google_id = $1;
 
+-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1;
+
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 

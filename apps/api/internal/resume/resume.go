@@ -177,6 +177,17 @@ func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]Resum
 	return resumes, nil
 }
 
+// Delete permanently removes a resume owned by the given user (via ON
+// DELETE CASCADE this also removes its resume_experiences and
+// resume_versions rows). The caller is responsible for deleting the
+// underlying object storage files first — this only removes DB rows.
+func (r *Repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
+	return r.q.DeleteResume(ctx, db.DeleteResumeParams{
+		ID:     database.UUIDToPG(id),
+		UserID: database.UUIDToPG(userID),
+	})
+}
+
 // MarkParsing flips a resume's status to PARSING.
 func (r *Repository) MarkParsing(ctx context.Context, id uuid.UUID) error {
 	return r.q.MarkResumeParsing(ctx, database.UUIDToPG(id))

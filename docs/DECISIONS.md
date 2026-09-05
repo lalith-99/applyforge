@@ -315,4 +315,37 @@ held throughout, rather than discovered ad hoc partway through:
 * `JobsDiscovered` counts all ACTIVE jobs in the system, not jobs discovered specifically for this user's
   preferences/matches — a coarse global signal rather than a personalized one.
 
+## Phase 12 — Production hardening (rate limiting, account/resume deletion)
+
+1. **Rate limiting is a simple in-memory, per-IP fixed-window limiter — no new dependency.** Two tiers: a
+   strict 20 req/min limit on `/api/v1/auth/*` (brute-force/credential-stuffing protection) and a generous
+   300 req/min limit across the rest of the authenticated API. This is correct for a single API instance
+   (the deployment topology documented in DEPLOYMENT.md) but isn't distributed — a multi-replica deployment
+   behind a load balancer would need a shared store (e.g. Redis) so limits are enforced consistently across
+   instances, not per-instance.
+2. **Account/resume deletion only needs to clean up object storage manually — the database cascades
+   everything else.** Every foreign key referencing `users(id)` or `resumes(id)` across the entire schema
+   uses `ON DELETE CASCADE` (verified by grepping every migration), so a single `DELETE FROM users WHERE
+   id = $1` removes sessions, profile, preferences, resumes, resume_experiences, resume_versions,
+   candidate_skills, tailoring_runs, tailoring_suggestions, job_matches, applications, application_events,
+   application_answers, and learning_plans in one statement. `internal/account` exists specifically to
+   delete the object-storage files (uploaded resumes, generated PDF/DOCX versions) that a DB cascade can't
+   reach, in the correct order (storage first, then the DB row) so a mid-failure never leaves an orphaned
+   storage file with no DB record pointing to it — the reverse order could leave a dangling reference.
+3. **`internal/account` depends on a `StorageDeleter` interface, not the concrete `*storage.Client` type.**
+   This is the only package in the codebase that needed to unit-test storage-deletion behavior without a
+   real MinIO connection, so a minimal interface (just the `Delete` method) was introduced there rather than
+   changing `storage.Client`'s public shape everywhere else.
+4. **`DELETE /resumes/{id}` and `DELETE /account` are mounted from a new `internal/account` package, not
+   from `internal/resume`.** Resume deletion needs to know about `resumeversion` (to find generated PDF/DOCX
+   storage keys), and `resumeversion` already depends on `resume` — so putting deletion logic inside
+   `resume` would create an import cycle. A small coordinating package one level up avoids that.
+
+### Remaining technical debt after Phase 12
+
+* No structured audit log of account/resume deletions (who deleted what, when) beyond normal request logs.
+* No "export my data" endpoint alongside deletion (GDPR-style data portability) — out of scope for this pass.
+* No CI/CD pipeline changes in this pass beyond what already existed from Phase 0 (`.github/workflows/ci.yml`
+  already runs lint/test/build for all three services; Phase 12 didn't add deployment automation).
+
 
