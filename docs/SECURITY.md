@@ -28,8 +28,28 @@ authoritative claims. The product must never state a guarantee ("this company wi
 current, explicit, role-specific evidence — see [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) for full
 wording rules. This is a product-accuracy/legal-risk concern as much as a security one.
 
-## Phase 0 status
+## Phase 1 status
 
-No auth, upload, or storage code exists yet, so most controls above are not yet applicable. What Phase 0
-does establish: no secrets committed to the repo (`.env.example` only), `.gitignore` covers `.env`, and CI
-does not print secret values.
+Implemented:
+
+* Passwords hashed with bcrypt (`golang.org/x/crypto/bcrypt`, default cost); never stored or logged in
+  plaintext.
+* Sessions are opaque random tokens (32 bytes, `crypto/rand`); only a SHA-256 hash is persisted, so a
+  database leak alone cannot be used to forge sessions.
+* Session cookie (`af_session`) is `HttpOnly`, `SameSite=Lax`, and `Secure` in production
+  (`ENVIRONMENT=production`); non-secure only for local HTTP development.
+* Google OAuth uses a random per-attempt `state` value stored in a short-lived `HttpOnly` cookie and
+  compared on callback (CSRF protection for the OAuth flow).
+* Every `/profile` and `/preferences` route requires a valid session (`auth.RequireAuth` middleware); there
+  is no way to read/write another user's data since the user id always comes from the resolved session, not
+  from client input.
+* CORS is restricted to `WEB_BASE_URL` with credentials enabled — no wildcard origins.
+* Generic error messages are returned to clients (`httpx.WriteError`); Go's `slog` logs detailed errors
+  server-side only.
+* No secrets committed; `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, etc. are read from the environment only.
+
+Not yet implemented (tracked as technical debt): rate limiting, account deletion, resume deletion (no
+resumes exist yet), email verification enforcement, CSRF protection for non-OAuth mutating requests (the
+session cookie is `SameSite=Lax`, which mitigates most cross-site POST forgeries, but an explicit CSRF token
+has not been added). These are appropriate to defer until Phase 12 (production hardening) unless a concrete
+risk emerges sooner.

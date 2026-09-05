@@ -11,8 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
+	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
+	"github.com/lalithlochan/applyforge/apps/api/internal/users"
 )
 
 func main() {
@@ -31,6 +35,8 @@ func run() error {
 
 	addr := getenv("API_ADDR", ":8080")
 	dsn := getenv("DATABASE_URL", "postgres://applyforge:applyforge@localhost:5432/applyforge?sslmode=disable")
+	webBaseURL := getenv("WEB_BASE_URL", "http://localhost:3000")
+	environment := getenv("ENVIRONMENT", "development")
 
 	db, err := database.New(ctx, dsn)
 	if err != nil {
@@ -38,7 +44,28 @@ func run() error {
 	}
 	defer db.Close()
 
-	router := httpapi.NewRouter(db)
+	userRepo := users.NewRepository(db)
+	authService := auth.NewService(db, userRepo, auth.GoogleConfig{
+		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
+	})
+	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production")
+
+	profileRepo := profile.NewRepository(db)
+	profileHandlers := profile.NewHandlers(profileRepo)
+
+	preferencesRepo := preferences.NewRepository(db)
+	preferencesHandlers := preferences.NewHandlers(preferencesRepo)
+
+	router := httpapi.NewRouter(httpapi.Config{
+		DB:          db,
+		WebBaseURL:  webBaseURL,
+		RequireAuth: auth.RequireAuth(authService),
+		Auth:        authHandlers,
+		Profile:     profileHandlers,
+		Preferences: preferencesHandlers,
+	})
 
 	server := &http.Server{
 		Addr:              addr,

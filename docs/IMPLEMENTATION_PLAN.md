@@ -2,8 +2,8 @@
 
 Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) §72. Summary:
 
-- [x] **Phase 0** — Architecture + repository scaffolding (this delivery).
-- [ ] **Phase 1** — Database foundation, authentication, user profiles, job preferences, onboarding.
+- [x] **Phase 0** — Architecture + repository scaffolding.
+- [x] **Phase 1** — Database foundation, authentication, user profiles, job preferences, onboarding (this delivery).
 - [ ] **Phase 2** — Master resume upload/storage/extraction/parsing, candidate skill profile, review UI.
 - [ ] **Phase 3** — Job ingestion (Greenhouse/Lever/Ashby), normalization, dedup, freshness, scheduler.
 - [ ] **Phase 4** — JD parsing, JobRequirements, skill normalization, requirements storage.
@@ -30,8 +30,28 @@ scaffold, a Go module (`chi` router) with `/health` and `/ready`, a FastAPI scaf
 `/ready`, a Docker Compose stack (Postgres + api + ai-worker), a Makefile, `.env.example`, and a GitHub
 Actions CI skeleton that lints/tests/builds all three services.
 
-## Next up: Phase 1 (not started)
+## Phase 1 — what was actually delivered
 
-Database foundation (users, user_profiles, job_preferences via goose migrations + sqlc), authentication
-(email + Google OAuth), profile and job-preference APIs, and the onboarding UI flow. Do not begin this until
-explicitly requested.
+* **Database**: goose migrations for `users`, `sessions`, `user_profiles`, `job_preferences` (with the full
+  granular immigration-preference fields from the master spec); sqlc-generated Go query code.
+* **Auth** (`internal/auth`): email/password signup+login (bcrypt), Google OAuth (authorization-code flow,
+  gracefully disabled if env vars are unset), opaque database-backed sessions via an HttpOnly cookie,
+  `RequireAuth` middleware.
+* **Profile & preferences** (`internal/profile`, `internal/preferences`): upsert-based GET/PATCH APIs backed
+  by the new tables.
+* **Frontend**: signup/login pages, a two-step onboarding wizard (personal & career, then job
+  preferences/restrictions/immigration), a minimal post-onboarding dashboard placeholder, a fetch-based API
+  client, and zod-validated forms via react-hook-form.
+* **Tests**: Go unit tests for password hashing, session tokens, and the auth service (via fakes); Go
+  integration tests for all four repositories against a real Postgres instance (transaction-rolled-back, via
+  `internal/testdb`), skipped automatically when `DATABASE_URL` is unset. CI now runs a Postgres service and
+  goose migrations before `go test`.
+* Full manual end-to-end verification via curl against the docker-compose stack: signup, duplicate-email
+  rejection, login, wrong-password rejection, session lookup, profile/preferences upsert (including
+  independent `requires_h1b_transfer` vs `requires_new_h1b_cap_sponsorship` tracking), logout, and
+  post-logout 401s.
+
+## Next up: Phase 2 (not started)
+
+Master resume upload, storage, PDF/DOCX text extraction, AI structured parsing, candidate skill profile, and
+a resume review UI. Do not begin this until explicitly requested.

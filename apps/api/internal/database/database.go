@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
 )
 
 // Pool wraps a pgx connection pool.
@@ -21,6 +22,11 @@ func New(ctx context.Context, dsn string) (*Pool, error) {
 		return nil, fmt.Errorf("create pgx pool: %w", err)
 	}
 	return &Pool{pool}, nil
+}
+
+// Queries returns a sqlc-generated Querier bound to this pool.
+func (p *Pool) Queries() *db.Queries {
+	return db.New(p.Pool)
 }
 
 // Ping verifies the database is reachable.

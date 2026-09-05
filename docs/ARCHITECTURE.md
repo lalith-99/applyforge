@@ -71,8 +71,11 @@ consumed by the frontend, once Phase 1+ introduces real endpoints.
 Local dev: Docker Compose (Postgres + api + ai-worker), web run via `pnpm dev` outside Docker for fast HMR.
 Deployed: web → Cloudflare, api & ai-worker → Railway, Postgres → Neon, storage → Cloudflare R2.
 
-## Phase 0 status
+## Status (through Phase 1)
 
-Only scaffolding exists: three runnable services with `/health` (and `/ready` for api/ai-worker), a Postgres
-container reachable from the API via `DATABASE_URL`, CI skeleton that runs formatters/lint/build for each
-service. No domain tables, no auth, no business logic yet.
+Phase 0 delivered scaffolding only. Phase 1 added the first real domain slice: `users`, `sessions`,
+`user_profiles`, `job_preferences` tables (goose + sqlc), email/password + Google OAuth authentication with
+database-backed sessions (`internal/auth`), and profile/preferences CRUD (`internal/profile`,
+`internal/preferences`), all authorized via `auth.RequireAuth`. The frontend has working signup/login pages
+and an onboarding flow that persists to these APIs. Job discovery, matching, resume tailoring, and
+everything downstream of onboarding is still unbuilt.

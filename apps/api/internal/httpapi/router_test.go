@@ -12,7 +12,7 @@ type fakePinger struct{ err error }
 func (f fakePinger) Ping(ctx context.Context) error { return f.err }
 
 func TestHealth(t *testing.T) {
-	router := NewRouter(fakePinger{})
+	router := NewRouter(Config{DB: fakePinger{}, WebBaseURL: "http://localhost:3000"})
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
@@ -24,7 +24,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestReady_DatabaseUp(t *testing.T) {
-	router := NewRouter(fakePinger{})
+	router := NewRouter(Config{DB: fakePinger{}, WebBaseURL: "http://localhost:3000"})
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rec := httptest.NewRecorder()
 
@@ -36,7 +36,7 @@ func TestReady_DatabaseUp(t *testing.T) {
 }
 
 func TestReady_DatabaseDown(t *testing.T) {
-	router := NewRouter(fakePinger{err: context.DeadlineExceeded})
+	router := NewRouter(Config{DB: fakePinger{err: context.DeadlineExceeded}, WebBaseURL: "http://localhost:3000"})
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rec := httptest.NewRecorder()
 

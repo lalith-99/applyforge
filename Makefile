@@ -29,7 +29,7 @@ test:
 	cd apps/ai-worker && ./.venv/bin/python -m pytest -q
 
 migrate:
-	@echo "No migrations yet — introduced in Phase 1 via goose."
+	cd apps/api && goose -dir internal/database/migrations postgres "$${DATABASE_URL:-postgres://applyforge:applyforge@localhost:5433/applyforge?sslmode=disable}" up
 
 seed:
-	@echo "No seed data yet — introduced in Phase 1+."
+	@echo "No seed data yet — introduced in a later phase."

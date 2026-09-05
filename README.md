@@ -9,8 +9,10 @@ This repository is being built incrementally, phase by phase. See
 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for phase status, and
 [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been built and why.
 
-**Status: Phase 0 (repository scaffolding) complete.** No product features exist yet — only three runnable
-services with health checks, docs, and CI/local-dev plumbing.
+**Status: Phase 1 (database foundation, auth, profiles, preferences, onboarding) complete.** Users can sign
+up/log in (email+password or Google), complete onboarding, and their profile/job-preferences are persisted.
+Job discovery, matching, resume tailoring, etc. are not built yet — see
+[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what's next.
 
 ## Repository layout
 
@@ -28,9 +30,11 @@ infra/         Deployment configuration (Docker/Railway/Cloudflare)
 ## Prerequisites
 
 * Node.js 20+ and `pnpm` (`npm install -g pnpm`)
-* Go 1.24+
+* Go 1.25+ (toolchain auto-upgrades to 1.26 locally; Docker image and CI use 1.26)
 * Python 3.12+ (a `python3.13` or newer interpreter works fine)
 * Docker + Docker Compose
+* `goose` and `sqlc` on your `PATH` if you need to change migrations/queries:
+  `go install github.com/pressly/goose/v3/cmd/goose@latest && go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest`
 
 ## Local development
 
@@ -40,15 +44,21 @@ cp .env.example .env
 # Postgres + Go API + Python AI worker
 make docker-up
 
+# Apply database migrations (first time, or after pulling new migrations)
+make migrate
+
 # Frontend (run separately for fast HMR)
 cd apps/web && pnpm install && pnpm dev
 ```
 
 Once running:
 
-* Web: http://localhost:3000
+* Web: http://localhost:3000 — sign up at `/signup`, log in at `/login`, onboarding at `/onboarding`
 * API: http://localhost:8080/health, http://localhost:8080/ready
 * AI worker: http://localhost:8000/health, http://localhost:8000/ready
+
+Note: docker-compose maps Postgres to host port **5433** (not 5432) to avoid clashing with other local
+Postgres instances — see `.env.example` and DECISIONS.md.
 
 Stop the backing services with `make docker-down`.
 
@@ -63,8 +73,8 @@ Stop the backing services with `make docker-down`.
 | `make lint`          | Lint Go, Python, and web code                               |
 | `make fmt`           | Format Go and Python code                                   |
 | `make test`          | Run Go and Python test suites                               |
-| `make migrate`       | Run database migrations (no-op until Phase 1)               |
-| `make seed`          | Load fake development seed data (no-op until Phase 1)       |
+| `make migrate`       | Apply goose database migrations                             |
+| `make seed`          | Load fake development seed data (no-op until a later phase) |
 
 ### Per-service setup (without Docker)
 
@@ -104,5 +114,5 @@ pnpm install && pnpm dev
 
 ## Next phase
 
-Phase 1 (database foundation, authentication, user profiles, job preferences, onboarding) is not started.
-See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+Phase 2 (master resume upload, storage, PDF/DOCX extraction, structured parsing, candidate skill profile,
+resume review UI) is not started. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 // Pinger checks database connectivity for readiness probes.
@@ -16,21 +17,61 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// NewRouter builds the chi router with health/readiness endpoints. Product
-// routes are added under /api/v1 starting in Phase 1.
-func NewRouter(db Pinger) http.Handler {
+// Mounter registers a set of routes onto a chi.Router. auth.Handlers,
+// profile.Handlers, and preferences.Handlers all satisfy this via their
+// Mount method.
+type Mounter interface {
+	Mount(r chi.Router)
+}
+
+// Config bundles everything NewRouter needs to wire up routes. It exists so
+// main.go doesn't need to know internal package import paths directly cause
+// cyclic-import risk between httpapi and the domain packages.
+type Config struct {
+	DB          Pinger
+	WebBaseURL  string
+	RequireAuth func(http.Handler) http.Handler
+	Auth        Mounter
+	Profile     Mounter
+	Preferences Mounter
+}
+
+// NewRouter builds the chi router with health/readiness endpoints and the
+// /api/v1 product API.
+func NewRouter(cfg Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{cfg.WebBaseURL},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	r.Get("/health", handleHealth)
-	r.Get("/ready", handleReady(db))
+	r.Get("/ready", handleReady(cfg.DB))
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Business endpoints are added starting Phase 1.
+		if cfg.Auth != nil {
+			r.Route("/auth", cfg.Auth.Mount)
+		}
+
+		r.Group(func(r chi.Router) {
+			if cfg.RequireAuth != nil {
+				r.Use(cfg.RequireAuth)
+			}
+			if cfg.Profile != nil {
+				cfg.Profile.Mount(r)
+			}
+			if cfg.Preferences != nil {
+				cfg.Preferences.Mount(r)
+			}
+		})
 	})
 
 	return r
