@@ -399,4 +399,36 @@ Phases 2-7 was revisited and implemented, exactly along the "future plug-in" pat
   observed with the heuristic path before this change; not yet re-verified against the AI path in
   production usage.
 
+## Job source coverage: single-company connectors vs. aggregators
+
+1. **Problem:** Greenhouse/Lever/Ashby connectors each require a specific company's `board_token` known in
+   advance — none of them expose a "search every company" endpoint. Company coverage was therefore capped
+   at whatever we individually seeded (grew 3 → 13 → 36 companies across migrations `00013`/`00026`/`00027`,
+   all live-verified token-by-token). A curated seed list can never represent "the whole job market."
+2. **Decision:** Add a second *kind* of connector — a multi-company aggregator — rather than only continuing
+   to seed more single-company tokens. Chose **Arbeitnow** (`https://www.arbeitnow.com/api/job-board-api`):
+   free, no API key/signup required, and a single feed genuinely returns postings from hundreds of distinct
+   real companies (confirmed live), unlike Adzuna/USAJobs which need user-provided API keys.
+3. **`RawJob.CompanyName` repurposed:** the field already existed on `RawJob` but was previously unused by
+   `Ingest()` (Greenhouse/Lever/Ashby don't return a real company display name, so it was ignored in favor
+   of the job_sources-configured company). `Ingest()` now checks `raw.CompanyName`: if non-empty, it
+   upserts/reuses a company row per job (cached per poll to avoid redundant upserts for repeat companies),
+   overriding the source's configured company; if empty, behavior for existing single-company sources is
+   unchanged.
+4. **`job_sources.company_id` stays `NOT NULL`:** rather than relaxing the schema, a single placeholder
+   "Arbeitnow Aggregator" company row satisfies the FK for the one `ARBEITNOW` job_sources config row
+   (`board_token='global'`, migration `00028`) — the *real* per-job companies are resolved dynamically in
+   `Ingest()`, not from this placeholder.
+5. **Pagination safety cap:** Arbeitnow's own docs say the feed refreshes hourly and ask API consumers not
+   to abuse it. `ArbeitnowSource.MaxPages` (default 5, ~250 jobs/page) caps how much of the feed one poll
+   fetches, following `links.next` until either the cap or a `null` next link is reached.
+6. **Verified live:** rebuilt the API container, triggered a real sync — distinct company count jumped from
+   36 to **401**, 784 new Arbeitnow jobs inserted, and a second sync was fully idempotent (0 inserted, 800
+   updated), confirming upsert/dedup correctness holds for the new dynamic-company path.
+7. **Remaining technical debt:** no `page`-level cursor persistence between polls (each poll restarts from
+   page 1, relying on `MaxPages` + upsert idempotency rather than resuming where the last poll left off);
+   no separate "aggregator vs. single-company" flag on `JobSourceConfig` (the branch is driven purely by
+   whether `raw.CompanyName` is populated, which is simple but implicit — worth making explicit if a second
+   aggregator connector is added later).
+
 
