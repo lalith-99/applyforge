@@ -11,20 +11,65 @@ import (
 )
 
 type Querier interface {
+	ApproveAllPendingSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) error
+	ClaimNextJob(ctx context.Context, lockedBy pgtype.Text) (BackgroundJob, error)
+	CompleteJob(ctx context.Context, id pgtype.UUID) error
+	CompleteTailoringRun(ctx context.Context, arg CompleteTailoringRunParams) (TailoringRun, error)
+	CountJobs(ctx context.Context, arg CountJobsParams) (int64, error)
+	CreateResume(ctx context.Context, arg CreateResumeParams) (Resume, error)
+	CreateResumeExperience(ctx context.Context, arg CreateResumeExperienceParams) (ResumeExperience, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	CreateTailoringRun(ctx context.Context, arg CreateTailoringRunParams) (TailoringRun, error)
+	CreateTailoringSuggestion(ctx context.Context, arg CreateTailoringSuggestionParams) (TailoringSuggestion, error)
 	CreateUserWithGoogle(ctx context.Context, arg CreateUserWithGoogleParams) (User, error)
 	CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (User, error)
 	DeleteExpiredSessions(ctx context.Context) error
+	DeleteResumeExperiences(ctx context.Context, resumeID pgtype.UUID) error
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error
+	EnqueueJob(ctx context.Context, arg EnqueueJobParams) (BackgroundJob, error)
+	FailJob(ctx context.Context, arg FailJobParams) error
+	FailTailoringRun(ctx context.Context, id pgtype.UUID) error
+	GetCompanyByNormalizedName(ctx context.Context, normalizedName string) (Company, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error)
+	GetJobMatch(ctx context.Context, arg GetJobMatchParams) (JobMatch, error)
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
+	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)
+	GetResumeByID(ctx context.Context, id pgtype.UUID) (Resume, error)
+	GetResumeForUser(ctx context.Context, arg GetResumeForUserParams) (Resume, error)
 	GetSessionByTokenHash(ctx context.Context, tokenHash string) (Session, error)
+	GetSkillAliasesAsMap(ctx context.Context) ([]GetSkillAliasesAsMapRow, error)
+	GetTailoringRun(ctx context.Context, id pgtype.UUID) (TailoringRun, error)
+	GetTailoringRunForUser(ctx context.Context, arg GetTailoringRunForUserParams) (TailoringRun, error)
+	GetTailoringSuggestion(ctx context.Context, arg GetTailoringSuggestionParams) (TailoringSuggestion, error)
+	GetTransferableSkill(ctx context.Context, arg GetTransferableSkillParams) (TransferableSkill, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByGoogleID(ctx context.Context, googleID pgtype.Text) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserProfile(ctx context.Context, userID pgtype.UUID) (UserProfile, error)
 	LinkGoogleAccount(ctx context.Context, arg LinkGoogleAccountParams) (User, error)
+	ListCandidateSkillsForUser(ctx context.Context, userID pgtype.UUID) ([]CandidateSkill, error)
+	ListJobMatchesForUser(ctx context.Context, userID pgtype.UUID) ([]JobMatch, error)
+	ListJobSources(ctx context.Context) ([]JobSource, error)
+	ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error)
+	ListResumeExperiences(ctx context.Context, resumeID pgtype.UUID) ([]ResumeExperience, error)
+	ListResumesForUser(ctx context.Context, userID pgtype.UUID) ([]Resume, error)
+	ListTailoringRunsForJob(ctx context.Context, arg ListTailoringRunsForJobParams) ([]TailoringRun, error)
+	ListTailoringSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) ([]TailoringSuggestion, error)
+	ListTransferableSkillsFromSources(ctx context.Context, dollar_1 []string) ([]TransferableSkill, error)
+	MarkResumeFailed(ctx context.Context, arg MarkResumeFailedParams) error
+	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
+	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
+	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error
+	TouchJobSource(ctx context.Context, arg TouchJobSourceParams) error
 	TouchSession(ctx context.Context, id pgtype.UUID) error
+	UpdateCandidateSkillStatus(ctx context.Context, arg UpdateCandidateSkillStatusParams) (CandidateSkill, error)
+	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error)
+	UpsertCandidateSkill(ctx context.Context, arg UpsertCandidateSkillParams) (CandidateSkill, error)
+	UpsertCompany(ctx context.Context, arg UpsertCompanyParams) (Company, error)
+	UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJobRow, error)
+	UpsertJobMatch(ctx context.Context, arg UpsertJobMatchParams) (JobMatch, error)
 	UpsertJobPreferences(ctx context.Context, arg UpsertJobPreferencesParams) (JobPreference, error)
+	UpsertJobRequirements(ctx context.Context, arg UpsertJobRequirementsParams) (JobRequirement, error)
 	UpsertUserProfile(ctx context.Context, arg UpsertUserProfileParams) (UserProfile, error)
 }
 

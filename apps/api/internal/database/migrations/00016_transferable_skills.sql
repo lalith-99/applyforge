@@ -1,0 +1,86 @@
+-- +goose Up
+CREATE TABLE transferable_skills (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_skill            TEXT NOT NULL,
+    target_skill            TEXT NOT NULL,
+    transferability_score   INTEGER NOT NULL,
+    level                   TEXT NOT NULL,
+    shared_concepts         TEXT[] NOT NULL DEFAULT '{}',
+    new_concepts_required   TEXT[] NOT NULL DEFAULT '{}',
+    reason                  TEXT NOT NULL DEFAULT '',
+    prep_classification     TEXT NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT transferable_skills_level_check CHECK (level IN ('VERY_HIGH', 'HIGH', 'MEDIUM', 'LOW', 'NONE')),
+    CONSTRAINT transferable_skills_prep_check CHECK (
+        prep_classification IN ('QUICK_PREP', 'STANDARD_PREP', 'DEEPER_GAP')
+    )
+);
+
+CREATE UNIQUE INDEX transferable_skills_pair_idx ON transferable_skills (lower(source_skill), lower(target_skill));
+
+INSERT INTO transferable_skills
+    (source_skill, target_skill, transferability_score, level, shared_concepts, new_concepts_required, reason, prep_classification)
+VALUES
+    ('Kafka', 'Amazon SQS', 55, 'MEDIUM',
+     ARRAY['asynchronous messaging', 'producer/consumer model', 'at-least-once delivery'],
+     ARRAY['visibility timeout', 'FIFO vs standard queues', 'no partition-based ordering'],
+     'Both are asynchronous messaging systems, but SQS is a managed queue without Kafka''s log/partition model.',
+     'QUICK_PREP'),
+    ('Kafka', 'Google Pub/Sub', 55, 'MEDIUM',
+     ARRAY['asynchronous messaging', 'publish/subscribe'],
+     ARRAY['managed subscription semantics', 'no partition ordering guarantees by default'],
+     'Conceptually similar pub/sub model, different operational model.',
+     'QUICK_PREP'),
+    ('Kafka', 'RabbitMQ', 65, 'HIGH',
+     ARRAY['message brokering', 'producer/consumer model', 'queues'],
+     ARRAY['exchange/routing model', 'AMQP protocol'],
+     'Both are message brokers; RabbitMQ uses exchanges/routing rather than Kafka''s log model.',
+     'QUICK_PREP'),
+    ('REST', 'gRPC', 60, 'HIGH',
+     ARRAY['client-server APIs', 'request/response'],
+     ARRAY['protocol buffers', 'HTTP/2 streaming', 'strict schema contracts'],
+     'Same API paradigm, different protocol/serialization and schema strictness.',
+     'QUICK_PREP'),
+    ('PostgreSQL', 'MySQL', 80, 'VERY_HIGH',
+     ARRAY['relational modeling', 'SQL', 'transactions', 'indexing'],
+     ARRAY['dialect differences', 'storage engine specifics'],
+     'Both are relational databases with SQL; mostly syntax/tooling differences.',
+     'QUICK_PREP'),
+    ('PostgreSQL', 'DynamoDB', 30, 'LOW',
+     ARRAY['data modeling fundamentals', 'indexing concepts'],
+     ARRAY['single-table design', 'no joins', 'partition/sort key design', 'eventual consistency options'],
+     'DynamoDB is a NoSQL key-value/document store; relational modeling experience transfers only partially.',
+     'STANDARD_PREP'),
+    ('Kubernetes', 'OpenShift', 75, 'HIGH',
+     ARRAY['container orchestration', 'pods/deployments', 'declarative config'],
+     ARRAY['OpenShift-specific tooling and security defaults'],
+     'OpenShift is built on Kubernetes; most concepts transfer directly.',
+     'QUICK_PREP'),
+    ('Docker', 'Amazon ECS', 60, 'HIGH',
+     ARRAY['containerization', 'image builds'],
+     ARRAY['task definitions', 'ECS service/cluster model'],
+     'Containerization knowledge transfers; ECS orchestration model differs from raw Docker.',
+     'QUICK_PREP'),
+    ('Jenkins', 'GitHub Actions', 65, 'HIGH',
+     ARRAY['CI/CD pipeline concepts', 'build automation'],
+     ARRAY['YAML workflow syntax', 'GitHub-hosted runners'],
+     'Same CI/CD concepts, different configuration syntax and hosting model.',
+     'QUICK_PREP'),
+    ('Prometheus', 'CloudWatch Metrics', 50, 'MEDIUM',
+     ARRAY['metrics collection', 'alerting concepts'],
+     ARRAY['CloudWatch query language', 'AWS-specific metric namespaces'],
+     'Both provide metrics/alerting; query languages and integration models differ.',
+     'STANDARD_PREP'),
+    ('Java', 'Go', 35, 'LOW',
+     ARRAY['general backend development', 'OOP fundamentals', 'concurrency awareness'],
+     ARRAY['goroutines/channels', 'no classes/inheritance', 'explicit error handling'],
+     'Backend engineering fundamentals transfer; Go''s concurrency and idioms differ significantly from Java.',
+     'STANDARD_PREP'),
+    ('AWS', 'Terraform', 40, 'MEDIUM',
+     ARRAY['cloud infrastructure concepts'],
+     ARRAY['HCL syntax', 'state management', 'declarative IaC workflow'],
+     'Cloud familiarity helps, but Terraform requires learning IaC-specific workflow and syntax.',
+     'STANDARD_PREP');
+
+-- +goose Down
+DROP TABLE transferable_skills;

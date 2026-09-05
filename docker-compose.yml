@@ -17,16 +17,41 @@ services:
       timeout: 5s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: applyforge
+      MINIO_ROOT_PASSWORD: applyforge123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - applyforge-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: ./apps/api
     environment:
       API_ADDR: ":8080"
       DATABASE_URL: "postgres://applyforge:applyforge@postgres:5432/applyforge?sslmode=disable"
+      AI_WORKER_URL: "http://ai-worker:8000"
+      S3_ENDPOINT: "minio:9000"
+      S3_BUCKET: "applyforge-dev"
+      S3_ACCESS_KEY: "applyforge"
+      S3_SECRET_KEY: "applyforge123"
+      S3_USE_SSL: "false"
     ports:
       - "8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   ai-worker:
@@ -38,4 +63,5 @@ services:
       - "8000:8000"
 
 volumes:
+  applyforge-minio-data:
   applyforge-postgres-data:

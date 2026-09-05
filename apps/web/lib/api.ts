@@ -40,10 +40,35 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+async function upload<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let message = `Upload failed with status ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.error === "string") message = body.error;
+    } catch {
+      // response had no JSON body; keep the generic message
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  return (await res.json()) as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+  upload: <T>(path: string, file: File) => upload<T>(path, file),
 };

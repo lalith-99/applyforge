@@ -8,6 +8,97 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BackgroundJob struct {
+	ID          pgtype.UUID        `json:"id"`
+	JobType     string             `json:"job_type"`
+	Payload     []byte             `json:"payload"`
+	Status      string             `json:"status"`
+	Attempts    int32              `json:"attempts"`
+	MaxAttempts int32              `json:"max_attempts"`
+	AvailableAt pgtype.Timestamptz `json:"available_at"`
+	LockedAt    pgtype.Timestamptz `json:"locked_at"`
+	LockedBy    pgtype.Text        `json:"locked_by"`
+	LastError   pgtype.Text        `json:"last_error"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+}
+
+type CandidateSkill struct {
+	ID             pgtype.UUID        `json:"id"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	NormalizedName string             `json:"normalized_name"`
+	DisplayName    string             `json:"display_name"`
+	Category       pgtype.Text        `json:"category"`
+	Proficiency    pgtype.Text        `json:"proficiency"`
+	Source         string             `json:"source"`
+	Status         string             `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Company struct {
+	ID             pgtype.UUID        `json:"id"`
+	Name           string             `json:"name"`
+	NormalizedName string             `json:"normalized_name"`
+	Domain         pgtype.Text        `json:"domain"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type Job struct {
+	ID              pgtype.UUID        `json:"id"`
+	Source          string             `json:"source"`
+	ExternalID      string             `json:"external_id"`
+	CompanyID       pgtype.UUID        `json:"company_id"`
+	CompanyName     string             `json:"company_name"`
+	Title           string             `json:"title"`
+	NormalizedTitle string             `json:"normalized_title"`
+	Seniority       pgtype.Text        `json:"seniority"`
+	Description     string             `json:"description"`
+	Country         pgtype.Text        `json:"country"`
+	State           pgtype.Text        `json:"state"`
+	City            pgtype.Text        `json:"city"`
+	LocationText    pgtype.Text        `json:"location_text"`
+	RemoteType      pgtype.Text        `json:"remote_type"`
+	EmploymentType  pgtype.Text        `json:"employment_type"`
+	SalaryMin       pgtype.Int4        `json:"salary_min"`
+	SalaryMax       pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
+	ApplyUrl        pgtype.Text        `json:"apply_url"`
+	SourceUrl       pgtype.Text        `json:"source_url"`
+	PostedAt        pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash     string             `json:"content_hash"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type JobMatch struct {
+	ID                       pgtype.UUID        `json:"id"`
+	JobID                    pgtype.UUID        `json:"job_id"`
+	UserID                   pgtype.UUID        `json:"user_id"`
+	TotalScore               int32              `json:"total_score"`
+	Grade                    string             `json:"grade"`
+	ComponentScores          []byte             `json:"component_scores"`
+	MatchedSkills            []string           `json:"matched_skills"`
+	TransferableSkills       []byte             `json:"transferable_skills"`
+	MissingRequiredSkills    []string           `json:"missing_required_skills"`
+	MissingPreferredSkills   []string           `json:"missing_preferred_skills"`
+	PositiveEvidence         []string           `json:"positive_evidence"`
+	Concerns                 []string           `json:"concerns"`
+	Explanation              string             `json:"explanation"`
+	OpportunityScore         int32              `json:"opportunity_score"`
+	CurrentProfileMatch      int32              `json:"current_profile_match"`
+	TargetProfileMatch       int32              `json:"target_profile_match"`
+	SuggestedTargetAdditions []string           `json:"suggested_target_additions"`
+	Eligible                 bool               `json:"eligible"`
+	HardFailures             []string           `json:"hard_failures"`
+	Warnings                 []string           `json:"warnings"`
+	ComputedAt               pgtype.Timestamptz `json:"computed_at"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+}
+
 type JobPreference struct {
 	UserID                              pgtype.UUID        `json:"user_id"`
 	Remote                              bool               `json:"remote"`
@@ -34,6 +125,71 @@ type JobPreference struct {
 	UpdatedAt                           pgtype.Timestamptz `json:"updated_at"`
 }
 
+type JobRequirement struct {
+	ID                            pgtype.UUID        `json:"id"`
+	JobID                         pgtype.UUID        `json:"job_id"`
+	ContentHash                   string             `json:"content_hash"`
+	RoleFamily                    pgtype.Text        `json:"role_family"`
+	NormalizedTitle               pgtype.Text        `json:"normalized_title"`
+	Seniority                     pgtype.Text        `json:"seniority"`
+	RequiredSkills                []byte             `json:"required_skills"`
+	PreferredSkills               []byte             `json:"preferred_skills"`
+	RequiredExperienceYears       pgtype.Int4        `json:"required_experience_years"`
+	Responsibilities              []byte             `json:"responsibilities"`
+	Domains                       []string           `json:"domains"`
+	EducationRequirements         []string           `json:"education_requirements"`
+	Certifications                []string           `json:"certifications"`
+	LocationRequirements          pgtype.Text        `json:"location_requirements"`
+	EmploymentType                pgtype.Text        `json:"employment_type"`
+	ClearanceRequirements         pgtype.Text        `json:"clearance_requirements"`
+	WorkAuthorizationRequirements pgtype.Text        `json:"work_authorization_requirements"`
+	Keywords                      []string           `json:"keywords"`
+	ParsedAt                      pgtype.Timestamptz `json:"parsed_at"`
+	CreatedAt                     pgtype.Timestamptz `json:"created_at"`
+}
+
+type JobSource struct {
+	ID           pgtype.UUID        `json:"id"`
+	SourceType   string             `json:"source_type"`
+	CompanyID    pgtype.UUID        `json:"company_id"`
+	BoardToken   string             `json:"board_token"`
+	Enabled      bool               `json:"enabled"`
+	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
+	LastError    pgtype.Text        `json:"last_error"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Resume struct {
+	ID               pgtype.UUID        `json:"id"`
+	UserID           pgtype.UUID        `json:"user_id"`
+	OriginalFilename string             `json:"original_filename"`
+	MimeType         string             `json:"mime_type"`
+	SizeBytes        int64              `json:"size_bytes"`
+	StorageKey       string             `json:"storage_key"`
+	Status           string             `json:"status"`
+	ParseError       pgtype.Text        `json:"parse_error"`
+	RawText          pgtype.Text        `json:"raw_text"`
+	ParsedProfile    []byte             `json:"parsed_profile"`
+	ParsedAt         pgtype.Timestamptz `json:"parsed_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ResumeExperience struct {
+	ID             pgtype.UUID        `json:"id"`
+	ResumeID       pgtype.UUID        `json:"resume_id"`
+	DisplayOrder   int32              `json:"display_order"`
+	Company        pgtype.Text        `json:"company"`
+	Title          pgtype.Text        `json:"title"`
+	StartDate      pgtype.Text        `json:"start_date"`
+	EndDate        pgtype.Text        `json:"end_date"`
+	Location       pgtype.Text        `json:"location"`
+	Bullets        []string           `json:"bullets"`
+	DetectedSkills []string           `json:"detected_skills"`
+	Technologies   []string           `json:"technologies"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Session struct {
 	ID         pgtype.UUID        `json:"id"`
 	UserID     pgtype.UUID        `json:"user_id"`
@@ -43,6 +199,60 @@ type Session struct {
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 	UserAgent  pgtype.Text        `json:"user_agent"`
 	IpAddress  pgtype.Text        `json:"ip_address"`
+}
+
+type SkillAlias struct {
+	ID            pgtype.UUID        `json:"id"`
+	Alias         string             `json:"alias"`
+	CanonicalName string             `json:"canonical_name"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type TailoringRun struct {
+	ID                   pgtype.UUID        `json:"id"`
+	UserID               pgtype.UUID        `json:"user_id"`
+	JobID                pgtype.UUID        `json:"job_id"`
+	ResumeID             pgtype.UUID        `json:"resume_id"`
+	Mode                 string             `json:"mode"`
+	Status               string             `json:"status"`
+	SummarySuggestion    []byte             `json:"summary_suggestion"`
+	KeywordCoverage      []byte             `json:"keyword_coverage"`
+	AlignmentScoreBefore pgtype.Int4        `json:"alignment_score_before"`
+	AlignmentScoreAfter  pgtype.Int4        `json:"alignment_score_after"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
+}
+
+type TailoringSuggestion struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TailoringRunID        pgtype.UUID        `json:"tailoring_run_id"`
+	Section               string             `json:"section"`
+	OriginalText          pgtype.Text        `json:"original_text"`
+	SuggestedText         string             `json:"suggested_text"`
+	RequirementsAddressed []string           `json:"requirements_addressed"`
+	SkillsAdded           []string           `json:"skills_added"`
+	KeywordsAdded         []string           `json:"keywords_added"`
+	Source                string             `json:"source"`
+	Reason                string             `json:"reason"`
+	Confidence            float64            `json:"confidence"`
+	RiskLevel             string             `json:"risk_level"`
+	UserStatus            string             `json:"user_status"`
+	EditedText            pgtype.Text        `json:"edited_text"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TransferableSkill struct {
+	ID                   pgtype.UUID        `json:"id"`
+	SourceSkill          string             `json:"source_skill"`
+	TargetSkill          string             `json:"target_skill"`
+	TransferabilityScore int32              `json:"transferability_score"`
+	Level                string             `json:"level"`
+	SharedConcepts       []string           `json:"shared_concepts"`
+	NewConceptsRequired  []string           `json:"new_concepts_required"`
+	Reason               string             `json:"reason"`
+	PrepClassification   string             `json:"prep_classification"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {

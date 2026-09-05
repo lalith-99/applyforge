@@ -32,8 +32,7 @@ type Config struct {
 	WebBaseURL  string
 	RequireAuth func(http.Handler) http.Handler
 	Auth        Mounter
-	Profile     Mounter
-	Preferences Mounter
+	Authed      []Mounter
 }
 
 // NewRouter builds the chi router with health/readiness endpoints and the
@@ -65,11 +64,8 @@ func NewRouter(cfg Config) http.Handler {
 			if cfg.RequireAuth != nil {
 				r.Use(cfg.RequireAuth)
 			}
-			if cfg.Profile != nil {
-				cfg.Profile.Mount(r)
-			}
-			if cfg.Preferences != nil {
-				cfg.Preferences.Mount(r)
+			for _, m := range cfg.Authed {
+				m.Mount(r)
 			}
 		})
 	})

@@ -11,11 +11,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
+	"github.com/lalithlochan/applyforge/apps/api/internal/background"
+	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
+	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
+	"github.com/lalithlochan/applyforge/apps/api/internal/skills"
+	"github.com/lalithlochan/applyforge/apps/api/internal/storage"
 	"github.com/lalithlochan/applyforge/apps/api/internal/users"
 )
 
@@ -58,13 +64,43 @@ func run() error {
 	preferencesRepo := preferences.NewRepository(db)
 	preferencesHandlers := preferences.NewHandlers(preferencesRepo)
 
+	storageClient, err := storage.New(ctx, storage.Config{
+		Endpoint:  getenv("S3_ENDPOINT", "localhost:9000"),
+		Bucket:    getenv("S3_BUCKET", "applyforge-dev"),
+		AccessKey: getenv("S3_ACCESS_KEY", "applyforge"),
+		SecretKey: getenv("S3_SECRET_KEY", "applyforge123"),
+		UseSSL:    getenv("S3_USE_SSL", "false") == "true",
+	})
+	if err != nil {
+		return err
+	}
+
+	aiWorkerClient := aiclient.New(getenv("AI_WORKER_URL", "http://localhost:8000"))
+
+	skillsNormalizer, err := skills.NewNormalizer(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	resumeRepo := resume.NewRepository(db)
+	candidateSkillsRepo := candidateskills.NewRepository(db)
+	jobQueue := background.NewQueue(db)
+	resumeHandlers := resume.NewHandlers(resumeRepo, storageClient, jobQueue)
+
+	resumeParseWorker := resume.NewParseWorker(resumeRepo, candidateSkillsRepo, skillsNormalizer, storageClient, aiWorkerClient)
+	worker := background.NewWorker(jobQueue, "api-inprocess-worker")
+	worker.Register(resume.JobTypeParse, resumeParseWorker.Handle)
+
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	go worker.Run(workerCtx, 2*time.Second)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Profile:     profileHandlers,
-		Preferences: preferencesHandlers,
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers},
 	})
 
 	server := &http.Server{

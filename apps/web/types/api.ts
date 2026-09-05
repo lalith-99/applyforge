@@ -53,3 +53,47 @@ export interface JobPreferences {
   created_at: string;
   updated_at: string;
 }
+
+export interface ResumeSummary {
+  id: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  status: "UPLOADED" | "PARSING" | "PARSED" | "FAILED";
+  parse_error: string | null;
+  parsed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeExperience {
+  Company: string | null;
+  Title: string | null;
+  StartDate: string | null;
+  EndDate: string | null;
+  Location: string | null;
+  Bullets: string[];
+  DetectedSkills: string[];
+  Technologies: string[];
+}
+
+export interface ResumeParsedProfile {
+  contact: { name: string | null; email: string | null; phone: string | null; location: string | null };
+  summary: string | null;
+  skills: string[];
+  experiences: {
+    company: string | null;
+    title: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    bullets: string[];
+    detected_skills: string[];
+  }[];
+  education: string[];
+  certifications: string[];
+}
+
+export interface ResumeDetail extends ResumeSummary {
+  parsed_profile: ResumeParsedProfile | null;
+  experiences: ResumeExperience[];
+}
