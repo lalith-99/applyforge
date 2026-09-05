@@ -28,7 +28,15 @@ GenerateApplicationAnswer
   hash, tailoring/Quick Prep/Defend Bullet only on explicit user request. Job matching itself is always
   deterministic and never delegated to an LLM (see [MATCHING_ENGINE.md](MATCHING_ENGINE.md)).
 
-## Phase 0 status
+## Status (through Phase 7)
 
-The AI worker currently exposes only `/health` and `/ready`. No provider integration, no endpoints under
-`/parse`, `/tailor`, etc. exist yet — those land starting Phase 2 (resume parsing) and Phase 4 (JD parsing).
+Implemented endpoints: `POST /v1/resumes/extract`, `POST /v1/resumes/parse`, `POST /v1/jobs/parse-requirements`,
+`POST /v1/tailoring/suggest`. **All four currently use a deterministic, regex/keyword-based heuristic
+implementation, not a real LLM** — there is no `AI_API_KEY` configured yet. This is a deliberate, documented
+scope decision (see DECISIONS.md), not an oversight: each heuristic lives behind the same request/response
+shape a real `AIProvider` call would use (`app/resume/parsing.py`, `app/jobs/parsing.py`,
+`app/tailoring/heuristics.py`), so swapping in a real model later means changing the implementation inside
+those functions, not the Go-side integration or API contracts.
+
+No `ai_usage` logging table exists yet since there's no real provider call to log cost/latency for — add it
+when a real `AIProvider` is wired in.

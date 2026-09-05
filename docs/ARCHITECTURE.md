@@ -9,10 +9,10 @@ Next.js (apps/web)
 Go API (apps/api)  ──────────────►  PostgreSQL (primary DB, job queue, scheduler state)
       │  HTTPS/JSON
       ▼
-Python AI Worker (apps/ai-worker) ──► AI Provider (structured output only)
+Python AI Worker (apps/ai-worker) ──► AI Provider (structured output only; currently a heuristic stand-in)
       │
       ▼
-Object Storage (S3-compatible: Cloudflare R2 / AWS S3)
+Object Storage (S3-compatible: Cloudflare R2 / AWS S3; MinIO locally)
 ```
 
 Both the Go API and the Python AI worker read/write Object Storage directly (Go stores/serves resume source
@@ -71,11 +71,19 @@ consumed by the frontend, once Phase 1+ introduces real endpoints.
 Local dev: Docker Compose (Postgres + api + ai-worker), web run via `pnpm dev` outside Docker for fast HMR.
 Deployed: web → Cloudflare, api & ai-worker → Railway, Postgres → Neon, storage → Cloudflare R2.
 
-## Status (through Phase 1)
+## Status (through Phase 7)
 
-Phase 0 delivered scaffolding only. Phase 1 added the first real domain slice: `users`, `sessions`,
-`user_profiles`, `job_preferences` tables (goose + sqlc), email/password + Google OAuth authentication with
-database-backed sessions (`internal/auth`), and profile/preferences CRUD (`internal/profile`,
-`internal/preferences`), all authorized via `auth.RequireAuth`. The frontend has working signup/login pages
-and an onboarding flow that persists to these APIs. Job discovery, matching, resume tailoring, and
-everything downstream of onboarding is still unbuilt.
+The full core loop is now live end-to-end: sign up → upload resume (parsed via the ai-worker into
+candidate skills + structured experience) → jobs are ingested hourly from real Greenhouse/Lever/Ashby boards
+→ deterministic Job Match Score computed per job/user → Tailor Resume produces STRICT/GROWTH/MAX_MATCH
+suggestions with a Resume Alignment Score → user approves/rejects suggestions. Object storage (MinIO
+locally, S3-compatible in production) was added in Phase 2 for resume files; a Postgres-backed background
+job queue (`internal/background`) processes resume parsing asynchronously.
+
+**Not yet real AI**: resume/JD parsing and tailoring suggestions all use deterministic heuristic
+implementations (no `AI_API_KEY` configured) — see AI_PIPELINE.md for why this is a documented scope
+decision, not a shortcut taken silently.
+
+Not yet built: Quick Prep / Defend This Bullet / Make Me Qualified (Phase 8), resume PDF/DOCX generation
+(Phase 9), application tracking (Phase 10), analytics (Phase 11), and the Immigration-Aware Job Matching
+sub-system described in MASTER_REQUIREMENTS.md (out of scope for "Phases 2-7" as enumerated).

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { use } from "react";
 import { AppNav } from "@/components/AppNav";
 import { api } from "@/lib/api";
@@ -40,12 +41,18 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
         </div>
 
         <div className="flex gap-3">
+          <Link
+            href={`/jobs/${job.id}/tailor`}
+            className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background"
+          >
+            Tailor Resume
+          </Link>
           {job.apply_url && (
             <a
               href={job.apply_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background"
+              className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium dark:border-white/15"
             >
               Apply
             </a>

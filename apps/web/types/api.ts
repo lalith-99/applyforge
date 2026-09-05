@@ -140,6 +140,36 @@ export interface JobsListResponse {
   offset: number;
 }
 
+export interface TailoringSuggestion {
+  ID: string;
+  TailoringRunID: string;
+  Section: string;
+  OriginalText: string | null;
+  SuggestedText: string;
+  RequirementsAddressed: string[];
+  SkillsAdded: string[];
+  KeywordsAdded: string[];
+  Source: "MASTER_RESUME" | "AI_SUGGESTED";
+  Reason: string;
+  Confidence: number;
+  RiskLevel: "LOW" | "MEDIUM" | "HIGH";
+  UserStatus: "PENDING" | "APPROVED" | "EDITED" | "REJECTED";
+  EditedText: string | null;
+}
+
+export interface TailoringRun {
+  id: string;
+  job_id: string;
+  resume_id: string;
+  mode: "STRICT" | "GROWTH" | "MAX_MATCH";
+  status: string;
+  alignment_score_before: number | null;
+  alignment_score_after: number | null;
+  created_at: string;
+  completed_at: string | null;
+  suggestions: TailoringSuggestion[];
+}
+
 export interface ComponentScores {
   MustHaveSkillCoverage: number;
   ResponsibilityAlignment: number;

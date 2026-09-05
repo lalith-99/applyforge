@@ -47,7 +47,12 @@ is immutable except for explicit user edits/deletion.
 * **Make Me Qualified** — on-demand analysis returning current/target match, high- vs low-value gaps,
   recommended resume changes, Quick Prep modules, interview questions, and practice project ideas.
 
-## Phase 0 status
+## Status (through Phase 7)
 
-Not implemented. Lands in Phase 7 (tailoring core) and Phase 8 (Quick Prep / Defend This Bullet / Make Me
-Qualified / Interview Readiness / learning plans).
+Implemented in `internal/tailoring` + `app/tailoring` (ai-worker): all three modes
+(STRICT/GROWTH/MAX_MATCH), suggestion generation (summary/skills/experience), the approve/edit/reject
+workflow, Approve All Selected, and the deterministic Resume Alignment Score (`ComputeAlignment`, distinct
+from Job Match Score). Suggestion generation currently uses a heuristic (non-LLM) implementation — see
+AI_PIPELINE.md.
+
+Not yet implemented: Quick Prep, Defend This Bullet, and Make Me Qualified (Phase 8).

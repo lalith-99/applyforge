@@ -37,6 +37,11 @@ never run against every job for every user automatically.
 country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency,
 apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at`.
 
-## Phase 0 status
+## Status (through Phase 3)
 
-Not implemented. Lands in Phase 3 alongside the scheduler and the first three connectors.
+Implemented: `internal/jobs` with the `JobSource` interface and three real connectors (Greenhouse, Lever,
+Ashby — all public, unauthenticated APIs), title/company normalization, idempotent dedup
+(`source+external_id` unique constraint, `content_hash` for change detection), and `internal/scheduler`
+(hourly ticker by default, `JOB_POLL_INTERVAL_MINUTES` env override). An admin endpoint
+(`POST /api/v1/admin/job-sources/sync`) allows a manual trigger without waiting for the schedule. Job
+sources to poll are configured via the `job_sources` table (seeded with one real board per connector type).

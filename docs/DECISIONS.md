@@ -103,3 +103,86 @@ a prior decision, and state why.
 * Onboarding UI has no client-side route guard preventing an unauthenticated user from viewing
   `/onboarding` (only `/dashboard` checks the session); low risk since the API itself enforces
   authorization, but worth tightening once more authenticated pages exist.
+
+## Phases 2-7 (built in a single pass at explicit user request)
+
+The user asked to "build phase 2-7" in one continuous session, overriding the normal one-phase-at-a-time
+cadence. Given the enormous combined scope, the following deliberate scope decisions were made up front and
+held throughout, rather than discovered ad hoc partway through:
+
+1. **No real AI provider integration.** No `AI_API_KEY` was available. Instead of blocking or faking a
+   provider response, every AI-worker endpoint that MASTER_REQUIREMENTS.md describes as AI-driven (resume
+   parsing, JD requirement extraction, tailoring suggestion generation) was implemented as a **deterministic,
+   regex/keyword-based heuristic** behind the exact same request/response contract a real LLM call would
+   use (`app/resume/parsing.py`, `app/jobs/parsing.py`, `app/tailoring/heuristics.py`). This keeps the full
+   pipeline (upload → parse → match → tailor → approve) genuinely functional and testable end-to-end without
+   external network dependencies or API costs, and confines the future "plug in a real model" change to
+   those three files plus a shared skill dictionary (`app/core/skills_dictionary.py`) — the Go side,
+   database schema, and API contracts don't change when a real provider is added.
+2. **Immigration-Aware Job Matching sub-system is out of scope.** MASTER_REQUIREMENTS.md includes a large,
+   separate section on H-1B/green-card/PERM compatibility scoring backed by DOL data ingestion. This is a
+   substantial sub-system in its own right (its own tables, evidence model, company-alias resolution, data
+   refresh pipeline) and isn't enumerated under "Phase 2-7" in §72's phase list, so it was explicitly not
+   built. `job_preferences` already has the immigration preference *fields* (Phase 1), but no
+   `ImmigrationCompatibility`/DOL ingestion exists.
+3. **Background worker runs in-process, not as a separate `cmd/worker` binary.** §69 suggests
+   `cmd/api`/`cmd/worker` as separate binaries; given the time budget, the worker (`internal/background`)
+   runs as a goroutine inside the single `cmd/api` process. This is a smaller, still-correct MVP shape (one
+   fewer container/Dockerfile/compose service to maintain) and is easy to split into a separate binary later
+   if worker load ever needs independent scaling — nothing about the `background.Worker`/`Queue` API design
+   assumes in-process execution.
+4. **MinIO for local S3-compatible storage** (`internal/storage`, `minio-go` client), auto-creating the
+   bucket on startup. Chosen over the full AWS SDK v2 for a much smaller dependency surface; the same client
+   works against Cloudflare R2/AWS S3 in production since both speak the S3 API.
+5. **Real public job board connectors, not mocked ones.** Verified live network access works in this
+   environment and confirmed real, unauthenticated public APIs for all three required sources (Greenhouse:
+   `robinhood`, Lever: `lever`, Ashby: `ramp`), then built `internal/jobs`'s connectors against the real
+   APIs and validated live ingestion (128 Greenhouse + 142 Ashby jobs on first sync). Connector *tests* still
+   use `httptest` fixtures (no live network in CI), per §54.
+6. **Deterministic scoring is genuinely pure and DB-free.** `internal/matching`'s `Score(Input) Result` and
+   `internal/tailoring`'s `ComputeAlignment` take plain Go structs/maps, not repository types — this made the
+   golden tests (§55) fast, dependency-free unit tests rather than integration tests, and is what let the
+   transferable-skill partial-credit design get fixed quickly once the first test run caught a threshold bug
+   (see below).
+7. **Transferable-skill credit is proportional, not a binary cutoff.** The first implementation only counted
+   a transfer as "meaningful" above a fixed score threshold (60), which caused the seeded Kafka→SQS (55,
+   MEDIUM) pair to be silently treated as "missing" instead of "transferable" — failing the golden test that
+   the spec explicitly asks for. Fixed by making skill-coverage credit proportional to
+   `transferability_score/100`, capped at 0.8 so a transfer can never equal direct-skill credit. All
+   transfers (even LOW) now appear in the `transferable_skills` output, distinct from `missing_required_skills`.
+8. **Company display names come from `job_sources`, not connector responses.** Greenhouse/Lever/Ashby board
+   APIs are scoped to a single company and don't return a company display name field — the first ingestion
+   implementation mistakenly used the lowercase board token as the company name (`UpsertCompany` then
+   overwrote the properly-cased seeded name). Fixed by joining `companies` into `ListJobSources` and passing
+   the known company id/name into `Ingest` explicitly, rather than trying to re-derive it per job.
+9. **Resume Alignment Score is a separate, simpler formula from Job Match Score.** `ComputeAlignment` in
+   `internal/tailoring` duplicates a small amount of coverage-ratio logic from `internal/matching` rather
+   than importing/reusing it, since the two scores answer different questions (§20 vs §23) and are computed
+   at different times (immediately, without eligibility/seniority/location factors). Documented duplication,
+   not accidental.
+10. **Jobs list doesn't include match scores; each `JobCard` fetches its own score client-side.** Keeps
+    `GET /jobs` fast and cacheable independent of the requesting user; per-card TanStack Query calls to
+    `GET /jobs/{id}/match` are cheap since scoring is deterministic Go, not an AI call — this is explicitly
+    allowed as "AI explanations: lazy" only applies to genuinely AI-backed operations.
+11. **Tooling quirk discovered and documented in `/memories/debugging.md`:** the file-creation/editing tools
+    occasionally produced duplicate `package X` declaration lines in newly created Go files, and in one case
+    `read_file` showed content that didn't match what was actually on disk (a real function definition that
+    a prior edit had failed to persist). Both were caught via `grep`/`go vet` discrepancies and fixed by
+    writing directly to the file via a terminal script, not by re-attempting the same tool call.
+
+### Remaining technical debt after Phases 2-7
+
+* No real AI provider — see decision 1 above. Swapping one in requires: adding an `AIProvider` interface in
+  `app/providers/`, implementing it against a real model, and switching the three heuristic call sites to
+  use it (with response validation, since heuristic functions currently can't "fail" the way an LLM call can).
+* Domain alignment (10% of Job Match Score) and education/certification alignment (5%) use flat default
+  partial credit — the heuristic JD parser doesn't extract domains, and match scoring doesn't cross-reference
+  a candidate's parsed resume education/certifications yet.
+* No `ai_usage` cost/latency logging table — nothing to log yet without a real provider.
+* Job listing pagination exists (`limit`/`offset`) but there's no "load more"/infinite-scroll UI yet — the
+  frontend only shows the first page.
+* Tailoring `MAX_MATCH` mode can still only draw from the skill dictionary already known to the heuristic
+  parser; it doesn't invent genuinely novel JD terminology the way a real LLM might.
+* Save/bookmark job, applications tracking, analytics, Quick Prep, Defend This Bullet, and PDF/DOCX
+  generation are unbuilt (Phases 8-11).
+

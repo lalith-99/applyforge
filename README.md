@@ -9,9 +9,13 @@ This repository is being built incrementally, phase by phase. See
 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for phase status, and
 [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been built and why.
 
-**Status: Phase 1 (database foundation, auth, profiles, preferences, onboarding) complete.** Users can sign
-up/log in (email+password or Google), complete onboarding, and their profile/job-preferences are persisted.
-Job discovery, matching, resume tailoring, etc. are not built yet — see
+**Status: Phases 0-7 complete.** A user can sign up, upload a master resume (parsed into structured
+experience + candidate skills), browse real jobs ingested hourly from Greenhouse/Lever/Ashby, see a
+deterministic Job Match Score with matched/missing/transferable skills, tailor their resume
+(STRICT/GROWTH/MAX_MATCH) and approve/reject AI-suggested changes, and see a Resume Alignment Score.
+Resume/JD parsing and tailoring suggestions currently use deterministic heuristics rather than a real LLM
+(no `AI_API_KEY` configured — see docs/AI_PIPELINE.md). Quick Prep, Defend This Bullet, PDF/DOCX generation,
+application tracking, and analytics are not built yet — see
 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for what's next.
 
 ## Repository layout
@@ -41,7 +45,7 @@ infra/         Deployment configuration (Docker/Railway/Cloudflare)
 ```bash
 cp .env.example .env
 
-# Postgres + Go API + Python AI worker
+# Postgres + MinIO + Go API + Python AI worker
 make docker-up
 
 # Apply database migrations (first time, or after pulling new migrations)
@@ -53,9 +57,18 @@ cd apps/web && pnpm install && pnpm dev
 
 Once running:
 
-* Web: http://localhost:3000 — sign up at `/signup`, log in at `/login`, onboarding at `/onboarding`
+* Web: http://localhost:3000 — sign up at `/signup`, onboarding at `/onboarding`, resumes at `/resume`,
+  jobs at `/jobs`, tailoring at `/jobs/{id}/tailor`
 * API: http://localhost:8080/health, http://localhost:8080/ready
 * AI worker: http://localhost:8000/health, http://localhost:8000/ready
+* MinIO console: http://localhost:9001 (user `applyforge` / password `applyforge123` locally)
+
+To see real jobs, trigger an initial sync (the scheduler also runs hourly automatically):
+```bash
+curl -X POST http://localhost:8080/api/v1/admin/job-sources/sync -b <(curl -s -c - -X POST \
+  http://localhost:8080/api/v1/auth/signup -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"supersecret1"}' -o /dev/null)
+```
 
 Note: docker-compose maps Postgres to host port **5433** (not 5432) to avoid clashing with other local
 Postgres instances — see `.env.example` and DECISIONS.md.
@@ -114,5 +127,5 @@ pnpm install && pnpm dev
 
 ## Next phase
 
-Phase 2 (master resume upload, storage, PDF/DOCX extraction, structured parsing, candidate skill profile,
-resume review UI) is not started. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+Phase 8 (Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans) is not
+started. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).

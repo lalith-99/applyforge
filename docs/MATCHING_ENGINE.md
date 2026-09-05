@@ -56,6 +56,19 @@ against a Go/Kafka role; a React candidate does not score highly against a Go ba
 partial, not full, transfer credit toward SQS) rather than exact score values, so small wording changes don't
 cause unstable swings.
 
-## Phase 0 status
+## Status (through Phase 5)
 
-Not implemented. This document describes the target design that Phase 5 will build against.
+Implemented in `internal/matching`: a pure, database-free deterministic scorer (`Score(Input) Result`) plus a
+thin service layer that fetches real candidate/job/preference/transferable-skill data and caches results in
+`job_matches`. Eligibility hard filters, the weighted Job Match Score, transferable-skill partial credit
+(capped below direct-skill credit), Opportunity Score, and Current vs Target Profile Match are all
+implemented per the design below. `GET /jobs/{id}/match` computes and caches a result per (job, user).
+
+Golden tests (§55) cover: strong same-stack matches, weak cross-stack matches, transferable-vs-direct credit
+differences for Kafka→SQS and PostgreSQL→DynamoDB, wording-change stability, and excluded-company hard
+failures.
+
+**Known limitations:** domain alignment and education/certification cross-referencing use flat default
+partial credit (no domain extraction in the heuristic JD parser, no resume-education cross-reference yet) —
+see IMPLEMENTATION_PLAN.md for the full list. The Immigration-Aware Job Matching sub-system (§ in
+MASTER_REQUIREMENTS.md) is not implemented.
