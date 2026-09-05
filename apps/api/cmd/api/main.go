@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -17,9 +18,11 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
+	"github.com/lalithlochan/applyforge/apps/api/internal/scheduler"
 	"github.com/lalithlochan/applyforge/apps/api/internal/skills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/storage"
 	"github.com/lalithlochan/applyforge/apps/api/internal/users"
@@ -95,12 +98,26 @@ func run() error {
 	defer stopWorker()
 	go worker.Run(workerCtx, 2*time.Second)
 
+	jobsRepo := jobs.NewRepository(db)
+	ingestionService := jobs.NewIngestionService(jobsRepo)
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService)
+
+	pollMinutes := 60
+	if v := os.Getenv("JOB_POLL_INTERVAL_MINUTES"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			pollMinutes = parsed
+		}
+	}
+	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
+	defer stopScheduler()
+	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers},
 	})
 
 	server := &http.Server{

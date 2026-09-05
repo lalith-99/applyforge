@@ -29,18 +29,33 @@ func (q *Queries) GetCompanyByNormalizedName(ctx context.Context, normalizedName
 }
 
 const listJobSources = `-- name: ListJobSources :many
-SELECT id, source_type, company_id, board_token, enabled, last_polled_at, last_error, created_at FROM job_sources WHERE enabled = true ORDER BY created_at ASC
+SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, companies.name AS company_name FROM job_sources
+JOIN companies ON companies.id = job_sources.company_id
+WHERE enabled = true
+ORDER BY job_sources.created_at ASC
 `
 
-func (q *Queries) ListJobSources(ctx context.Context) ([]JobSource, error) {
+type ListJobSourcesRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	SourceType   string             `json:"source_type"`
+	CompanyID    pgtype.UUID        `json:"company_id"`
+	BoardToken   string             `json:"board_token"`
+	Enabled      bool               `json:"enabled"`
+	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
+	LastError    pgtype.Text        `json:"last_error"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	CompanyName  string             `json:"company_name"`
+}
+
+func (q *Queries) ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error) {
 	rows, err := q.db.Query(ctx, listJobSources)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []JobSource{}
+	items := []ListJobSourcesRow{}
 	for rows.Next() {
-		var i JobSource
+		var i ListJobSourcesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SourceType,
@@ -50,6 +65,7 @@ func (q *Queries) ListJobSources(ctx context.Context) ([]JobSource, error) {
 			&i.LastPolledAt,
 			&i.LastError,
 			&i.CreatedAt,
+			&i.CompanyName,
 		); err != nil {
 			return nil, err
 		}

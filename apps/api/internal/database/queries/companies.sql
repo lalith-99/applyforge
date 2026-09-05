@@ -8,7 +8,10 @@ RETURNING *;
 SELECT * FROM companies WHERE normalized_name = $1;
 
 -- name: ListJobSources :many
-SELECT * FROM job_sources WHERE enabled = true ORDER BY created_at ASC;
+SELECT job_sources.*, companies.name AS company_name FROM job_sources
+JOIN companies ON companies.id = job_sources.company_id
+WHERE enabled = true
+ORDER BY job_sources.created_at ASC;
 
 -- name: TouchJobSource :exec
 UPDATE job_sources SET last_polled_at = now(), last_error = $2 WHERE id = $1;

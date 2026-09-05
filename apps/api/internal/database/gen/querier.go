@@ -49,7 +49,7 @@ type Querier interface {
 	LinkGoogleAccount(ctx context.Context, arg LinkGoogleAccountParams) (User, error)
 	ListCandidateSkillsForUser(ctx context.Context, userID pgtype.UUID) ([]CandidateSkill, error)
 	ListJobMatchesForUser(ctx context.Context, userID pgtype.UUID) ([]JobMatch, error)
-	ListJobSources(ctx context.Context) ([]JobSource, error)
+	ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error)
 	ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error)
 	ListResumeExperiences(ctx context.Context, resumeID pgtype.UUID) ([]ResumeExperience, error)
 	ListResumesForUser(ctx context.Context, userID pgtype.UUID) ([]Resume, error)
