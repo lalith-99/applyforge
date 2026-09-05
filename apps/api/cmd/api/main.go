@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
+	"github.com/lalithlochan/applyforge/apps/api/internal/analytics"
 	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/background"
@@ -140,12 +141,16 @@ func run() error {
 	applicationsService := applications.NewService(applicationsRepo)
 	applicationsHandlers := applications.NewHandlers(applicationsService, applicationsRepo)
 
+	analyticsRepo := analytics.NewRepository(db)
+	analyticsService := analytics.NewService(analyticsRepo, applicationsRepo)
+	analyticsHandlers := analytics.NewHandlers(analyticsService)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers},
 	})
 
 	server := &http.Server{

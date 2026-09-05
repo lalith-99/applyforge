@@ -343,3 +343,24 @@ export interface ApplicationAnswers {
   CreatedAt: string;
   UpdatedAt: string;
 }
+
+export interface StatusCount {
+  Status: ApplicationStatus;
+  Count: number;
+}
+
+export interface FunnelStage {
+  Status: ApplicationStatus;
+  Count: number;
+}
+
+export interface AnalyticsDashboard {
+  JobsDiscovered: number;
+  TotalApplications: number;
+  TailoringRunsCount: number;
+  HighMatchesCount: number;
+  ApplicationsByStatus: StatusCount[] | null;
+  Funnel: FunnelStage[];
+  ResponseRatePercent: number;
+  AverageMatchScore: number | null;
+}

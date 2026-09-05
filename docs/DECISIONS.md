@@ -289,4 +289,30 @@ held throughout, rather than discovered ad hoc partway through:
   free-form column-to-column dragging.
 * No application-level attachments (cover letter, etc.) beyond the linked `resume_version_id`.
 
+## Phase 11 — Analytics (conversion funnel, response rates, match-score analytics)
+
+1. **The conversion funnel counts applications that ever reached a stage, not applications currently
+   sitting in it.** Built from `application_events` (`CountApplicationEventsByToStatusForUser`), so an
+   application that's now at OFFER still counts toward the APPLIED and RECRUITER_SCREEN funnel stages it
+   passed through earlier. Using current-status snapshots instead would make the funnel look artificially
+   narrow at every stage past the first.
+2. **SAVED is the funnel's baseline, computed from total tracked applications, not an event.** `Save`
+   (via `CreateApplication`) doesn't log an `application_events` row for the initial creation — only
+   `Service.ChangeStatus` logs events, for actual transitions — so the SAVED stage count comes from
+   `CountApplicationsByStatusForUser`'s total rather than an event count.
+3. **Average match score is computed in Go from `applications.match_score`, not a new SQL `AVG()` query.**
+   The existing `ListForUser` repository call was already available and the dataset size (one user's
+   tracked applications) makes an in-memory average simpler than adding another sqlc query.
+4. **No charting library dependency added for the funnel visualization.** The `/analytics` page renders
+   the funnel as CSS-only proportional bars (each stage's count relative to the largest stage), consistent
+   with the app's general preference for minimal new frontend dependencies.
+
+### Remaining technical debt after Phase 11
+
+* Analytics are user-scoped only; there's no cross-user/admin view (not needed for a single-user-per-account
+  product at this stage).
+* No time-series/trend view (e.g. applications per week) — the dashboard is a current-snapshot view only.
+* `JobsDiscovered` counts all ACTIVE jobs in the system, not jobs discovered specifically for this user's
+  preferences/matches — a coarse global signal rather than a personalized one.
+
 

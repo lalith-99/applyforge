@@ -5,7 +5,7 @@
 All product endpoints are served under `/api/v1` by the Go API (`apps/api`). The Python AI worker
 (`apps/ai-worker`) exposes an internal-only API consumed solely by the Go API, not by the browser.
 
-## Implemented endpoints (through Phase 10)
+## Implemented endpoints (through Phase 11)
 
 Authentication (`internal/auth`), all under `/api/v1/auth`:
 
@@ -103,11 +103,19 @@ GET    /api/v1/applications/{id}/events           status-change history, oldest 
 GET    /api/v1/application-answers                zero-value defaults if none saved yet, not a 404
 PATCH  /api/v1/application-answers
 ```
-## Planned endpoint surface (later phases)
+
+Analytics (`internal/analytics`):
 
 ```
-GET    /api/v1/analytics/dashboard
+GET    /api/v1/analytics/dashboard                jobs discovered, applications tracked, tailoring runs,
+                                                   high matches, conversion funnel, response rate,
+                                                   average match score
 ```
+
+## Planned endpoint surface (later phases)
+
+None — the endpoint surface for Phases 0-11 is complete. Phase 12 (production hardening) adds
+middleware/ops concerns, not new product endpoints.
 
 OpenAPI docs are deferred until the endpoint surface stabilizes further — not worth generating/maintaining
 yet (tracked as technical debt, see DECISIONS.md).

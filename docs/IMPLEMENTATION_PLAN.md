@@ -15,7 +15,7 @@ Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) 
 - [x] **Phase 8** — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans.
 - [x] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
 - [x] **Phase 10** — Applications: tracking, Kanban, application answers, events.
-- [ ] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
+- [x] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
 - [ ] **Phase 12** — Production hardening: security, observability, performance, deployment, CI/CD, docs.
 
 Each phase is implemented independently, per the working style in MASTER_REQUIREMENTS.md §73: review the
@@ -193,6 +193,7 @@ Actions CI skeleton that lints/tests/builds all three services.
   tailoring against a real ingested job, approved all suggestions, generated a resume version, and
   downloaded both the PDF and DOCX — the tailored bullet text and expanded summary were correctly
   merged into the rendered documents.
+
 ## Phase 10 — what was actually delivered
 
 * **Go**: `internal/applications` — `Repository` wrapping applications/application_events/
@@ -220,10 +221,33 @@ Actions CI skeleton that lints/tests/builds all three services.
 * Verified live end-to-end via docker-compose: save a job, list applications (joined with job fields),
   change status to APPLIED (`applied_at` set, one `STATUS_CHANGE` event logged), reject an invalid status
   with 400, get default application answers, then update and confirm they persist.
-## Next up: Phase 10 (not started)
 
-Applications: tracking, Kanban, application answers, events. Do not begin this until explicitly
-requested.
+## Phase 11 — what was actually delivered
+
+* **Go**: `internal/analytics` — `Repository` wrapping the aggregation queries written in the Phase 8
+  pass (`CountJobsDiscovered`, `CountTailoringRunsForUser`, `CountHighMatchesForUser`,
+  `CountApplicationsByStatusForUser`, `CountApplicationEventsByToStatusForUser`), `Service.Dashboard`
+  which builds: a **conversion funnel** (SAVED as the baseline of every tracked application, then each
+  later stage counting distinct applications that have *ever* reached that status via
+  `application_events` — not just applications currently sitting in it, which would undercount anyone who
+  moved past a stage), a **response rate** (share of APPLIED applications that ever reached
+  RECRUITER_SCREEN), and an **average match score** across the user's tracked applications. Route:
+  `GET /analytics/dashboard`.
+* **Frontend**: `/analytics` page — stat cards (jobs discovered, applications tracked, tailoring runs,
+  high matches, response rate, average match score), a CSS-only funnel bar chart (no charting library
+  dependency added), and a status-count summary.
+* **Tests**: 2 new Go integration tests — a full funnel/response-rate/average-score scenario with two
+  applications at different stages, and an empty-state scenario (zero applications produces zero-value
+  results, not errors).
+* Verified live end-to-end via docker-compose: dashboard with no data (all zeros, funnel present but empty,
+  null average score), then after saving a job and advancing it to APPLIED then RECRUITER_SCREEN — funnel
+  counts, 100% response rate (1 of 1 applied reached recruiter screen), and average match score all
+  correct.
+
+## Next up: Phase 12 (not started)
+
+Production hardening: security, observability, performance, deployment, CI/CD, docs. Do not begin this
+until explicitly requested.
 
 ## Known scope limitations after Phases 2-7 (see DECISIONS.md for full list)
 
