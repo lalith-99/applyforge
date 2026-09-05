@@ -4,6 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { use, useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { api, ApiError } from "@/lib/api";
+import { DefendBulletDrawer } from "@/features/learning/DefendBulletDrawer";
+import { QuickPrepDrawer } from "@/features/learning/QuickPrepDrawer";
 import type { ResumeSummary, TailoringRun, TailoringSuggestion } from "@/types/api";
 
 const MODES = ["STRICT", "GROWTH", "MAX_MATCH"] as const;
@@ -180,6 +182,20 @@ function SuggestionCard({
         <p className="text-sm">{suggestion.SuggestedText}</p>
       </div>
       <p className="text-xs text-black/60 dark:text-white/60">Why: {suggestion.Reason}</p>
+
+      {suggestion.SkillsAdded.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {suggestion.SkillsAdded.map((skill) => (
+            <QuickPrepDrawer key={skill} skill={skill} />
+          ))}
+        </div>
+      )}
+
+      {suggestion.Section === "experience" && (
+        <div>
+          <DefendBulletDrawer bulletText={suggestion.SuggestedText} skills={suggestion.SkillsAdded} />
+        </div>
+      )}
 
       {suggestion.UserStatus === "PENDING" && (
         <div className="flex gap-2">

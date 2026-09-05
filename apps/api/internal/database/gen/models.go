@@ -8,6 +8,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Application struct {
+	ID              pgtype.UUID        `json:"id"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	JobID           pgtype.UUID        `json:"job_id"`
+	ResumeVersionID pgtype.UUID        `json:"resume_version_id"`
+	Status          string             `json:"status"`
+	MatchScore      pgtype.Int4        `json:"match_score"`
+	Notes           pgtype.Text        `json:"notes"`
+	NextAction      pgtype.Text        `json:"next_action"`
+	AppliedAt       pgtype.Timestamptz `json:"applied_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ApplicationAnswer struct {
+	UserID            pgtype.UUID        `json:"user_id"`
+	FullName          pgtype.Text        `json:"full_name"`
+	Phone             pgtype.Text        `json:"phone"`
+	Email             pgtype.Text        `json:"email"`
+	Location          pgtype.Text        `json:"location"`
+	DesiredLocation   pgtype.Text        `json:"desired_location"`
+	WorkAuthorization pgtype.Text        `json:"work_authorization"`
+	Sponsorship       pgtype.Text        `json:"sponsorship"`
+	SalaryExpectation pgtype.Text        `json:"salary_expectation"`
+	NoticePeriod      pgtype.Text        `json:"notice_period"`
+	LinkedinUrl       pgtype.Text        `json:"linkedin_url"`
+	GithubUrl         pgtype.Text        `json:"github_url"`
+	PortfolioUrl      pgtype.Text        `json:"portfolio_url"`
+	CommonAnswers     []byte             `json:"common_answers"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ApplicationEvent struct {
+	ID            pgtype.UUID        `json:"id"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	EventType     string             `json:"event_type"`
+	FromStatus    pgtype.Text        `json:"from_status"`
+	ToStatus      pgtype.Text        `json:"to_status"`
+	Notes         pgtype.Text        `json:"notes"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type BackgroundJob struct {
 	ID          pgtype.UUID        `json:"id"`
 	JobType     string             `json:"job_type"`
@@ -159,6 +202,37 @@ type JobSource struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type LearningPlan struct {
+	ID                      pgtype.UUID        `json:"id"`
+	UserID                  pgtype.UUID        `json:"user_id"`
+	JobID                   pgtype.UUID        `json:"job_id"`
+	Skills                  []string           `json:"skills"`
+	CurrentReadiness        int32              `json:"current_readiness"`
+	TargetReadiness         int32              `json:"target_readiness"`
+	Topics                  []byte             `json:"topics"`
+	PracticeQuestions       []byte             `json:"practice_questions"`
+	Projects                []string           `json:"projects"`
+	ArchitectureQuestions   []string           `json:"architecture_questions"`
+	EstimatedEffortCategory string             `json:"estimated_effort_category"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+}
+
+type QuickPrepModule struct {
+	ID                    pgtype.UUID        `json:"id"`
+	NormalizedSkill       string             `json:"normalized_skill"`
+	WhatItIs              string             `json:"what_it_is"`
+	WhyItMatters          string             `json:"why_it_matters"`
+	TransferableFrom      []string           `json:"transferable_from"`
+	CoreConcepts          []string           `json:"core_concepts"`
+	ScreeningPoints       []string           `json:"screening_points"`
+	InterviewQuestions    []byte             `json:"interview_questions"`
+	CommonMistakes        []string           `json:"common_mistakes"`
+	ArchitectureQuestions []string           `json:"architecture_questions"`
+	ExampleCode           pgtype.Text        `json:"example_code"`
+	GeneratedAt           pgtype.Timestamptz `json:"generated_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
 type Resume struct {
 	ID               pgtype.UUID        `json:"id"`
 	UserID           pgtype.UUID        `json:"user_id"`
@@ -187,6 +261,22 @@ type ResumeExperience struct {
 	Bullets        []string           `json:"bullets"`
 	DetectedSkills []string           `json:"detected_skills"`
 	Technologies   []string           `json:"technologies"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type ResumeVersion struct {
+	ID             pgtype.UUID        `json:"id"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	BaseResumeID   pgtype.UUID        `json:"base_resume_id"`
+	JobID          pgtype.UUID        `json:"job_id"`
+	TailoringRunID pgtype.UUID        `json:"tailoring_run_id"`
+	VersionNumber  int32              `json:"version_number"`
+	ContentJson    []byte             `json:"content_json"`
+	MatchScore     pgtype.Int4        `json:"match_score"`
+	AlignmentScore pgtype.Int4        `json:"alignment_score"`
+	TailoringMode  pgtype.Text        `json:"tailoring_mode"`
+	PdfStorageKey  pgtype.Text        `json:"pdf_storage_key"`
+	DocxStorageKey pgtype.Text        `json:"docx_storage_key"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 

@@ -5,7 +5,7 @@
 All product endpoints are served under `/api/v1` by the Go API (`apps/api`). The Python AI worker
 (`apps/ai-worker`) exposes an internal-only API consumed solely by the Go API, not by the browser.
 
-## Implemented endpoints (through Phase 7)
+## Implemented endpoints (through Phase 8)
 
 Authentication (`internal/auth`), all under `/api/v1/auth`:
 
@@ -68,14 +68,22 @@ PATCH  /api/v1/tailoring/{id}/suggestions/{suggestionId}  body: {status, edited_
 POST   /api/v1/tailoring/{id}/approve-all                 flips all PENDING suggestions to APPROVED
 ```
 
+Learning (`internal/learning`):
+
+```
+GET    /api/v1/skills/{skill}/quick-prep        Quick Prep module for a skill (cached; personalized
+                                                 transferable_from at request time, never cached)
+POST   /api/v1/defend-bullet                    body: {bullet_text, skills}; likely interview questions
+                                                 for a resume bullet (not cached; bullet text/skills vary)
+POST   /api/v1/jobs/{id}/learning-plan           learning plan for the caller's missing skills on a job
+POST   /api/v1/jobs/{id}/make-me-qualified       aggregated current/target match, high/low-value gaps,
+                                                  Interview Readiness score, and a learning plan
+```
+
 ## Planned endpoint surface (later phases)
 
 ```
 POST   /api/v1/jobs/{id}/save
-POST   /api/v1/jobs/{id}/make-me-qualified
-POST   /api/v1/jobs/{id}/learning-plan
-GET    /api/v1/skills/{skill}/quick-prep
-POST   /api/v1/resume-bullets/{id}/defend
 POST   /api/v1/applications
 GET    /api/v1/applications
 PATCH  /api/v1/applications/{id}

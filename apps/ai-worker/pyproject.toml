@@ -5,6 +5,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# Curated prose content dictionaries — wrapping at 100 chars hurts readability
+# more than it helps for these data-only files.
+"app/learning/content_bank.py" = ["E501"]
+"app/core/skills_dictionary.py" = ["E501"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"

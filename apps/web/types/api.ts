@@ -209,3 +209,58 @@ export interface MatchResult {
     Warnings: string[] | null;
   };
 }
+
+export interface InterviewQuestion {
+  question: string;
+  concise_answer: string;
+  deeper_explanation: string;
+}
+
+export interface QuickPrepModule {
+  skill: string;
+  what_it_is: string;
+  why_it_matters: string;
+  transferable_from: string[] | null;
+  core_concepts: string[];
+  screening_points: string[];
+  interview_questions: InterviewQuestion[];
+  common_mistakes: string[];
+  architecture_questions: string[];
+  example_code: string | null;
+}
+
+export interface DefendBulletResponse {
+  questions: InterviewQuestion[];
+}
+
+export interface LearningPlanResult {
+  JobID: string;
+  Skills: string[];
+  CurrentReadiness: number;
+  TargetReadiness: number;
+  Topics: string[];
+  PracticeQuestions: InterviewQuestion[];
+  Projects: string[];
+  ArchitectureQuestions: string[];
+  EstimatedEffortCategory: "QUICK_PREP" | "STANDARD_PREP" | "DEEPER_GAP";
+}
+
+export interface ReadinessComponents {
+  CoreLanguage: number;
+  BackendFundamentals: number;
+  RequiredTechnology: number;
+  SystemDesignDomain: number;
+  ExperienceExamples: number;
+  QuestionPreparedness: number;
+}
+
+export interface QualifiedResult {
+  CurrentProfileMatch: number;
+  TargetProfileMatch: number;
+  HighValueGaps: string[] | null;
+  LowValueGaps: string[] | null;
+  RecommendedSkills: string[] | null;
+  InterviewReadiness: number;
+  ReadinessComponents: ReadinessComponents;
+  LearningPlan: LearningPlanResult;
+}

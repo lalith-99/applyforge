@@ -186,3 +186,48 @@ held throughout, rather than discovered ad hoc partway through:
 * Save/bookmark job, applications tracking, analytics, Quick Prep, Defend This Bullet, and PDF/DOCX
   generation are unbuilt (Phases 8-11).
 
+## Phase 8 — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans
+
+1. **Quick Prep cache is generic/shared across users; transferable-skill personalization is never cached.**
+   `quick_prep_modules` is keyed only by `normalized_skill`, with no user column, since the underlying
+   content (what a skill is, why it matters, common interview questions) is the same for every user. The
+   "what you already know that transfers" list, however, is inherently per-candidate — so it's computed at
+   request time from the caller's own candidate skills via the matching engine's `transferable_skills`
+   lookup, merged onto the cached generic module, and never persisted back into the cache.
+2. **Defend This Bullet takes bullet text + skills directly in the request body, not a suggestion/experience
+   ID.** There's no existing "get one tailoring suggestion by ID alone" repository method, and the caller
+   (a tailoring suggestion card or a resume experience row) already has both the bullet text and its
+   associated skills on hand client-side. Resolving an ID server-side would have required adding new
+   plumbing across the `tailoring`/`resume` packages for no functional benefit.
+3. **Interview Readiness is derived from the existing match `ComponentScores`, not a new dedicated signal.**
+   §35 defines six weighted components (Core Language 20, Backend Fundamentals 20, Required Technology 25,
+   System Design/Domain 15, Experience Examples 10, Question Preparedness 10). There's no tracked signal yet
+   for some of these (e.g. "question preparedness" would ideally reflect actual Quick Prep/Defend Bullet
+   usage, which isn't tracked). The current implementation approximates each component from the closest
+   existing match component (e.g. Required Technology from `MustHaveSkillCoverage`) and documents this
+   explicitly in code comments as product guidance, not a scientific assessment — matching the spec's own
+   framing of the score.
+4. **`nil` Go slices must never be marshaled as JSON for AI-worker requests.** A Go slice that is `nil`
+   marshals to JSON `null`. Pydantic's `Field(default_factory=list)` only supplies a default when a field is
+   *omitted* from the request body — an explicit `null` still fails validation against `list[str]`. This
+   caused quick-prep to fail with a 422 on first live test (`transferable_from: null`). Fixed by normalizing
+   `nil` to `[]string{}` before marshaling in all three `internal/aiclient` learning methods
+   (`GenerateQuickPrep`, `DefendBullet`, `GenerateLearningPlan`). Worth checking for the same pattern if any
+   future `aiclient` method takes an optional slice parameter.
+5. **Migrations for Phase 9-10 tables were created ahead of their implementation.** `resume_versions`,
+   `applications`, `application_events`, and `application_answers` were designed and migrated in this pass
+   since the schema work was quick to batch alongside Phase 8's tables, but no Go/Python code reads or
+   writes them yet — they're inert until Phase 9/10 are implemented.
+
+### Remaining technical debt after Phase 8
+
+* Interview Readiness component mapping (decision 3 above) is an approximation; a more accurate version
+  would need dedicated signals (e.g. actual language/framework matched-skill breakdown, tracked Quick
+  Prep/Defend Bullet engagement) that don't exist yet.
+* Quick Prep's curated `CONTENT_BANK` covers 8 technologies; everything else falls back to a generic,
+  clearly-labeled-as-generic module. Expanding coverage is pure content work, not an architecture change.
+* No rate limiting or per-user usage caps on Quick Prep/Defend Bullet/Learning Plan generation yet — these
+  are lightweight heuristic calls (no real AI cost), but that will need revisiting if a real AI provider is
+  ever plugged in.
+
+

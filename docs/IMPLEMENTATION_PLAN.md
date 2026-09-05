@@ -12,7 +12,7 @@ Full phase definitions live in [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) 
 - [x] **Phase 6** — Jobs UI: filters, job cards, job detail, match explanations.
 - [x] **Phase 7** — Resume tailoring: STRICT/GROWTH/MAX_MATCH, suggestions, diff UI, approvals, Resume
       Alignment (this delivery).
-- [ ] **Phase 8** — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans.
+- [x] **Phase 8** — Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans.
 - [ ] **Phase 9** — Resume generation: PDF, DOCX, versioning, preview.
 - [ ] **Phase 10** — Applications: tracking, Kanban, application answers, events.
 - [ ] **Phase 11** — Analytics: conversion funnel, response rates, match-score analytics.
@@ -128,10 +128,50 @@ Actions CI skeleton that lints/tests/builds all three services.
 * Verified live end-to-end: tailoring run created, summary + experience suggestions generated, approve-all
   flips all suggestions to APPROVED.
 
-## Next up: Phase 8 (not started)
+## Phase 8 — what was actually delivered
 
-Quick Prep, Defend This Bullet, Make Me Qualified, Interview Readiness, learning plans. Do not begin this
-until explicitly requested.
+* **DB**: `quick_prep_modules` (cached by `normalized_skill`, shared across all users), `learning_plans`
+  (cached per `user_id`+`job_id`). Migrations for Phase 9-10 tables (`resume_versions`, `applications`,
+  `application_events`, `application_answers`) were also created in this pass since they were quick to design
+  alongside the related schema work, but no code reads/writes them yet.
+* **AI worker**: `internal/learning` (Python: `app/learning/`) — curated `CONTENT_BANK` for common
+  technologies (Amazon SQS, Kafka, Kubernetes, Docker, PostgreSQL, DynamoDB, gRPC, REST) with a generic
+  fallback for unlisted skills; `POST /v1/learning/quick-prep`, `POST /v1/learning/defend-bullet` (dedupes
+  questions across skills, capped at 8), `POST /v1/learning/learning-plan` (aggregates topics/questions
+  across missing skills, classifies prep effort as QUICK_PREP/STANDARD_PREP/DEEPER_GAP by gap size).
+* **Go**: `internal/aiclient/learning.go` (client for the 3 endpoints above); `internal/learning` —
+  `Repository` (quick-prep cache is generic/shared, never stores per-user transferable-skill personalization;
+  learning-plan cache is per user+job), `Service.QuickPrep` (cache-or-generate, then personalizes
+  `transferable_from` at request time from the caller's own candidate skills via the matching engine's
+  transferable-skills table), `Service.DefendBullet` (uncached passthrough — bullet text/skills vary per
+  call), `Service.LearningPlan` (pulls missing required/preferred skills from a fresh `matching.Service.Match`
+  call), `Service.MakeMeQualified` (aggregates current/target match, high/low-value gaps, a learning plan,
+  and a deterministic Interview Readiness score), `InterviewReadiness` (§35 weighted components — Core
+  Language 20/Backend Fundamentals 20/Required Technology 25/System Design 15/Experience Examples
+  10/Question Preparedness 10 — derived from the existing match `ComponentScores`, since there's no
+  dedicated per-component signal for some of these yet; documented as product guidance, not a scientific
+  assessment). Routes: `GET /skills/{skill}/quick-prep`, `POST /defend-bullet`,
+  `POST /jobs/{id}/learning-plan`, `POST /jobs/{id}/make-me-qualified`.
+* **Frontend**: `features/learning/QuickPrepDrawer.tsx` ("Learn First" trigger + slide-over drawer),
+  `features/learning/DefendBulletDrawer.tsx` ("Defend This Bullet" trigger + drawer) — both wired into the
+  tailoring page's suggestion cards (skills added → Quick Prep; experience-section suggestions → Defend This
+  Bullet) and the job detail page (missing skills → Quick Prep; new "Make Me Qualified" button → readiness
+  score, high/low-value gaps, practice projects).
+* **Tests**: Go — `internal/learning` readiness unit tests (pure function, strong vs weak match, bounds) and
+  repository integration tests (quick-prep cache miss→hit round trip, learning-plan upsert-not-duplicate).
+  Python — 7 new tests for quick-prep (curated + generic fallback), defend-bullet (known skills, fallback,
+  dedup), learning-plan (effort classification, topic aggregation); all passing alongside the existing 23.
+* **Bug found and fixed during live verification**: the Go `aiclient` was marshaling a `nil` Go slice as
+  JSON `null` for `transferable_from`/`skills`/`missing_skills`; Pydantic's `default_factory` only applies
+  when a field is *omitted*, not when it's explicitly `null`, so quick-prep initially failed with a 422.
+  Fixed by normalizing `nil` to `[]string{}` before marshaling in all three `aiclient` learning methods.
+* Verified live end-to-end via docker-compose: quick-prep for a known skill (Kafka) and an unknown skill
+  (generic fallback), cache-hit on second request, defend-bullet for a real suggestion, learning-plan and
+  make-me-qualified against a real ingested job.
+
+## Next up: Phase 9 (not started)
+
+Resume generation: PDF, DOCX, versioning, preview. Do not begin this until explicitly requested.
 
 ## Known scope limitations after Phases 2-7 (see DECISIONS.md for full list)
 

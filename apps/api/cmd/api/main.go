@@ -20,6 +20,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
+	"github.com/lalithlochan/applyforge/apps/api/internal/learning"
 	"github.com/lalithlochan/applyforge/apps/api/internal/matching"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 	"github.com/lalithlochan/applyforge/apps/api/internal/profile"
@@ -125,12 +126,16 @@ func run() error {
 	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
 	tailoringHandlers := tailoring.NewHandlers(tailoringService, tailoringRepo)
 
+	learningRepo := learning.NewRepository(db)
+	learningService := learning.NewService(learningRepo, aiWorkerClient, candidateSkillsRepo, matchingRepo, matchingService)
+	learningHandlers := learning.NewHandlers(learningService)
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers},
 	})
 
 	server := &http.Server{

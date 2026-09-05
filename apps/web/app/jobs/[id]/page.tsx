@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { use } from "react";
 import { AppNav } from "@/components/AppNav";
-import { api } from "@/lib/api";
-import type { JobDetail, MatchResult } from "@/types/api";
+import { api, ApiError } from "@/lib/api";
+import { QuickPrepDrawer } from "@/features/learning/QuickPrepDrawer";
+import type { JobDetail, MatchResult, QualifiedResult } from "@/types/api";
 
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -17,6 +18,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const matchQuery = useQuery({
     queryKey: ["job-match", id],
     queryFn: () => api.get<MatchResult>(`/jobs/${id}/match`),
+  });
+  const qualifyMutation = useMutation({
+    mutationFn: () => api.post<QualifiedResult>(`/jobs/${id}/make-me-qualified`),
   });
 
   if (jobQuery.isLoading) {
@@ -47,6 +51,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           >
             Tailor Resume
           </Link>
+          <button
+            type="button"
+            onClick={() => qualifyMutation.mutate()}
+            disabled={qualifyMutation.isPending}
+            className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-60 dark:border-white/15"
+          >
+            {qualifyMutation.isPending ? "Analyzing…" : "Make Me Qualified"}
+          </button>
           {job.apply_url && (
             <a
               href={job.apply_url}
@@ -106,7 +118,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 </div>
               )}
               {match.MissingRequiredSkills && match.MissingRequiredSkills.length > 0 && (
-                <SkillGroup title="Missing Skills" skills={match.MissingRequiredSkills} color="bg-red-100 text-red-800" />
+                <div>
+                  <p className="mb-1 text-sm font-medium">Missing Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {match.MissingRequiredSkills.map((skill) => (
+                      <QuickPrepDrawer key={skill} skill={skill} />
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -116,6 +135,61 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 <ul className="list-inside list-disc text-sm text-black/70 dark:text-white/70">
                   {match.Concerns.map((c, i) => (
                     <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+
+        {qualifyMutation.isError && (
+          <p className="text-sm text-red-600">
+            {qualifyMutation.error instanceof ApiError ? qualifyMutation.error.message : "Could not analyze qualification gap."}
+          </p>
+        )}
+
+        {qualifyMutation.data && (
+          <section className="rounded-md border border-black/10 p-6 dark:border-white/15">
+            <h2 className="text-lg font-medium">Make Me Qualified</h2>
+            <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="font-medium">Interview Readiness</p>
+                <p className="text-2xl">{qualifyMutation.data.InterviewReadiness}%</p>
+              </div>
+              <div>
+                <p className="font-medium">Prep Effort</p>
+                <p className="text-2xl">{qualifyMutation.data.LearningPlan.EstimatedEffortCategory.replace("_", " ")}</p>
+              </div>
+            </div>
+
+            {qualifyMutation.data.HighValueGaps && qualifyMutation.data.HighValueGaps.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-1 text-sm font-medium">High-Value Gaps</p>
+                <div className="flex flex-wrap gap-2">
+                  {qualifyMutation.data.HighValueGaps.map((skill) => (
+                    <QuickPrepDrawer key={skill} skill={skill} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {qualifyMutation.data.LowValueGaps && qualifyMutation.data.LowValueGaps.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-1 text-sm font-medium">Lower-Priority Gaps</p>
+                <div className="flex flex-wrap gap-2">
+                  {qualifyMutation.data.LowValueGaps.map((skill) => (
+                    <QuickPrepDrawer key={skill} skill={skill} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {qualifyMutation.data.LearningPlan.Projects.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-1 text-sm font-medium">Practice Projects</p>
+                <ul className="list-inside list-disc text-sm">
+                  {qualifyMutation.data.LearningPlan.Projects.map((p) => (
+                    <li key={p}>{p}</li>
                   ))}
                 </ul>
               </div>
