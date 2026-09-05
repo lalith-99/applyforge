@@ -187,3 +187,51 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
         keyword_coverage_before=round(coverage_before, 3),
         keyword_coverage_after=round(coverage_after, 3),
     )
+
+
+_MODE_POLICY = {
+    "STRICT": (
+        "STRICT mode: you may only rephrase or reorder content already present in the candidate's "
+        "master resume. Never suggest adding a skill, tool, or claim the candidate has not already "
+        "demonstrated in their existing summary/experience bullets."
+    ),
+    "GROWTH": (
+        "GROWTH mode: you may suggest adding a missing required/preferred skill to the skills section "
+        "ONLY when the provided transferable_matches show a credible transfer path from a skill the "
+        "candidate already has to that missing skill. Do not suggest any skill without transfer support."
+    ),
+    "MAX_MATCH": (
+        "MAX_MATCH mode: you may suggest adding any missing required/preferred skill to the skills "
+        "section to maximize keyword coverage for this job, but you must be honest in the 'reason' "
+        "field about whether it is backed by real transferable experience (LOW risk_level) or is a pure "
+        "keyword-coverage suggestion with no direct evidence (HIGH risk_level)."
+    ),
+}
+
+
+def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
+    """Real LLM-backed tailoring suggestion generation. Raises
+    AIProviderError (see app/providers/openai_provider.py) on any failure —
+    callers must fall back to generate_tailoring() above."""
+    from app.providers.openai_provider import structured_completion
+
+    system = (
+        "You are an expert resume writer helping a candidate tailor their resume for a specific job, "
+        "without ever fabricating experience they don't have. "
+        + _MODE_POLICY[request.mode]
+        + " Rewrite the professional summary (if one exists) to foreground the candidate's most "
+        "relevant real skills and experience for this specific role — set its section to 'summary' and "
+        "original_text to the exact existing summary. Suggest at most one strengthened experience "
+        "bullet drawn from the candidate's existing bullets, rephrased to more clearly connect it to "
+        "this job's stated requirements/responsibilities — set its section to 'experience' and "
+        "original_text to the exact existing bullet text you're improving. For any skill you suggest "
+        "adding, create a suggestion with section='skills', original_text=null, and list the skill in "
+        "skills_added. Always populate requirements_addressed with the specific required/preferred "
+        "skills or responsibilities each suggestion relates to. Set source to 'MASTER_RESUME' if a "
+        "suggestion only rephrases content already fully evidenced by the resume, or 'AI_SUGGESTED' if "
+        "it adds something (like a new skill) not already directly stated. Compute "
+        "keyword_coverage_before and keyword_coverage_after as the fraction (0.0-1.0) of "
+        "required_skills+preferred_skills reflected in the resume before vs. after your suggestions."
+    )
+    user = request.model_dump_json(indent=2)
+    return structured_completion(system, user, TailoringResponse)

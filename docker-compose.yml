@@ -59,6 +59,8 @@ services:
       context: ./apps/ai-worker
     environment:
       LOG_LEVEL: "info"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
     ports:
       - "8000:8000"
 

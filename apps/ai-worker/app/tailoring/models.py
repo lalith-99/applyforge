@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 TAILORING_MODES = ("STRICT", "GROWTH", "MAX_MATCH")
+_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH")
 
 
 class ExperienceInput(BaseModel):
@@ -34,16 +37,24 @@ class TailoringRequest(BaseModel):
 
 
 class TailoringSuggestion(BaseModel):
-    section: str  # "summary" | "skills" | "experience"
+    section: Literal["summary", "skills", "experience"]
     original_text: str | None = None
     suggested_text: str
     requirements_addressed: list[str] = Field(default_factory=list)
     skills_added: list[str] = Field(default_factory=list)
     keywords_added: list[str] = Field(default_factory=list)
-    source: str  # "MASTER_RESUME" | "AI_SUGGESTED"
+    source: Literal["MASTER_RESUME", "AI_SUGGESTED"]
     reason: str
     confidence: float = 0.6
-    risk_level: str = "LOW"  # LOW | MEDIUM | HIGH
+    risk_level: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
+
+    @field_validator("risk_level", mode="before")
+    @classmethod
+    def _normalize_risk_level(cls, value: str) -> str:
+        # The Go API's DB schema has a hard CHECK constraint on exact
+        # uppercase values; an LLM isn't guaranteed to match that casing.
+        upper = str(value).upper()
+        return upper if upper in _RISK_LEVELS else "LOW"
 
 
 class TailoringResponse(BaseModel):

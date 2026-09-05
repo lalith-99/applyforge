@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from app.documents.generator import render_docx, render_pdf
+from app.documents.generator import _sanitize_for_pdf, render_docx, render_pdf
 from app.main import app
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
@@ -50,6 +50,28 @@ def test_render_pdf_handles_minimal_profile() -> None:
     minimal = ResumeProfile()
     data = render_pdf(minimal)
     assert data.startswith(b"%PDF")
+
+
+def test_render_pdf_handles_ligatures_and_smart_punctuation() -> None:
+    # Real-world PDF text extraction often yields ligature glyphs (e.g. the
+    # single-character "fi" in "Certifications") and smart quotes/dashes that
+    # fpdf2's built-in latin-1-only core fonts can't render directly.
+    profile = ResumeProfile(
+        summary="Certi\ufb01cations and Technical Skills: \u201cquoted\u201d \u2013 en \u2014 em",
+    )
+    data = render_pdf(profile)
+    assert data.startswith(b"%PDF")
+
+
+def test_sanitize_for_pdf_decomposes_fi_ligature() -> None:
+    assert _sanitize_for_pdf("Certi\ufb01cations") == "Certifications"
+
+
+def test_sanitize_for_pdf_preserves_smart_punctuation_via_cp1252() -> None:
+    # cp1252 (a superset of latin-1) natively supports these, so they render
+    # as-is rather than being degraded to plain ASCII.
+    text = "\u201cquoted\u201d \u2013 dash \u2014 em"
+    assert _sanitize_for_pdf(text) == text
 
 
 def test_documents_pdf_endpoint() -> None:

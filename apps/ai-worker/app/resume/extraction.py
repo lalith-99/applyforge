@@ -27,10 +27,17 @@ def extract_text(file_bytes: bytes, mime_type: str) -> str:
 
 
 def _extract_pdf(file_bytes: bytes) -> str:
+    # Some PDFs (certain resume templates/generators) embed fonts whose
+    # ToUnicode CMap maps ligature glyphs (fi, ti, ffl, ...) to the wrong
+    # code point. Preserving ligatures then trusts that broken mapping,
+    # producing garbage like "Cer$fica$ons" instead of "Certifications".
+    # Disabling ligature preservation makes PyMuPDF decompose ligatures via
+    # its own glyph-name table instead.
+    flags = fitz.TEXTFLAGS_TEXT & ~fitz.TEXT_PRESERVE_LIGATURES
     text_parts: list[str] = []
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         for page in doc:
-            text_parts.append(page.get_text())
+            text_parts.append(page.get_text(flags=flags))
     return "\n".join(text_parts).strip()
 
 

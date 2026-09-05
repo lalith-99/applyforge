@@ -10,6 +10,10 @@ select = ["E", "F", "I", "UP", "B"]
 # more than it helps for these data-only files.
 "app/learning/content_bank.py" = ["E501"]
 "app/core/skills_dictionary.py" = ["E501"]
+# LLM system prompts — same rationale, prose readability over strict wrapping.
+"app/resume/parsing.py" = ["E501"]
+"app/jobs/parsing.py" = ["E501"]
+"app/tailoring/heuristics.py" = ["E501"]
 
 [tool.pyright]
 pythonVersion = "3.12"

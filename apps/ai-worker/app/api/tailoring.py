@@ -7,10 +7,15 @@ app/tailoring/heuristics.py.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
-from app.tailoring.heuristics import generate_tailoring
+from app.providers.openai_provider import AIProviderError, is_configured
+from app.tailoring.heuristics import generate_tailoring, generate_tailoring_ai
 from app.tailoring.models import TAILORING_MODES, TailoringRequest, TailoringResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/tailoring", tags=["tailoring"])
 
@@ -19,4 +24,13 @@ router = APIRouter(prefix="/v1/tailoring", tags=["tailoring"])
 def suggest(request: TailoringRequest) -> TailoringResponse:
     if request.mode not in TAILORING_MODES:
         raise HTTPException(status_code=422, detail=f"invalid mode: {request.mode}")
+
+    if is_configured():
+        try:
+            return generate_tailoring_ai(request)
+        except AIProviderError:
+            logger.warning(
+                "AI tailoring generation failed, falling back to heuristic", exc_info=True
+            )
+
     return generate_tailoring(request)

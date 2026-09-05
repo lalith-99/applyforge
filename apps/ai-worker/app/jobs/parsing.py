@@ -126,3 +126,21 @@ def parse_job_requirements(title: str, description: str) -> JobRequirements:
         else None,
         keywords=all_keywords,
     )
+
+
+def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
+    """Real LLM-backed JD requirement extraction. Raises AIProviderError
+    (see app/providers/openai_provider.py) on any failure — callers must
+    fall back to parse_job_requirements() above."""
+    from app.providers.openai_provider import structured_completion
+
+    system = (
+        "You are an expert technical recruiter. Extract structured requirements from this job posting "
+        "into the exact schema. Classify each skill as required or preferred using the language in the "
+        "post (e.g. 'must have'/'required' vs 'nice to have'/'preferred'/'bonus'). Only include skills "
+        "or requirements explicitly stated or clearly implied by the text — never invent requirements "
+        "not present in the posting. normalized_name should be the common/canonical form of the skill "
+        "name (e.g. 'JS' -> 'JavaScript')."
+    )
+    user = f"Job title: {title}\n\nJob description:\n{description}"
+    return structured_completion(system, user, JobRequirements)

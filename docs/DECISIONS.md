@@ -348,4 +348,55 @@ held throughout, rather than discovered ad hoc partway through:
 * No CI/CD pipeline changes in this pass beyond what already existed from Phase 0 (`.github/workflows/ci.yml`
   already runs lint/test/build for all three services; Phase 12 didn't add deployment automation).
 
+## Post-Phase-12 — Real OpenAI integration (supersedes Phases 2-7 decision 1)
+
+Once a real `OPENAI_API_KEY` became available locally, the "no real AI provider" scope decision from
+Phases 2-7 was revisited and implemented, exactly along the "future plug-in" path that decision anticipated.
+
+1. **`app/providers/openai_provider.py`** is the single integration point: `is_configured()` checks
+   `OPENAI_API_KEY` presence, and `structured_completion(...)` wraps `client.chat.completions.parse(...,
+   response_format=<PydanticModel>)` (OpenAI structured outputs), returning a validated Pydantic instance
+   directly — no manual JSON-schema authoring or manual `json.loads`/validation. Model is configurable via
+   `OPENAI_MODEL` (default `gpt-4o-mini`).
+2. **Each of the three heuristic modules got an `_ai` sibling function**, not a replacement:
+   `parse_resume_text_ai`, `parse_job_requirements_ai`, `generate_tailoring_ai` in the same three files
+   named in the original decision. The heuristic functions are untouched and still fully tested.
+3. **Route handlers try AI first, then fall back to the heuristic** — `if is_configured(): try: <ai
+   function> except AIProviderError: logger.warning(...)` then always falls through to the original
+   heuristic call. This means the app degrades gracefully (never 500s) if the key is unset, revoked,
+   rate-limited, or OpenAI has an outage, and every environment without a key behaves exactly as it did
+   before this change.
+4. **`TailoringSuggestion.section`, `.source`, `.risk_level` are typed as `Literal[...]` (not plain
+   `str`).** This was necessary, not cosmetic: a live test call showed the model returning
+   `risk_level: "low"` (lowercase) while the Go API's `tailoring_suggestions` table has a hard
+   `CHECK (risk_level IN ('LOW','MEDIUM','HIGH'))` constraint — a lowercase value would have caused a
+   500 on `POST` once persisted. Using `Literal` types makes OpenAI's structured-output constrained
+   decoding itself only emit the exact allowed tokens (schema-level guarantee, not a post-hoc string
+   check), and a defensive `field_validator` on `risk_level` additionally normalizes casing before the
+   `Literal` check as a second layer, in case a future model/version drifts.
+5. **API key is never hardcoded anywhere.** `docker-compose.yml`'s `ai-worker` service reads
+   `OPENAI_API_KEY: "${OPENAI_API_KEY:-}"` / `OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"` — sourced from
+   the shell environment (or an untracked `.env` file) at `docker compose up` time. `.env.example` documents
+   both variables with empty placeholder values alongside the older `AI_PROVIDER`/`AI_MODEL`/`AI_API_KEY`
+   placeholders (kept for reference, not currently read by any code path).
+6. **Verified live (not just mocked in tests):** with the real key wired into the running container, both
+   `/v1/tailoring/suggest` and `/v1/jobs/parse-requirements` returned genuinely AI-generated (non-templated)
+   output with zero fallback-warning log lines, confirming the AI path — not the heuristic fallback — is
+   what actually ran.
+
+### Remaining technical debt after this change
+
+* No `ai_usage` cost/latency/token logging yet (flagged as unbuilt back in Phase 2-7 remaining debt, still
+  true) — every real OpenAI call now has a genuine cost, so this is more important to add than before.
+* No retry/backoff on transient OpenAI errors (rate limits, timeouts) — a single failure falls straight
+  through to the heuristic for that one request rather than retrying.
+* No per-user or global rate limiting specifically on AI-backed endpoints (existing general API rate
+  limiting from Phase 11/12 still applies, but doesn't distinguish AI-cost-bearing requests).
+* `app/learning/` (Quick Prep, Defend Bullet, Learning Plan) still uses only heuristics/content-bank lookups
+  — deliberately out of scope for this pass, a natural follow-up now that the integration pattern exists.
+* Resume-parsing data-quality issues noted during manual QA (occasional garbled job titles, e.g. a date
+  fragment or the literal placeholder "Experience") and occasional truncated tailoring bullets were
+  observed with the heuristic path before this change; not yet re-verified against the AI path in
+  production usage.
+
 

@@ -194,3 +194,21 @@ def parse_resume_text(raw_text: str) -> ResumeProfile:
         education=education,
         certifications=certifications,
     )
+
+
+def parse_resume_text_ai(raw_text: str) -> ResumeProfile:
+    """Real LLM-backed resume parsing. Raises AIProviderError (see
+    app/providers/openai_provider.py) on any failure — callers must fall
+    back to parse_resume_text() above."""
+    from app.providers.openai_provider import structured_completion
+
+    system = (
+        "You are an expert resume parser. Extract structured information from the resume text into "
+        "the exact schema provided. Be strictly faithful to the source text: do not invent employers, "
+        "titles, dates, skills, or bullet content that isn't present. Preserve bullet wording closely, "
+        "only cleaning up obvious PDF-extraction artifacts (broken ligatures, stray whitespace). For each "
+        "experience, detected_skills should list only skills clearly evidenced by that experience's own "
+        "bullets, and technologies should list specific tools/technologies named in those bullets."
+    )
+    user = f"Resume text:\n\n{raw_text}"
+    return structured_completion(system, user, ResumeProfile)

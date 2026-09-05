@@ -6,11 +6,16 @@ Called by the Go API's background worker during resume upload processing
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from app.providers.openai_provider import AIProviderError, is_configured
 from app.resume.extraction import SUPPORTED_MIME_TYPES, UnsupportedResumeType, extract_text
 from app.resume.models import ExtractResponse, ParseRequest, ParseResponse
-from app.resume.parsing import parse_resume_text
+from app.resume.parsing import parse_resume_text, parse_resume_text_ai
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/resumes", tags=["resumes"])
 
@@ -34,5 +39,11 @@ async def extract(file: UploadFile) -> ExtractResponse:
 
 @router.post("/parse", response_model=ParseResponse)
 def parse(request: ParseRequest) -> ParseResponse:
+    if is_configured():
+        try:
+            return ParseResponse(profile=parse_resume_text_ai(request.raw_text))
+        except AIProviderError:
+            logger.warning("AI resume parsing failed, falling back to heuristic", exc_info=True)
+
     profile = parse_resume_text(request.raw_text)
     return ParseResponse(profile=profile)
