@@ -79,7 +79,21 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
-  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%');
+  AND (
+    $5::text = ''
+    OR location_text ILIKE '%' || $5 || '%'
+    OR city ILIKE '%' || $5 || '%'
+    OR state ILIKE '%' || $5 || '%'
+    OR country ILIKE '%' || $5 || '%'
+    OR (
+      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
+      AND (
+        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
+        OR
+        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
+      )
+    )
+  );
 
 -- name: ListJobs :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
@@ -92,7 +106,21 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
-  AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%')
+  AND (
+    $5::text = ''
+    OR location_text ILIKE '%' || $5 || '%'
+    OR city ILIKE '%' || $5 || '%'
+    OR state ILIKE '%' || $5 || '%'
+    OR country ILIKE '%' || $5 || '%'
+    OR (
+      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
+      AND (
+        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
+        OR
+        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
+      )
+    )
+  )
 ORDER BY
   CASE WHEN $6::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
   CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
