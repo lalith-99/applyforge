@@ -608,5 +608,45 @@ Verified: go build/vet/test + ai-worker ruff/pytest all green. Live: enqueued a 
 AI-synthesized summary (correct core skills, an accurate narrative summary reflecting real resume
 content) and a real embedding, end to end.
 
+## Phase G: hard-filter -> vector-retrieval -> deterministic-score funnel
+
+Ties the pre-existing deterministic scorer (`matching.Match`, already the "cheap deterministic
+score" stage) together with Phase E/F's embeddings. `SearchJobsByEmbedding` now takes the same hard
+-filter predicates as `ListJobs` (remote_type/employment_type/posted_after) in the SAME query as the
+cosine-distance ranking, so stages A and B happen in one round trip instead of two. New
+`matching.Service.Recommend(ctx, userID, limit)`: draws a generously-sized pool via semantic
+retrieval (the pool isn't the final cut - deterministic scoring is), scores each via the existing
+`Match()`, drops anything `!Eligibility.Eligible` (hard failures like excluded companies), sorts by
+`TotalScore`. No dedicated automated test for `Recommend()` itself - it depends on `Match()`, which
+depends on `jobrequirements`/`aiClient`, and this codebase's integration tests deliberately avoid
+live AI calls; verified via Phase I's worker instead (see below), which calls it directly.
+
+## Phase H: AI job-fit ranker
+
+A deterministic score can't judge things like "is this skill gap actually easy to close" the way an
+LLM given the right context can - this phase adds that judgment on top of (not instead of) Phase G's
+funnel.
+
+1. **New `internal/airank` package, deliberately separate from `matching`** - `matching`'s own doc
+   comment states scoring is never delegated to an LLM; `airank` is consciously a distinct, later
+   stage rather than blurring that boundary.
+2. **AI worker**: `POST /v1/candidates/rank-jobs` (`app/candidates/ranking.py`) takes a candidate
+   summary + a *batch* of jobs (not one call per job - the model can compare/prioritize across a
+   batch, and it's far cheaper) and returns fit_score/interview_probability_score/career_alignment/
+   skill_gap_severity/recommendation per job. Heuristic fallback is a simple threshold mapping off
+   the deterministic score - a reasonable default, not a real substitute for the model's judgment.
+3. **`airank.Service.Rank`** batches candidates in groups of 20, merges AI judgments back by job ID,
+   and sorts by `fit_score` - falling back to `Result.TotalScore` for any job whose batch's AI call
+   failed, so one transient AI failure never makes the whole ranked list disappear.
+4. **The AI can override the deterministic ranking** - a job with a lower `TotalScore` but an
+   easily-transferable gap can out-rank a higher-scored job with a fundamental mismatch, which is
+   the whole point of layering judgment on top of arithmetic. Verified via a unit test with a fake
+   AI response where the lower-deterministic-score job ranks first.
+
+Verified: go build/vet/test all green, including new `airank` unit tests (httptest-backed, no real
+network) covering batching, judgment merging, fit_score-driven reordering, and graceful fallback to
+`TotalScore` when the AI call fails.
+
+
 
 

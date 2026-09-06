@@ -1,4 +1,4 @@
-"""Candidate intelligence profile endpoint (Phase F)."""
+"""Candidate intelligence profile and job-fit ranking endpoints (Phases F/H)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import logging
 from fastapi import APIRouter
 
 from app.candidates.models import CandidateProfileRequest, CandidateProfileResponse
+from app.candidates.ranking import rank_jobs_ai, rank_jobs_heuristic
+from app.candidates.ranking_models import RankJobsRequest, RankJobsResponse
 from app.candidates.synthesis import synthesize_profile_ai, synthesize_profile_heuristic
 from app.providers.openai_provider import AIProviderError, is_configured
 
@@ -28,3 +30,18 @@ def build_profile(request: CandidateProfileRequest) -> CandidateProfileResponse:
 
     profile = synthesize_profile_heuristic(request)
     return CandidateProfileResponse(profile=profile)
+
+
+@router.post("/rank-jobs", response_model=RankJobsResponse)
+def rank_jobs(request: RankJobsRequest) -> RankJobsResponse:
+    if not request.jobs:
+        return RankJobsResponse(result=rank_jobs_heuristic(request))
+
+    if is_configured():
+        try:
+            result = rank_jobs_ai(request)
+            return RankJobsResponse(result=result)
+        except AIProviderError:
+            logger.warning("AI job ranking failed, falling back to heuristic", exc_info=True)
+
+    return RankJobsResponse(result=rank_jobs_heuristic(request))
