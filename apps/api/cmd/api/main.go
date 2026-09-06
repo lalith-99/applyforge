@@ -15,6 +15,7 @@ import (
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/account"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
+	"github.com/lalithlochan/applyforge/apps/api/internal/aiusage"
 	"github.com/lalithlochan/applyforge/apps/api/internal/analytics"
 	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
@@ -88,6 +89,10 @@ func run() error {
 	}
 
 	aiWorkerClient := aiclient.New(getenv("AI_WORKER_URL", "http://localhost:8000"))
+	aiUsageRepo := aiusage.NewRepository(db)
+	aiWorkerClient.SetUsageRecorder(func(ctx context.Context, operation string, latencyMS int64, status string, errMsg *string) {
+		aiUsageRepo.RecordAsync(ctx, aiusage.Entry{Operation: operation, Status: status, LatencyMS: latencyMS, ErrorMessage: errMsg})
+	})
 
 	skillsNormalizer, err := skills.NewNormalizer(ctx, db)
 	if err != nil {
@@ -104,7 +109,7 @@ func run() error {
 	jobsRepo := jobs.NewRepository(db)
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
-	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient)
+	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
 	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService)
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)

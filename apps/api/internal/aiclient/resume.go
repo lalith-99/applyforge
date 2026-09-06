@@ -18,8 +18,9 @@ import (
 
 // Client calls the AI worker's HTTP API.
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL       string
+	http          *http.Client
+	usageRecorder UsageRecorder
 }
 
 // New builds a Client pointed at the given AI worker base URL.
@@ -61,7 +62,9 @@ type ResumeProfile struct {
 }
 
 // ExtractResumeText uploads a resume file and returns its selectable text.
-func (c *Client) ExtractResumeText(ctx context.Context, filename, mimeType string, fileBytes []byte) (string, error) {
+func (c *Client) ExtractResumeText(ctx context.Context, filename, mimeType string, fileBytes []byte) (out string, err error) {
+	defer c.track(ctx, "extract_resume_text")(&err)
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -95,45 +98,22 @@ func (c *Client) ExtractResumeText(ctx context.Context, filename, mimeType strin
 		return "", fmt.Errorf("ai-worker extract failed: %s: %s", resp.Status, readBody(resp.Body))
 	}
 
-	var out struct {
+	var decoded struct {
 		RawText string `json:"raw_text"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
 		return "", err
 	}
-	return out.RawText, nil
+	return decoded.RawText, nil
 }
 
 // ParseResume sends extracted resume text and returns a structured profile.
 func (c *Client) ParseResume(ctx context.Context, rawText string) (ResumeProfile, error) {
-	reqBody, err := json.Marshal(map[string]string{"raw_text": rawText})
-	if err != nil {
-		return ResumeProfile{}, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/resumes/parse", bytes.NewReader(reqBody))
-	if err != nil {
-		return ResumeProfile{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return ResumeProfile{}, fmt.Errorf("call ai-worker parse: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return ResumeProfile{}, fmt.Errorf("ai-worker parse failed: %s: %s", resp.Status, readBody(resp.Body))
-	}
-
 	var out struct {
 		Profile ResumeProfile `json:"profile"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return ResumeProfile{}, err
-	}
-	return out.Profile, nil
+	err := c.postJSON(ctx, "parse_resume", "/v1/resumes/parse", map[string]string{"raw_text": rawText}, &out)
+	return out.Profile, err
 }
 
 func readBody(r io.Reader) string {

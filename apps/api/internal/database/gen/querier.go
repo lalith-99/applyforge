@@ -82,6 +82,7 @@ type Querier interface {
 	MarkResumeFailed(ctx context.Context, arg MarkResumeFailedParams) error
 	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
 	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
+	RecordAIUsage(ctx context.Context, arg RecordAIUsageParams) error
 	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error
 	SetResumeVersionDocuments(ctx context.Context, arg SetResumeVersionDocumentsParams) (ResumeVersion, error)
 	TouchJobSource(ctx context.Context, arg TouchJobSourceParams) error

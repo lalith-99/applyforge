@@ -10,7 +10,9 @@ import (
 
 // generateDocument posts a ResumeProfile and returns the raw rendered
 // document bytes (PDF or DOCX depending on path).
-func (c *Client) generateDocument(ctx context.Context, path string, profile ResumeProfile) ([]byte, error) {
+func (c *Client) generateDocument(ctx context.Context, operation, path string, profile ResumeProfile) (out []byte, err error) {
+	defer c.track(ctx, operation)(&err)
+
 	reqBody, err := json.Marshal(profile)
 	if err != nil {
 		return nil, err
@@ -41,10 +43,10 @@ func (c *Client) generateDocument(ctx context.Context, path string, profile Resu
 
 // GeneratePDF renders a resume profile to PDF bytes.
 func (c *Client) GeneratePDF(ctx context.Context, profile ResumeProfile) ([]byte, error) {
-	return c.generateDocument(ctx, "/v1/documents/pdf", profile)
+	return c.generateDocument(ctx, "generate_pdf", "/v1/documents/pdf", profile)
 }
 
 // GenerateDOCX renders a resume profile to DOCX bytes.
 func (c *Client) GenerateDOCX(ctx context.Context, profile ResumeProfile) ([]byte, error) {
-	return c.generateDocument(ctx, "/v1/documents/docx", profile)
+	return c.generateDocument(ctx, "generate_docx", "/v1/documents/docx", profile)
 }

@@ -8,6 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AiUsage struct {
+	ID           pgtype.UUID        `json:"id"`
+	Operation    string             `json:"operation"`
+	Status       string             `json:"status"`
+	LatencyMs    int32              `json:"latency_ms"`
+	CacheHit     bool               `json:"cache_hit"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type Application struct {
 	ID              pgtype.UUID        `json:"id"`
 	UserID          pgtype.UUID        `json:"user_id"`

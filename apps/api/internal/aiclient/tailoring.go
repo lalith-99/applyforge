@@ -1,11 +1,7 @@
 package aiclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 )
 
 // TailoringExperience mirrors app/tailoring/models.py ExperienceInput.
@@ -62,30 +58,7 @@ type TailoringResponse struct {
 
 // SuggestTailoring requests resume tailoring suggestions for a job.
 func (c *Client) SuggestTailoring(ctx context.Context, req TailoringRequest) (TailoringResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return TailoringResponse{}, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/tailoring/suggest", bytes.NewReader(body))
-	if err != nil {
-		return TailoringResponse{}, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return TailoringResponse{}, fmt.Errorf("call ai-worker tailoring/suggest: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return TailoringResponse{}, fmt.Errorf("ai-worker tailoring/suggest failed: %s: %s", resp.Status, readBody(resp.Body))
-	}
-
 	var out TailoringResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return TailoringResponse{}, err
-	}
-	return out, nil
+	err := c.postJSON(ctx, "suggest_tailoring", "/v1/tailoring/suggest", req, &out)
+	return out, err
 }

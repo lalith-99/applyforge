@@ -35,7 +35,7 @@ func (c *Client) GenerateQuickPrep(ctx context.Context, skill string, transferab
 		transferableFrom = []string{}
 	}
 	var out QuickPrepModule
-	err := c.postJSON(ctx, "/v1/learning/quick-prep", map[string]any{
+	err := c.postJSON(ctx, "generate_quick_prep", "/v1/learning/quick-prep", map[string]any{
 		"skill":             skill,
 		"transferable_from": transferableFrom,
 	}, &out)
@@ -53,7 +53,7 @@ func (c *Client) DefendBullet(ctx context.Context, bulletText string, skills []s
 		skills = []string{}
 	}
 	var out DefendBulletResponse
-	err := c.postJSON(ctx, "/v1/learning/defend-bullet", map[string]any{
+	err := c.postJSON(ctx, "defend_bullet", "/v1/learning/defend-bullet", map[string]any{
 		"bullet_text": bulletText,
 		"skills":      skills,
 	}, &out)
@@ -78,7 +78,7 @@ func (c *Client) GenerateLearningPlan(ctx context.Context, jobTitle string, miss
 		missingSkills = []string{}
 	}
 	var out LearningPlanResult
-	err := c.postJSON(ctx, "/v1/learning/learning-plan", map[string]any{
+	err := c.postJSON(ctx, "generate_learning_plan", "/v1/learning/learning-plan", map[string]any{
 		"job_title":         jobTitle,
 		"missing_skills":    missingSkills,
 		"current_readiness": currentReadiness,
@@ -87,8 +87,11 @@ func (c *Client) GenerateLearningPlan(ctx context.Context, jobTitle string, miss
 	return out, err
 }
 
-// postJSON is a small shared helper for the simple JSON-in/JSON-out learning endpoints.
-func (c *Client) postJSON(ctx context.Context, path string, body any, out any) error {
+// postJSON is a small shared helper for simple JSON-in/JSON-out AI-worker
+// endpoints; operation is recorded via the usage recorder (see usage.go).
+func (c *Client) postJSON(ctx context.Context, operation, path string, body any, out any) (err error) {
+	defer c.track(ctx, operation)(&err)
+
 	reqBody, err := json.Marshal(body)
 	if err != nil {
 		return err
