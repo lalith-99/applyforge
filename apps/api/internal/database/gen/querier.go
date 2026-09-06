@@ -113,6 +113,7 @@ type Querier interface {
 	SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error
 	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error
 	SetResumeVersionDocuments(ctx context.Context, arg SetResumeVersionDocumentsParams) (ResumeVersion, error)
+	SetTailoringRunCritic(ctx context.Context, arg SetTailoringRunCriticParams) error
 	TouchJobSource(ctx context.Context, arg TouchJobSourceParams) error
 	TouchSession(ctx context.Context, id pgtype.UUID) error
 	UpdateApplicationNotes(ctx context.Context, arg UpdateApplicationNotesParams) (Application, error)
@@ -120,6 +121,10 @@ type Querier interface {
 	UpdateCandidateProfileEmbedding(ctx context.Context, arg UpdateCandidateProfileEmbeddingParams) error
 	UpdateCandidateSkillStatus(ctx context.Context, arg UpdateCandidateSkillStatusParams) (CandidateSkill, error)
 	UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbeddingParams) error
+	// Advances the run through intermediate stages (WRITING/EVALUATING/
+	// REVISING) for a polling UI - CompleteTailoringRun/FailTailoringRun handle
+	// the two terminal states.
+	UpdateTailoringRunStatus(ctx context.Context, arg UpdateTailoringRunStatusParams) error
 	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error)
 	UpsertApplicationAnswers(ctx context.Context, arg UpsertApplicationAnswersParams) (ApplicationAnswer, error)
 	UpsertCandidateSkill(ctx context.Context, arg UpsertCandidateSkillParams) (CandidateSkill, error)

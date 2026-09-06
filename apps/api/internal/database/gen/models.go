@@ -362,6 +362,8 @@ type TailoringRun struct {
 	AlignmentScoreAfter  pgtype.Int4        `json:"alignment_score_after"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
+	CriticResult         []byte             `json:"critic_result"`
+	RevisionCount        int32              `json:"revision_count"`
 }
 
 type TailoringSuggestion struct {

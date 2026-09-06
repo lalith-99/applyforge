@@ -35,6 +35,20 @@ const (
 	StatusRejected = "REJECTED"
 )
 
+// Run statuses (mirrors the tailoring_runs.status check constraint). A run
+// starts PENDING (queued for a background worker - see Phase J/K), then
+// moves through WRITING/EVALUATING/REVISING before a terminal COMPLETED or
+// FAILED, so a polling UI can show real progress for what may now take a
+// couple of AI calls.
+const (
+	RunStatusPending    = "PENDING"
+	RunStatusWriting    = "WRITING"
+	RunStatusEvaluating = "EVALUATING"
+	RunStatusRevising   = "REVISING"
+	RunStatusCompleted  = "COMPLETED"
+	RunStatusFailed     = "FAILED"
+)
+
 // Run is the domain representation of a tailoring run.
 type Run struct {
 	ID                   uuid.UUID
@@ -46,6 +60,8 @@ type Run struct {
 	SummarySuggestion    json.RawMessage
 	AlignmentScoreBefore *int32
 	AlignmentScoreAfter  *int32
+	CriticResult         json.RawMessage
+	RevisionCount        int32
 	CreatedAt            time.Time
 	CompletedAt          *time.Time
 }
@@ -61,6 +77,8 @@ func runFromRow(row db.TailoringRun) Run {
 		SummarySuggestion:    row.SummarySuggestion,
 		AlignmentScoreBefore: database.Int4OrNil(row.AlignmentScoreBefore),
 		AlignmentScoreAfter:  database.Int4OrNil(row.AlignmentScoreAfter),
+		CriticResult:         row.CriticResult,
+		RevisionCount:        row.RevisionCount,
 		CreatedAt:            row.CreatedAt.Time,
 		CompletedAt:          database.TimeOrNil(row.CompletedAt),
 	}
@@ -147,9 +165,42 @@ func (r *Repository) FailRun(ctx context.Context, runID uuid.UUID) error {
 	return r.q.FailTailoringRun(ctx, database.UUIDToPG(runID))
 }
 
+// UpdateStatus advances a run through an intermediate stage (WRITING/
+// EVALUATING/REVISING) for a polling UI.
+func (r *Repository) UpdateStatus(ctx context.Context, runID uuid.UUID, status string) error {
+	return r.q.UpdateTailoringRunStatus(ctx, db.UpdateTailoringRunStatusParams{
+		ID:     database.UUIDToPG(runID),
+		Status: status,
+	})
+}
+
+// SetCritic stores the AI critic's evaluation and how many revision passes
+// have run so far (Phase K).
+func (r *Repository) SetCritic(ctx context.Context, runID uuid.UUID, criticResult json.RawMessage, revisionCount int32) error {
+	return r.q.SetTailoringRunCritic(ctx, db.SetTailoringRunCriticParams{
+		ID:            database.UUIDToPG(runID),
+		CriticResult:  criticResult,
+		RevisionCount: revisionCount,
+	})
+}
+
 // GetRunForUser returns a tailoring run owned by the given user.
 func (r *Repository) GetRunForUser(ctx context.Context, runID, userID uuid.UUID) (Run, error) {
 	row, err := r.q.GetTailoringRunForUser(ctx, db.GetTailoringRunForUserParams{ID: database.UUIDToPG(runID), UserID: database.UUIDToPG(userID)})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Run{}, ErrNotFound
+		}
+		return Run{}, err
+	}
+	return runFromRow(row), nil
+}
+
+// GetRun returns a tailoring run regardless of owner (used by the async
+// background worker, which is dispatched by run ID rather than a request
+// scoped to a specific user).
+func (r *Repository) GetRun(ctx context.Context, runID uuid.UUID) (Run, error) {
+	row, err := r.q.GetTailoringRun(ctx, database.UUIDToPG(runID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Run{}, ErrNotFound

@@ -692,3 +692,46 @@ sensible reasoning, confirming Phases G, H, and I work together correctly end-to
 
 
 
+
+## Phase J/K: async multi-pass resume tailoring + AI critic/revision loop
+
+1. **Extended, not replaced, `tailoring_runs.status`.** The CHECK constraint already had
+   `PENDING/COMPLETED/FAILED` from the original synchronous design; migration
+   `00034_tailoring_async_critic.sql` widens it to add `WRITING/EVALUATING/REVISING`, plus new
+   `critic_result JSONB` and `revision_count INTEGER NOT NULL DEFAULT 0` columns.
+2. **Reused the existing `GET /tailoring/{id}` handler as the polling endpoint** — it already
+   re-fetches the run + suggestions fresh on every call, so no new polling API was needed; the
+   frontend just needs to keep polling until `status` reaches `COMPLETED`/`FAILED`.
+3. **`Tailor()` split into `CreateQueuedRun` (fast, synchronous, no AI call — just validates and
+   inserts a PENDING row) + `ProcessRun` (the actual async worker body).** `handleTailor` now
+   enqueues a `process_tailoring_run` background job and returns `202 Accepted` immediately instead
+   of blocking on the AI call chain. `Tailor()` itself is kept as a thin synchronous wrapper
+   (`CreateQueuedRun` + `ProcessRun`) for tests/manual use — no other code path calls it directly.
+4. **Critic loop is capped at one revision** (`maxRevisions = 1`). `ProcessRun`: WRITING (suggest) →
+   EVALUATING (critique) → if `recommend_regeneration && revisionCount < maxRevisions`: REVISING →
+   WRITING again (critic feedback appended to the `Responsibilities` field sent to the AI, prefixed
+   `"CRITIC FEEDBACK FROM PREVIOUS DRAFT (address this): "`) → EVALUATING again → store final
+   `critic_result`/`revision_count` via `SetCritic` → persist suggestions → compute
+   `alignmentAfter` → `CompleteRun`. Bounded to 1 revision to keep cost/latency predictable per the
+   session's established AI-cost-safety principle.
+5. **Critic AI-worker endpoint (`POST /v1/tailoring/critique`)** follows the same
+   AI-then-heuristic-fallback pattern as every other ai-worker endpoint this session
+   (`critique_heuristic` is deliberately conservative: never flags unsupported claims, never
+   recommends regeneration, only computes missing keywords — so a critic-service outage degrades to
+   "no revision, ship what we have" rather than blocking the pipeline).
+
+### Live verification
+
+Created a real `tailoring_runs` row (GROWTH mode) for an existing user/resume/job, enqueued
+`process_tailoring_run` directly, and polled `tailoring_runs.status` every few seconds. Observed the
+full intended transition: `PENDING → WRITING → EVALUATING → REVISING → WRITING → EVALUATING →
+COMPLETED`, with `revision_count = 1` — the critic genuinely triggered a real second pass
+(`recommend_regeneration: true`, missing keywords like "Java"/"C/C++"/"Leadership", ATS score 90).
+Final `tailoring_suggestions` rows reflected the revised draft. Confirms Phases J and K work
+end-to-end against real OpenAI calls, not just in isolation.
+
+Verified: `go build/vet/test ./...` all green (including pre-existing `internal/tailoring` tests,
+confirming the `Tailor()`→`CreateQueuedRun`/`ProcessRun` refactor didn't break anything). Both `api`
+and `ai-worker` containers rebuilt together per the Phase I lesson.
+
+**All 12 phases (A-L) of the original architecture overhaul are now complete.**

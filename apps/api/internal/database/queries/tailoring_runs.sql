@@ -9,6 +9,15 @@ SET status = 'COMPLETED', summary_suggestion = $2, keyword_coverage = $3, alignm
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateTailoringRunStatus :exec
+-- Advances the run through intermediate stages (WRITING/EVALUATING/
+-- REVISING) for a polling UI - CompleteTailoringRun/FailTailoringRun handle
+-- the two terminal states.
+UPDATE tailoring_runs SET status = $2 WHERE id = $1;
+
+-- name: SetTailoringRunCritic :exec
+UPDATE tailoring_runs SET critic_result = $2, revision_count = $3 WHERE id = $1;
+
 -- name: FailTailoringRun :exec
 UPDATE tailoring_runs SET status = 'FAILED', completed_at = now() WHERE id = $1;
 

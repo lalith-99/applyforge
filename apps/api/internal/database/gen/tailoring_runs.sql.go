@@ -15,7 +15,7 @@ const completeTailoringRun = `-- name: CompleteTailoringRun :one
 UPDATE tailoring_runs
 SET status = 'COMPLETED', summary_suggestion = $2, keyword_coverage = $3, alignment_score_after = $4, completed_at = now()
 WHERE id = $1
-RETURNING id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at
+RETURNING id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at, critic_result, revision_count
 `
 
 type CompleteTailoringRunParams struct {
@@ -46,6 +46,8 @@ func (q *Queries) CompleteTailoringRun(ctx context.Context, arg CompleteTailorin
 		&i.AlignmentScoreAfter,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CriticResult,
+		&i.RevisionCount,
 	)
 	return i, err
 }
@@ -53,7 +55,7 @@ func (q *Queries) CompleteTailoringRun(ctx context.Context, arg CompleteTailorin
 const createTailoringRun = `-- name: CreateTailoringRun :one
 INSERT INTO tailoring_runs (user_id, job_id, resume_id, mode, alignment_score_before)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at
+RETURNING id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at, critic_result, revision_count
 `
 
 type CreateTailoringRunParams struct {
@@ -86,6 +88,8 @@ func (q *Queries) CreateTailoringRun(ctx context.Context, arg CreateTailoringRun
 		&i.AlignmentScoreAfter,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CriticResult,
+		&i.RevisionCount,
 	)
 	return i, err
 }
@@ -100,7 +104,7 @@ func (q *Queries) FailTailoringRun(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getTailoringRun = `-- name: GetTailoringRun :one
-SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at FROM tailoring_runs WHERE id = $1
+SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at, critic_result, revision_count FROM tailoring_runs WHERE id = $1
 `
 
 func (q *Queries) GetTailoringRun(ctx context.Context, id pgtype.UUID) (TailoringRun, error) {
@@ -119,12 +123,14 @@ func (q *Queries) GetTailoringRun(ctx context.Context, id pgtype.UUID) (Tailorin
 		&i.AlignmentScoreAfter,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CriticResult,
+		&i.RevisionCount,
 	)
 	return i, err
 }
 
 const getTailoringRunForUser = `-- name: GetTailoringRunForUser :one
-SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at FROM tailoring_runs WHERE id = $1 AND user_id = $2
+SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at, critic_result, revision_count FROM tailoring_runs WHERE id = $1 AND user_id = $2
 `
 
 type GetTailoringRunForUserParams struct {
@@ -148,12 +154,14 @@ func (q *Queries) GetTailoringRunForUser(ctx context.Context, arg GetTailoringRu
 		&i.AlignmentScoreAfter,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CriticResult,
+		&i.RevisionCount,
 	)
 	return i, err
 }
 
 const listTailoringRunsForJob = `-- name: ListTailoringRunsForJob :many
-SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at FROM tailoring_runs WHERE user_id = $1 AND job_id = $2 ORDER BY created_at DESC
+SELECT id, user_id, job_id, resume_id, mode, status, summary_suggestion, keyword_coverage, alignment_score_before, alignment_score_after, created_at, completed_at, critic_result, revision_count FROM tailoring_runs WHERE user_id = $1 AND job_id = $2 ORDER BY created_at DESC
 `
 
 type ListTailoringRunsForJobParams struct {
@@ -183,6 +191,8 @@ func (q *Queries) ListTailoringRunsForJob(ctx context.Context, arg ListTailoring
 			&i.AlignmentScoreAfter,
 			&i.CreatedAt,
 			&i.CompletedAt,
+			&i.CriticResult,
+			&i.RevisionCount,
 		); err != nil {
 			return nil, err
 		}
@@ -192,4 +202,36 @@ func (q *Queries) ListTailoringRunsForJob(ctx context.Context, arg ListTailoring
 		return nil, err
 	}
 	return items, nil
+}
+
+const setTailoringRunCritic = `-- name: SetTailoringRunCritic :exec
+UPDATE tailoring_runs SET critic_result = $2, revision_count = $3 WHERE id = $1
+`
+
+type SetTailoringRunCriticParams struct {
+	ID            pgtype.UUID `json:"id"`
+	CriticResult  []byte      `json:"critic_result"`
+	RevisionCount int32       `json:"revision_count"`
+}
+
+func (q *Queries) SetTailoringRunCritic(ctx context.Context, arg SetTailoringRunCriticParams) error {
+	_, err := q.db.Exec(ctx, setTailoringRunCritic, arg.ID, arg.CriticResult, arg.RevisionCount)
+	return err
+}
+
+const updateTailoringRunStatus = `-- name: UpdateTailoringRunStatus :exec
+UPDATE tailoring_runs SET status = $2 WHERE id = $1
+`
+
+type UpdateTailoringRunStatusParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Status string      `json:"status"`
+}
+
+// Advances the run through intermediate stages (WRITING/EVALUATING/
+// REVISING) for a polling UI - CompleteTailoringRun/FailTailoringRun handle
+// the two terminal states.
+func (q *Queries) UpdateTailoringRunStatus(ctx context.Context, arg UpdateTailoringRunStatusParams) error {
+	_, err := q.db.Exec(ctx, updateTailoringRunStatus, arg.ID, arg.Status)
+	return err
 }

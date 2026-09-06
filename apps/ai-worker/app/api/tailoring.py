@@ -12,6 +12,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.providers.openai_provider import AIProviderError, is_configured
+from app.tailoring.critic import critique_ai, critique_heuristic
+from app.tailoring.critic_models import CritiqueRequest, CritiqueResponse
 from app.tailoring.heuristics import generate_tailoring, generate_tailoring_ai
 from app.tailoring.models import TAILORING_MODES, TailoringRequest, TailoringResponse
 
@@ -34,3 +36,14 @@ def suggest(request: TailoringRequest) -> TailoringResponse:
             )
 
     return generate_tailoring(request)
+
+
+@router.post("/critique", response_model=CritiqueResponse)
+def critique(request: CritiqueRequest) -> CritiqueResponse:
+    if is_configured():
+        try:
+            return CritiqueResponse(result=critique_ai(request))
+        except AIProviderError:
+            logger.warning("AI tailoring critique failed, falling back to heuristic", exc_info=True)
+
+    return CritiqueResponse(result=critique_heuristic(request))

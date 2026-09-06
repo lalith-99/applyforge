@@ -8,18 +8,20 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
+	"github.com/lalithlochan/applyforge/apps/api/internal/background"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
 )
 
 // Handlers wires the tailoring Service/Repository to HTTP routes.
 type Handlers struct {
-	svc  *Service
-	repo *Repository
+	svc   *Service
+	repo  *Repository
+	queue *background.Queue
 }
 
 // NewHandlers builds tailoring Handlers.
-func NewHandlers(svc *Service, repo *Repository) *Handlers {
-	return &Handlers{svc: svc, repo: repo}
+func NewHandlers(svc *Service, repo *Repository, queue *background.Queue) *Handlers {
+	return &Handlers{svc: svc, repo: repo, queue: queue}
 }
 
 // Mount registers tailoring routes onto r. Callers must apply
@@ -68,12 +70,16 @@ func (h *Handlers) handleTailor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, suggestions, err := h.svc.Tailor(r.Context(), u.ID, jobID, resumeID, mode)
+	run, err := h.svc.CreateQueuedRun(r.Context(), u.ID, jobID, resumeID, mode)
 	if err != nil {
-		httpx.WriteError(w, http.StatusBadGateway, "could not tailor resume")
+		httpx.WriteError(w, http.StatusBadGateway, "could not start tailoring run")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusCreated, toRunDetail(run, suggestions))
+	if err := h.queue.Enqueue(r.Context(), JobTypeProcess, ProcessPayload{RunID: run.ID.String()}, 3); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not queue tailoring run")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, toRunDetail(run, nil))
 }
 
 func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {

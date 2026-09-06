@@ -41,29 +41,99 @@ func NewService(repo *Repository, resumes *resume.Repository, candidateSkillsRep
 	}
 }
 
-// Tailor runs a full tailoring pass for a user's resume against a job.
+// Tailor runs a full tailoring pass for a user's resume against a job,
+// synchronously. Kept for tests/manual use; the HTTP handler uses the async
+// CreateQueuedRun + ProcessRun split instead (Phase J), since generation
+// (plus Phase K's critique/revision pass) can take a while and the user
+// explicitly doesn't need it to block the request.
 func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID, mode string) (Run, []Suggestion, error) {
-	job, err := s.jobsRepo.GetByID(ctx, jobID)
+	run, err := s.CreateQueuedRun(ctx, userID, jobID, resumeID, mode)
 	if err != nil {
 		return Run{}, nil, err
+	}
+	if err := s.ProcessRun(ctx, run.ID); err != nil {
+		return Run{}, nil, err
+	}
+	completed, err := s.repo.GetRun(ctx, run.ID)
+	if err != nil {
+		return Run{}, nil, err
+	}
+	suggestions, err := s.repo.ListSuggestions(ctx, run.ID)
+	if err != nil {
+		return Run{}, nil, err
+	}
+	return completed, suggestions, nil
+}
+
+// CreateQueuedRun gathers just enough data to record the before-tailoring
+// alignment score and create a PENDING run - no AI generation call happens
+// here, so this is fast and safe to call synchronously from an HTTP handler.
+func (s *Service) CreateQueuedRun(ctx context.Context, userID, jobID, resumeID uuid.UUID, mode string) (Run, error) {
+	job, err := s.jobsRepo.GetByID(ctx, jobID)
+	if err != nil {
+		return Run{}, err
 	}
 	reqs, err := s.requirementsSvc.GetOrParse(ctx, job.ID, job.Title, job.Description, job.ContentHash)
 	if err != nil {
-		return Run{}, nil, err
-	}
-
-	res, err := s.resumes.Get(ctx, resumeID, userID)
-	if err != nil {
-		return Run{}, nil, err
-	}
-	experiences, err := s.resumes.ListExperiences(ctx, resumeID)
-	if err != nil {
-		return Run{}, nil, err
+		return Run{}, err
 	}
 
 	skills, err := s.candidateSkills.ListForUser(ctx, userID)
 	if err != nil {
-		return Run{}, nil, err
+		return Run{}, err
+	}
+	skillSet := make(map[string]bool, len(skills))
+	for _, sk := range skills {
+		skillSet[strings.ToLower(sk.NormalizedName)] = true
+	}
+
+	requiredNames := skillRequirementNames(reqs.RequiredSkills)
+	preferredNames := skillRequirementNames(reqs.PreferredSkills)
+	alignmentBefore := ComputeAlignment(skillSet, requiredNames, preferredNames, reqs.Responsibilities)
+
+	return s.repo.CreateRun(ctx, userID, jobID, resumeID, mode, int32(alignmentBefore))
+}
+
+// maxRevisions bounds Phase K's critique-driven regeneration loop - one
+// revision pass is enough to meaningfully improve a flagged first draft
+// without unbounded AI cost/latency if the critic keeps objecting.
+const maxRevisions = 1
+
+// ProcessRun runs the async multi-pass pipeline for an already-created
+// PENDING run (Phase J: generation; Phase K: AI critique + bounded
+// revision), called by a background worker. Advances Run.Status through
+// WRITING -> EVALUATING -> (REVISING -> WRITING -> EVALUATING once, if the
+// critic recommends it) -> COMPLETED, or FAILED on error.
+func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
+	run, err := s.repo.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+
+	job, err := s.jobsRepo.GetByID(ctx, run.JobID)
+	if err != nil {
+		_ = s.repo.FailRun(ctx, runID)
+		return err
+	}
+	reqs, err := s.requirementsSvc.GetOrParse(ctx, job.ID, job.Title, job.Description, job.ContentHash)
+	if err != nil {
+		_ = s.repo.FailRun(ctx, runID)
+		return err
+	}
+	res, err := s.resumes.Get(ctx, run.ResumeID, run.UserID)
+	if err != nil {
+		_ = s.repo.FailRun(ctx, runID)
+		return err
+	}
+	experiences, err := s.resumes.ListExperiences(ctx, run.ResumeID)
+	if err != nil {
+		_ = s.repo.FailRun(ctx, runID)
+		return err
+	}
+	skills, err := s.candidateSkills.ListForUser(ctx, run.UserID)
+	if err != nil {
+		_ = s.repo.FailRun(ctx, runID)
+		return err
 	}
 
 	skillSet := make(map[string]bool, len(skills))
@@ -78,18 +148,12 @@ func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID,
 
 	transferable, err := s.matchingRepo.ListTransferableFromSkills(ctx, skillKeys)
 	if err != nil {
-		return Run{}, nil, err
+		_ = s.repo.FailRun(ctx, runID)
+		return err
 	}
 
 	requiredNames := skillRequirementNames(reqs.RequiredSkills)
 	preferredNames := skillRequirementNames(reqs.PreferredSkills)
-
-	alignmentBefore := ComputeAlignment(skillSet, requiredNames, preferredNames, reqs.Responsibilities)
-
-	run, err := s.repo.CreateRun(ctx, userID, jobID, resumeID, mode, int32(alignmentBefore))
-	if err != nil {
-		return Run{}, nil, err
-	}
 
 	var masterSummary *string
 	var parsedProfile struct {
@@ -101,8 +165,8 @@ func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID,
 		}
 	}
 
-	aiReq := aiclient.TailoringRequest{
-		Mode:                mode,
+	baseReq := aiclient.TailoringRequest{
+		Mode:                run.Mode,
 		JobTitle:            job.Title,
 		MasterSkills:        masterSkills,
 		MasterSummary:       masterSummary,
@@ -113,28 +177,64 @@ func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID,
 		TransferableMatches: toAITransferable(transferable),
 	}
 
-	aiResp, err := s.aiClient.SuggestTailoring(ctx, aiReq)
+	if err := s.repo.UpdateStatus(ctx, runID, RunStatusWriting); err != nil {
+		return err
+	}
+	aiResp, err := s.aiClient.SuggestTailoring(ctx, baseReq)
 	if err != nil {
-		_ = s.repo.FailRun(ctx, run.ID)
-		return Run{}, nil, err
+		_ = s.repo.FailRun(ctx, runID)
+		return err
+	}
+
+	if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
+		return err
+	}
+	critic, criticErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, aiResp))
+
+	revisionCount := int32(0)
+	if criticErr == nil && critic.RecommendRegeneration && revisionCount < maxRevisions {
+		if err := s.repo.UpdateStatus(ctx, runID, RunStatusRevising); err != nil {
+			return err
+		}
+		revisedReq := baseReq
+		revisedReq.Responsibilities = append(append([]string{}, reqs.Responsibilities...),
+			"CRITIC FEEDBACK FROM PREVIOUS DRAFT (address this): "+critic.Feedback)
+
+		if err := s.repo.UpdateStatus(ctx, runID, RunStatusWriting); err != nil {
+			return err
+		}
+		if revisedResp, revErr := s.aiClient.SuggestTailoring(ctx, revisedReq); revErr == nil {
+			aiResp = revisedResp
+			revisionCount = 1
+
+			if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
+				return err
+			}
+			if reCritic, reErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, aiResp)); reErr == nil {
+				critic = reCritic
+			}
+		}
+	}
+
+	if criticErr == nil {
+		if criticJSON, err := json.Marshal(critic); err == nil {
+			_ = s.repo.SetCritic(ctx, runID, criticJSON, revisionCount)
+		}
 	}
 
 	var suggestions []Suggestion
 	if aiResp.SummarySuggestion != nil {
-		created, err := s.repo.AddSuggestion(ctx, run.ID, fromAISuggestion(*aiResp.SummarySuggestion))
-		if err == nil {
+		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(*aiResp.SummarySuggestion)); err == nil {
 			suggestions = append(suggestions, created)
 		}
 	}
 	for _, sg := range aiResp.SkillSuggestions {
-		created, err := s.repo.AddSuggestion(ctx, run.ID, fromAISuggestion(sg))
-		if err == nil {
+		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(sg)); err == nil {
 			suggestions = append(suggestions, created)
 		}
 	}
 	for _, sg := range aiResp.ExperienceSuggestions {
-		created, err := s.repo.AddSuggestion(ctx, run.ID, fromAISuggestion(sg))
-		if err == nil {
+		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(sg)); err == nil {
 			suggestions = append(suggestions, created)
 		}
 	}
@@ -159,12 +259,39 @@ func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID,
 		"after":  aiResp.KeywordCoverageAfter,
 	})
 
-	completedRun, err := s.repo.CompleteRun(ctx, run.ID, summaryJSON, coverageJSON, int32(alignmentAfter))
-	if err != nil {
-		return Run{}, nil, err
-	}
+	_, err = s.repo.CompleteRun(ctx, runID, summaryJSON, coverageJSON, int32(alignmentAfter))
+	return err
+}
 
-	return completedRun, suggestions, nil
+func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, requiredNames, preferredNames []string, aiResp aiclient.TailoringResponse) aiclient.CritiqueRequest {
+	all := make([]aiclient.CritiqueSuggestion, 0, len(aiResp.SkillSuggestions)+len(aiResp.ExperienceSuggestions)+1)
+	if aiResp.SummarySuggestion != nil {
+		all = append(all, toCritiqueSuggestion(*aiResp.SummarySuggestion))
+	}
+	for _, sg := range aiResp.SkillSuggestions {
+		all = append(all, toCritiqueSuggestion(sg))
+	}
+	for _, sg := range aiResp.ExperienceSuggestions {
+		all = append(all, toCritiqueSuggestion(sg))
+	}
+	return aiclient.CritiqueRequest{
+		JobTitle:            jobTitle,
+		MasterResumeSummary: masterSummary,
+		MasterSkills:        masterSkills,
+		RequiredSkills:      requiredNames,
+		PreferredSkills:     preferredNames,
+		Suggestions:         all,
+	}
+}
+
+func toCritiqueSuggestion(s aiclient.TailoringSuggestion) aiclient.CritiqueSuggestion {
+	return aiclient.CritiqueSuggestion{
+		Section:       s.Section,
+		SuggestedText: s.SuggestedText,
+		SkillsAdded:   s.SkillsAdded,
+		Source:        s.Source,
+		RiskLevel:     s.RiskLevel,
+	}
 }
 
 func skillRequirementNames(reqs []aiclient.SkillRequirement) []string {

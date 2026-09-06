@@ -144,6 +144,11 @@ func run() error {
 		}
 	})
 
+	tailoringRepo := tailoring.NewRepository(db)
+	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
+	tailoringHandlers := tailoring.NewHandlers(tailoringService, tailoringRepo, jobQueue)
+	tailoringWorker := tailoring.NewWorker(tailoringService)
+
 	// Multiple worker goroutines claim from the shared queue concurrently
 	// (SELECT ... FOR UPDATE SKIP LOCKED makes this safe), so slow/rate
 	// -limited providers or AI calls don't serialize every other job.
@@ -163,6 +168,7 @@ func run() error {
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
 		w.Register(jobrecommendations.JobTypeCompute, jobRecommendationsWorker.Handle)
+		w.Register(tailoring.JobTypeProcess, tailoringWorker.Handle)
 		go w.Run(workerCtx, 2*time.Second)
 	}
 
@@ -175,10 +181,6 @@ func run() error {
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	defer stopScheduler()
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
-
-	tailoringRepo := tailoring.NewRepository(db)
-	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
-	tailoringHandlers := tailoring.NewHandlers(tailoringService, tailoringRepo)
 
 	learningRepo := learning.NewRepository(db)
 	learningService := learning.NewService(learningRepo, aiWorkerClient, candidateSkillsRepo, matchingRepo, matchingService)
