@@ -41,6 +41,13 @@ func NewQueue(pool *database.Pool) *Queue {
 	return &Queue{q: pool.Queries()}
 }
 
+// NewQueueFromQueries builds a Queue from an existing sqlc Queries value
+// (e.g. bound to a transaction). Primarily for other packages' integration
+// tests that need to enqueue/claim without a full pool.
+func NewQueueFromQueries(q *db.Queries) *Queue {
+	return &Queue{q: q}
+}
+
 // Enqueue schedules a new job of the given type with a JSON-serializable payload.
 func (queue *Queue) Enqueue(ctx context.Context, jobType string, payload any, maxAttempts int32) error {
 	body, err := json.Marshal(payload)
@@ -53,6 +60,30 @@ func (queue *Queue) Enqueue(ctx context.Context, jobType string, payload any, ma
 		MaxAttempts: maxAttempts,
 	})
 	return err
+}
+
+// FindByTypeAndPayload returns the most recent job of jobType whose payload
+// contains matchPayload (JSONB containment), regardless of status. Intended
+// for tests asserting a specific enqueue happened, without racing other
+// pending jobs on shared job_type prefixes.
+func (queue *Queue) FindByTypeAndPayload(ctx context.Context, jobType string, matchPayload any) (Job, error) {
+	body, err := json.Marshal(matchPayload)
+	if err != nil {
+		return Job{}, err
+	}
+	row, err := queue.q.FindJobByTypeAndPayload(ctx, db.FindJobByTypeAndPayloadParams{
+		JobType:      jobType,
+		MatchPayload: body,
+	})
+	if err != nil {
+		return Job{}, err
+	}
+	return Job{
+		ID:       database.PGToUUID(row.ID).String(),
+		JobType:  row.JobType,
+		Payload:  row.Payload,
+		Attempts: row.Attempts,
+	}, nil
 }
 
 // Worker polls the queue and dispatches claimed jobs to registered handlers.

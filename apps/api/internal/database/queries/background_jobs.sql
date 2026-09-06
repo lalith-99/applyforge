@@ -3,6 +3,12 @@ INSERT INTO background_jobs (job_type, payload, max_attempts)
 VALUES ($1, $2, $3)
 RETURNING *;
 
+-- name: FindJobByTypeAndPayload :one
+SELECT * FROM background_jobs
+WHERE job_type = $1 AND payload @> sqlc.arg(match_payload)::jsonb
+ORDER BY created_at DESC
+LIMIT 1;
+
 -- name: ClaimNextJob :one
 UPDATE background_jobs
 SET status = 'RUNNING', attempts = attempts + 1, locked_at = now(), locked_by = $1

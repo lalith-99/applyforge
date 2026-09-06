@@ -1,7 +1,8 @@
-// Package scheduler periodically polls configured job sources (see
+// Package scheduler periodically enqueues job-source sync tasks (see
 // MASTER_REQUIREMENTS.md §49). It intentionally does nothing beyond
-// triggering ingestion on an interval — no distributed coordination, since a
-// single api instance is sufficient for the MVP's scale.
+// triggering enqueueing on an interval — actual fetching happens in
+// background workers (internal/jobs.SyncSourceWorker), so a slow or
+// rate-limited provider never blocks polling the others.
 package scheduler
 
 import (
@@ -10,16 +11,17 @@ import (
 	"time"
 )
 
-// Syncer performs one full poll of all configured job sources.
-type Syncer interface {
-	SyncAll(ctx context.Context) error
+// Enqueuer schedules one sync task per configured job source.
+type Enqueuer interface {
+	EnqueueSyncTasks(ctx context.Context) error
 }
 
-// Run polls syncer.SyncAll every interval until ctx is cancelled. It runs an
-// initial sync immediately rather than waiting a full interval first.
-func Run(ctx context.Context, syncer Syncer, interval time.Duration) {
-	if err := syncer.SyncAll(ctx); err != nil {
-		slog.Error("scheduler: initial job sync failed", "error", err)
+// Run enqueues sync tasks via enqueuer.EnqueueSyncTasks every interval until
+// ctx is cancelled. It runs an initial enqueue immediately rather than
+// waiting a full interval first.
+func Run(ctx context.Context, enqueuer Enqueuer, interval time.Duration) {
+	if err := enqueuer.EnqueueSyncTasks(ctx); err != nil {
+		slog.Error("scheduler: initial job sync enqueue failed", "error", err)
 	}
 
 	ticker := time.NewTicker(interval)
@@ -30,8 +32,8 @@ func Run(ctx context.Context, syncer Syncer, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := syncer.SyncAll(ctx); err != nil {
-				slog.Error("scheduler: job sync failed", "error", err)
+			if err := enqueuer.EnqueueSyncTasks(ctx); err != nil {
+				slog.Error("scheduler: job sync enqueue failed", "error", err)
 			}
 		}
 	}

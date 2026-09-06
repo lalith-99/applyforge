@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createJobSource = `-- name: CreateJobSource :one
+INSERT INTO job_sources (source_type, company_id, board_token, enabled)
+VALUES ($1, $2, $3, $4)
+RETURNING id, source_type, company_id, board_token, enabled, last_polled_at, last_error, created_at
+`
+
+type CreateJobSourceParams struct {
+	SourceType string      `json:"source_type"`
+	CompanyID  pgtype.UUID `json:"company_id"`
+	BoardToken string      `json:"board_token"`
+	Enabled    bool        `json:"enabled"`
+}
+
+func (q *Queries) CreateJobSource(ctx context.Context, arg CreateJobSourceParams) (JobSource, error) {
+	row := q.db.QueryRow(ctx, createJobSource,
+		arg.SourceType,
+		arg.CompanyID,
+		arg.BoardToken,
+		arg.Enabled,
+	)
+	var i JobSource
+	err := row.Scan(
+		&i.ID,
+		&i.SourceType,
+		&i.CompanyID,
+		&i.BoardToken,
+		&i.Enabled,
+		&i.LastPolledAt,
+		&i.LastError,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getCompanyByNormalizedName = `-- name: GetCompanyByNormalizedName :one
 SELECT id, name, normalized_name, domain, created_at FROM companies WHERE normalized_name = $1
 `
@@ -24,6 +58,41 @@ func (q *Queries) GetCompanyByNormalizedName(ctx context.Context, normalizedName
 		&i.NormalizedName,
 		&i.Domain,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getJobSourceByID = `-- name: GetJobSourceByID :one
+SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, companies.name AS company_name FROM job_sources
+JOIN companies ON companies.id = job_sources.company_id
+WHERE job_sources.id = $1
+`
+
+type GetJobSourceByIDRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	SourceType   string             `json:"source_type"`
+	CompanyID    pgtype.UUID        `json:"company_id"`
+	BoardToken   string             `json:"board_token"`
+	Enabled      bool               `json:"enabled"`
+	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
+	LastError    pgtype.Text        `json:"last_error"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	CompanyName  string             `json:"company_name"`
+}
+
+func (q *Queries) GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobSourceByIDRow, error) {
+	row := q.db.QueryRow(ctx, getJobSourceByID, id)
+	var i GetJobSourceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.SourceType,
+		&i.CompanyID,
+		&i.BoardToken,
+		&i.Enabled,
+		&i.LastPolledAt,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.CompanyName,
 	)
 	return i, err
 }

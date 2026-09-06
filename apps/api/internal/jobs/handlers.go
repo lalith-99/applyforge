@@ -106,11 +106,11 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.SyncAll(r.Context()); err != nil {
+	if err := h.svc.EnqueueSyncTasks(r.Context()); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "sync failed")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "synced"})
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 }
 
 func toSummary(j Job) map[string]any {

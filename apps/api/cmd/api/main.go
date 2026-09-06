@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -99,18 +100,34 @@ func run() error {
 	resumeHandlers := resume.NewHandlers(resumeRepo, storageClient, jobQueue)
 
 	resumeParseWorker := resume.NewParseWorker(resumeRepo, candidateSkillsRepo, skillsNormalizer, storageClient, aiWorkerClient)
-	worker := background.NewWorker(jobQueue, "api-inprocess-worker")
-	worker.Register(resume.JobTypeParse, resumeParseWorker.Handle)
-
-	workerCtx, stopWorker := context.WithCancel(context.Background())
-	defer stopWorker()
-	go worker.Run(workerCtx, 2*time.Second)
 
 	jobsRepo := jobs.NewRepository(db)
-	ingestionService := jobs.NewIngestionService(jobsRepo)
+	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient)
 	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService)
+
+	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
+	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
+
+	// Multiple worker goroutines claim from the shared queue concurrently
+	// (SELECT ... FOR UPDATE SKIP LOCKED makes this safe), so slow/rate
+	// -limited providers or AI calls don't serialize every other job.
+	workerCount := 5
+	if v := os.Getenv("BACKGROUND_WORKER_COUNT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			workerCount = parsed
+		}
+	}
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	for i := 0; i < workerCount; i++ {
+		w := background.NewWorker(jobQueue, fmt.Sprintf("api-inprocess-worker-%d", i))
+		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
+		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
+		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
+		go w.Run(workerCtx, 2*time.Second)
+	}
 
 	pollMinutes := 60
 	if v := os.Getenv("JOB_POLL_INTERVAL_MINUTES"); v != "" {

@@ -103,3 +103,35 @@ func (q *Queries) FailJob(ctx context.Context, arg FailJobParams) error {
 	_, err := q.db.Exec(ctx, failJob, arg.ID, arg.LastError, arg.Column3)
 	return err
 }
+
+const findJobByTypeAndPayload = `-- name: FindJobByTypeAndPayload :one
+SELECT id, job_type, payload, status, attempts, max_attempts, available_at, locked_at, locked_by, last_error, created_at, completed_at FROM background_jobs
+WHERE job_type = $1 AND payload @> $2::jsonb
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type FindJobByTypeAndPayloadParams struct {
+	JobType      string `json:"job_type"`
+	MatchPayload []byte `json:"match_payload"`
+}
+
+func (q *Queries) FindJobByTypeAndPayload(ctx context.Context, arg FindJobByTypeAndPayloadParams) (BackgroundJob, error) {
+	row := q.db.QueryRow(ctx, findJobByTypeAndPayload, arg.JobType, arg.MatchPayload)
+	var i BackgroundJob
+	err := row.Scan(
+		&i.ID,
+		&i.JobType,
+		&i.Payload,
+		&i.Status,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.AvailableAt,
+		&i.LockedAt,
+		&i.LockedBy,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}

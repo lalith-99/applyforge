@@ -228,6 +228,20 @@ type JobSourceConfig struct {
 	CompanyName string
 }
 
+// CreateJobSource inserts a new job source configuration row.
+func (r *Repository) CreateJobSource(ctx context.Context, sourceType string, companyID uuid.UUID, boardToken string, enabled bool) (uuid.UUID, error) {
+	row, err := r.q.CreateJobSource(ctx, db.CreateJobSourceParams{
+		SourceType: sourceType,
+		CompanyID:  database.UUIDToPG(companyID),
+		BoardToken: boardToken,
+		Enabled:    enabled,
+	})
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return database.PGToUUID(row.ID), nil
+}
+
 // ListJobSources returns all enabled job source configurations.
 func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, error) {
 	rows, err := r.q.ListJobSources(ctx)
@@ -245,6 +259,23 @@ func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, err
 		})
 	}
 	return configs, nil
+}
+
+// GetJobSourceByID loads a single job source configuration, regardless of
+// its enabled flag (used by the async sync worker, which is dispatched by
+// job source ID rather than by iterating the enabled list directly).
+func (r *Repository) GetJobSourceByID(ctx context.Context, id uuid.UUID) (JobSourceConfig, error) {
+	row, err := r.q.GetJobSourceByID(ctx, database.UUIDToPG(id))
+	if err != nil {
+		return JobSourceConfig{}, err
+	}
+	return JobSourceConfig{
+		ID:          database.PGToUUID(row.ID),
+		SourceType:  row.SourceType,
+		BoardToken:  row.BoardToken,
+		CompanyID:   database.PGToUUID(row.CompanyID),
+		CompanyName: row.CompanyName,
+	}, nil
 }
 
 // TouchJobSource records the outcome of a poll attempt.

@@ -23,6 +23,7 @@ type Querier interface {
 	CountTailoringRunsForUser(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateApplication(ctx context.Context, arg CreateApplicationParams) (Application, error)
 	CreateApplicationEvent(ctx context.Context, arg CreateApplicationEventParams) (ApplicationEvent, error)
+	CreateJobSource(ctx context.Context, arg CreateJobSourceParams) (JobSource, error)
 	CreateResume(ctx context.Context, arg CreateResumeParams) (Resume, error)
 	CreateResumeExperience(ctx context.Context, arg CreateResumeExperienceParams) (ResumeExperience, error)
 	CreateResumeVersion(ctx context.Context, arg CreateResumeVersionParams) (ResumeVersion, error)
@@ -39,6 +40,7 @@ type Querier interface {
 	EnqueueJob(ctx context.Context, arg EnqueueJobParams) (BackgroundJob, error)
 	FailJob(ctx context.Context, arg FailJobParams) error
 	FailTailoringRun(ctx context.Context, id pgtype.UUID) error
+	FindJobByTypeAndPayload(ctx context.Context, arg FindJobByTypeAndPayloadParams) (BackgroundJob, error)
 	GetApplicationAnswers(ctx context.Context, userID pgtype.UUID) (ApplicationAnswer, error)
 	GetApplicationForUser(ctx context.Context, arg GetApplicationForUserParams) (Application, error)
 	GetCompanyByNormalizedName(ctx context.Context, normalizedName string) (Company, error)
@@ -46,6 +48,7 @@ type Querier interface {
 	GetJobMatch(ctx context.Context, arg GetJobMatchParams) (JobMatch, error)
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
 	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)
+	GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobSourceByIDRow, error)
 	GetLearningPlan(ctx context.Context, arg GetLearningPlanParams) (LearningPlan, error)
 	GetNextResumeVersionNumber(ctx context.Context, baseResumeID pgtype.UUID) (int32, error)
 	GetQuickPrepModule(ctx context.Context, normalizedSkill string) (QuickPrepModule, error)

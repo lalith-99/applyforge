@@ -170,4 +170,3 @@ func TestArbeitnowSource_Fetch_StopsAtMaxPages(t *testing.T) {
 		t.Fatalf("expected exactly MaxPages=2 requests, got %d", callCount)
 	}
 }
-
