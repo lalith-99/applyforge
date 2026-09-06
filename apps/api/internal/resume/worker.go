@@ -31,6 +31,7 @@ type ParseWorker struct {
 	normalizer *skills.Normalizer
 	storage    *storage.Client
 	aiClient   *aiclient.Client
+	onParsed   func(ctx context.Context, userID uuid.UUID) // optional; see SetOnParsed
 }
 
 // NewParseWorker builds a ParseWorker.
@@ -42,6 +43,14 @@ func NewParseWorker(resumes *Repository, skillsRepo *candidateskills.Repository,
 		storage:    storageClient,
 		aiClient:   aiClient,
 	}
+}
+
+// SetOnParsed registers a callback invoked after a resume is successfully
+// parsed (e.g. to enqueue a CandidateIntelligenceProfile rebuild - kept as a
+// callback rather than a direct import so package resume doesn't need to
+// know about candidateprofile).
+func (w *ParseWorker) SetOnParsed(fn func(ctx context.Context, userID uuid.UUID)) {
+	w.onParsed = fn
 }
 
 // Handle implements background.Handler for JobTypeParse.
@@ -118,6 +127,10 @@ func (w *ParseWorker) process(ctx context.Context, resumeID uuid.UUID) error {
 
 	if err := w.upsertCandidateSkills(ctx, r.UserID, profile); err != nil {
 		return fmt.Errorf("upsert candidate skills: %w", err)
+	}
+
+	if w.onParsed != nil {
+		w.onParsed(ctx, r.UserID)
 	}
 
 	return nil

@@ -565,5 +565,48 @@ pipeline ran cleanly with zero failures afterward.
 a live volume. This repo is now on `pgvector/pgvector:pg16` (glibc) — future Postgres image changes
 must stay within glibc-based images, or migrate to ICU collation deliberately via dump/restore.
 
+## Phase F: CandidateIntelligenceProfile
+
+Candidate information was spread across `profile`, `preferences`, `candidate_skills`, and
+`resume`/`resume_experiences` with no single compact representation for matching/ranking to read.
+Added `candidate_profile_versions` (append-only; "current" = highest `version` per user) storing
+an AI-synthesized summary: target roles, seniority, core vs secondary skills, transferable-skill
+signals (skill/evidence/strength), domains, architecture strengths, leadership signals, experience
+evidence, and a narrative summary - plus its own `embedding vector(1536)` for Phase G's
+candidate-side semantic retrieval.
+
+1. **AI worker**: new generic `POST /v1/candidates/profile` (`app/candidates/`), heuristic fallback
+   is a straightforward pass-through/aggregation of the input (there's no meaningful deterministic
+   substitute for genuine synthesis like inferring domains from bullet text - the fallback exists
+   purely so the endpoint stays functional without `OPENAI_API_KEY`, same policy as every other
+   AI-backed endpoint).
+2. **Trigger**: `resume.ParseWorker` gained an optional `onParsed` callback (set via `SetOnParsed`,
+   not a direct import) invoked after a resume successfully parses - `main.go` wires it to enqueue
+   `build_candidate_profile`. Kept as a callback specifically so package `resume` doesn't need to
+   import `candidateprofile` (which already imports `resume` for `ListForUser`/`ResumeProfile`,
+   so the reverse import would cycle).
+3. **`BuildWorker`** does both generation AND embedding in one background job (unlike jobs, where
+   enrichment and embedding are separate job types) - simpler here since both steps are already
+   triggered by the exact same event (a resume re-parse) with no independent trigger for either.
+4. **Master skills come from `candidate_skills`, not the raw resume-parsed skill list** - it's the
+   normalized/deduplicated/user-editable source of truth (which the resume parser itself populates
+   in the first place), a more authoritative input than re-reading the coarser earlier-stage
+   `ResumeProfile.Skills` again.
+5. **Hit the "nil slice marshals to JSON null" bug again** (see repo memory `debugging.md`) - a
+   user profile with no onboarding data yet (`profile.ErrNotFound`, leaving `Profile{}`'s slice
+   fields nil) produced a 422 from the AI worker's `list[str] = Field(default_factory=list)`
+   validation, since an explicit JSON `null` doesn't fall back to the default the way an *omitted*
+   key does. Fixed with a generic `emptyIfNil[T any]` helper applied before both the AI-worker
+   request and the Postgres `TEXT[]` insert (same underlying issue, two different serialization
+   boundaries hit it independently).
+6. **Not yet wired to preferences changes** - only resume re-parse triggers a rebuild for now;
+   updating preferences alone doesn't yet enqueue one. Reasonable v1 scope since a resume re-parse
+   is the highest-value trigger and preferences change far less often than resumes get re-uploaded.
+
+Verified: go build/vet/test + ai-worker ruff/pytest all green. Live: enqueued a real
+`build_candidate_profile` job for a user with an already-parsed resume - produced a genuine
+AI-synthesized summary (correct core skills, an accurate narrative summary reflecting real resume
+content) and a real embedding, end to end.
+
 
 

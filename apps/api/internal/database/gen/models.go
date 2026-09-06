@@ -77,6 +77,28 @@ type BackgroundJob struct {
 	CompletedAt pgtype.Timestamptz `json:"completed_at"`
 }
 
+type CandidateProfileVersion struct {
+	ID                    pgtype.UUID        `json:"id"`
+	UserID                pgtype.UUID        `json:"user_id"`
+	Version               int32              `json:"version"`
+	TargetRoles           []string           `json:"target_roles"`
+	Seniority             pgtype.Text        `json:"seniority"`
+	YearsExperience       pgtype.Int4        `json:"years_experience"`
+	CoreSkills            []string           `json:"core_skills"`
+	SecondarySkills       []string           `json:"secondary_skills"`
+	TransferableSkills    []byte             `json:"transferable_skills"`
+	Domains               []string           `json:"domains"`
+	ArchitectureStrengths []string           `json:"architecture_strengths"`
+	LeadershipSignals     []string           `json:"leadership_signals"`
+	ExperienceEvidence    []string           `json:"experience_evidence"`
+	Summary               string             `json:"summary"`
+	SourceContentHash     string             `json:"source_content_hash"`
+	Embedding             pgvector.Vector    `json:"embedding"`
+	EmbeddingModel        pgtype.Text        `json:"embedding_model"`
+	EmbeddedAt            pgtype.Timestamptz `json:"embedded_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
 type CandidateSkill struct {
 	ID             pgtype.UUID        `json:"id"`
 	UserID         pgtype.UUID        `json:"user_id"`

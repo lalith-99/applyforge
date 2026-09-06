@@ -29,6 +29,7 @@ type Querier interface {
 	CountTailoringRunsForUser(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateApplication(ctx context.Context, arg CreateApplicationParams) (Application, error)
 	CreateApplicationEvent(ctx context.Context, arg CreateApplicationEventParams) (ApplicationEvent, error)
+	CreateCandidateProfileVersion(ctx context.Context, arg CreateCandidateProfileVersionParams) (CreateCandidateProfileVersionRow, error)
 	CreateJobSource(ctx context.Context, arg CreateJobSourceParams) (JobSource, error)
 	CreateResume(ctx context.Context, arg CreateResumeParams) (Resume, error)
 	CreateResumeExperience(ctx context.Context, arg CreateResumeExperienceParams) (ResumeExperience, error)
@@ -59,6 +60,7 @@ type Querier interface {
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
 	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)
 	GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobSourceByIDRow, error)
+	GetLatestCandidateProfileVersion(ctx context.Context, userID pgtype.UUID) (GetLatestCandidateProfileVersionRow, error)
 	GetLearningPlan(ctx context.Context, arg GetLearningPlanParams) (LearningPlan, error)
 	GetNextResumeVersionNumber(ctx context.Context, baseResumeID pgtype.UUID) (int32, error)
 	GetQuickPrepModule(ctx context.Context, normalizedSkill string) (QuickPrepModule, error)
@@ -107,6 +109,7 @@ type Querier interface {
 	TouchSession(ctx context.Context, id pgtype.UUID) error
 	UpdateApplicationNotes(ctx context.Context, arg UpdateApplicationNotesParams) (Application, error)
 	UpdateApplicationStatus(ctx context.Context, arg UpdateApplicationStatusParams) (Application, error)
+	UpdateCandidateProfileEmbedding(ctx context.Context, arg UpdateCandidateProfileEmbeddingParams) error
 	UpdateCandidateSkillStatus(ctx context.Context, arg UpdateCandidateSkillStatusParams) (CandidateSkill, error)
 	UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbeddingParams) error
 	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error)

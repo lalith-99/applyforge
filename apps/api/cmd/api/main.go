@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/lalithlochan/applyforge/apps/api/internal/account"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiusage"
@@ -20,6 +22,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/background"
+	"github.com/lalithlochan/applyforge/apps/api/internal/candidateprofile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
@@ -106,6 +109,15 @@ func run() error {
 
 	resumeParseWorker := resume.NewParseWorker(resumeRepo, candidateSkillsRepo, skillsNormalizer, storageClient, aiWorkerClient)
 
+	candidateProfileRepo := candidateprofile.NewRepository(db)
+	candidateProfileService := candidateprofile.NewService(candidateProfileRepo, resumeRepo, candidateSkillsRepo, preferencesRepo, profileRepo, aiWorkerClient)
+	candidateProfileWorker := candidateprofile.NewBuildWorker(candidateProfileService, candidateProfileRepo, aiWorkerClient)
+	resumeParseWorker.SetOnParsed(func(ctx context.Context, userID uuid.UUID) {
+		if err := jobQueue.Enqueue(ctx, candidateprofile.JobTypeBuild, candidateprofile.BuildPayload{UserID: userID.String()}, 3); err != nil {
+			slog.Error("enqueue build_candidate_profile failed", "user_id", userID, "error", err)
+		}
+	})
+
 	jobsRepo := jobs.NewRepository(db)
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
@@ -133,6 +145,7 @@ func run() error {
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
+		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
 		go w.Run(workerCtx, 2*time.Second)
 	}
 
