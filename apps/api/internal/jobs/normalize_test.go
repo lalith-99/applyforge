@@ -45,7 +45,15 @@ func TestContentHash_StableAndSensitive(t *testing.T) {
 
 func TestStripTags(t *testing.T) {
 	got := stripTags("<p>Hello <b>world</b></p>")
-	if got != "Hello world" {
-		t.Fatalf("expected %q, got %q", "Hello world", got)
+	if got != "Hello **world**" {
+		t.Fatalf("expected %q, got %q", "Hello **world**", got)
+	}
+}
+
+func TestStripTags_DecodesEscapedHTMLAndPreservesBlocks(t *testing.T) {
+	input := `&lt;div class="content-intro"&gt;&lt;p&gt;First paragraph&lt;/p&gt;&lt;h2&gt;Your opportunity&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Second &amp;amp; final&lt;/strong&gt;&lt;/p&gt;&lt;/div&gt;`
+	want := "First paragraph\n\n**Your opportunity**\n\n**Second & final**"
+	if got := stripTags(input); got != want {
+		t.Fatalf("stripTags(%q) = %q, want %q", input, got, want)
 	}
 }

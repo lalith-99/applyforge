@@ -3,23 +3,49 @@ package jobs
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"html"
 	"regexp"
 	"strings"
 )
 
 var (
 	tagRe          = regexp.MustCompile(`<[^>]*>`)
-	whitespaceRe   = regexp.MustCompile(`\s+`)
+	headingTagRe   = regexp.MustCompile(`(?i)</?h[1-6](?:\s[^>]*)?>`)
+	blockTagRe     = regexp.MustCompile(`(?i)</?(?:article|br|div|h[1-6]|li|ol|p|section|table|tr|ul)(?:\s[^>]*)?>`)
+	boldTagRe      = regexp.MustCompile(`(?i)</?(?:b|strong)(?:\s[^>]*)?>`)
+	whitespaceRe   = regexp.MustCompile(`[ \t\f\v\r]+`)
+	lineBreakRe    = regexp.MustCompile(`\n{3,}`)
 	seniorityWords = []string{
 		"senior", "sr.", "sr", "junior", "jr.", "jr", "staff", "principal", "lead",
 		"i", "ii", "iii", "iv",
 	}
 )
 
-// stripTags removes HTML markup and collapses whitespace, producing plain text.
-func stripTags(html string) string {
-	text := tagRe.ReplaceAllString(html, " ")
+// stripTags decodes escaped HTML, removes markup, and preserves block breaks.
+func stripTags(value string) string {
+	for i := 0; i < 3; i++ {
+		decoded := html.UnescapeString(value)
+		if decoded == value {
+			break
+		}
+		value = decoded
+	}
+	text := headingTagRe.ReplaceAllStringFunc(value, func(tag string) string {
+		if strings.HasPrefix(tag, "</") {
+			return "**\n"
+		}
+		return "\n**"
+	})
+	text = blockTagRe.ReplaceAllString(text, "\n")
+	text = boldTagRe.ReplaceAllStringFunc(text, func(tag string) string {
+		if strings.HasPrefix(tag, "</") {
+			return "**"
+		}
+		return "**"
+	})
+	text = tagRe.ReplaceAllString(text, " ")
 	text = whitespaceRe.ReplaceAllString(text, " ")
+	text = lineBreakRe.ReplaceAllString(text, "\n\n")
 	return strings.TrimSpace(text)
 }
 

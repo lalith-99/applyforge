@@ -18,6 +18,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const matchQuery = useQuery({
     queryKey: ["job-match", id],
     queryFn: () => api.get<MatchResult>(`/jobs/${id}/match`),
+    enabled: !!jobQuery.data,
   });
   const qualifyMutation = useMutation({
     mutationFn: () => api.post<QualifiedResult>(`/jobs/${id}/make-me-qualified`),
@@ -82,6 +83,15 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
             </a>
           )}
         </div>
+
+        {matchQuery.isLoading && (
+          <p className="text-sm text-black/60 dark:text-white/60">Analyzing your profile against this job…</p>
+        )}
+        {matchQuery.isError && (
+          <p className="text-sm text-red-600">
+            {matchQuery.error instanceof ApiError ? matchQuery.error.message : "Could not analyze this job."}
+          </p>
+        )}
 
         {match && (
           <section className="rounded-md border border-black/10 p-6 dark:border-white/15">
@@ -222,10 +232,36 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
         <section>
           <h2 className="mb-2 text-lg font-medium">Full Job Description</h2>
-          <p className="whitespace-pre-wrap text-sm text-black/70 dark:text-white/70">{job.description}</p>
+          <JobDescription description={job.description} />
         </section>
       </main>
     </>
+  );
+}
+
+function JobDescription({ description }: { description: string }) {
+  const sections = description
+    .replace(/\*{4}([^*]+)\*{4}/g, "**$1**")
+    .split(/(\*{2}[^*]+\*{2})/g)
+    .filter((section) => section.length > 0);
+
+  return (
+    <div className="text-sm text-black/70 dark:text-white/70">
+      {sections.map((section, index) => {
+        const isHeading = section.startsWith("**") && section.endsWith("**");
+        const content = isHeading ? section.slice(2, -2).trim() : section;
+
+        return isHeading ? (
+          <h3 key={index} className="mb-1 mt-5 first:mt-0 font-semibold text-foreground">
+            {content}
+          </h3>
+        ) : (
+          <p key={index} className="mb-4 whitespace-pre-wrap text-justify last:mb-0">
+            {content.replace(/[ \t\r\n]+/g, " ").trim()}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 
