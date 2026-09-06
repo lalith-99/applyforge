@@ -80,3 +80,39 @@ def test_structured_completion_raises_when_parsed_is_none(monkeypatch) -> None:
 
     with pytest.raises(openai_provider.AIProviderError):
         openai_provider.structured_completion("system", "user", _Dummy)
+
+
+def test_embed_text_raises_when_not_configured(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(openai_provider.AIProviderError):
+        openai_provider.embed_text("hello world")
+
+
+def test_embed_text_returns_vector(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    class _FakeEmbeddings:
+        def create(self, **kwargs):
+            assert kwargs["input"] == "hello world"
+            item = type("Item", (), {"embedding": [0.1, 0.2, 0.3]})()
+            return type("Response", (), {"data": [item]})()
+
+    fake_client = type("Client", (), {"embeddings": _FakeEmbeddings()})()
+    monkeypatch.setattr(openai_provider, "_get_client", lambda: fake_client)
+
+    result = openai_provider.embed_text("hello world")
+    assert result == [0.1, 0.2, 0.3]
+
+
+def test_embed_text_wraps_client_errors(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    class _FailingEmbeddings:
+        def create(self, **kwargs):
+            raise RuntimeError("boom")
+
+    fake_client = type("Client", (), {"embeddings": _FailingEmbeddings()})()
+    monkeypatch.setattr(openai_provider, "_get_client", lambda: fake_client)
+
+    with pytest.raises(openai_provider.AIProviderError):
+        openai_provider.embed_text("hello world")

@@ -114,6 +114,7 @@ func run() error {
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
+	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
 	// Multiple worker goroutines claim from the shared queue concurrently
 	// (SELECT ... FOR UPDATE SKIP LOCKED makes this safe), so slow/rate
@@ -131,6 +132,7 @@ func run() error {
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
+		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		go w.Run(workerCtx, 2*time.Second)
 	}
 

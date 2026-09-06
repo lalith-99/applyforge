@@ -6,6 +6,7 @@ package db
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type AiUsage struct {
@@ -127,6 +128,9 @@ type Job struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	Fingerprint     string             `json:"fingerprint"`
 	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+	Embedding       pgvector.Vector    `json:"embedding"`
+	EmbeddingModel  pgtype.Text        `json:"embedding_model"`
+	EmbeddedAt      pgtype.Timestamptz `json:"embedded_at"`
 }
 
 type JobMatch struct {

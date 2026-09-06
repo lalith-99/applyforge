@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pgvector/pgvector-go"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
@@ -42,7 +43,13 @@ type Job struct {
 	CreatedAt       time.Time
 }
 
-func jobFromRow(row db.Job) Job {
+// jobFromRow converts a job row into the domain Job type. Takes
+// db.GetJobByIDRow specifically, but every other job-selecting query here
+// uses an identical explicit column list (deliberately excluding
+// embedding/embedding_model/embedded_at, which are frequently NULL and
+// aren't representable in pgvector-go's non-nullable Vector type) so their
+// generated Row types are structurally identical and freely convertible.
+func jobFromRow(row db.GetJobByIDRow) Job {
 	return Job{
 		ID:              database.PGToUUID(row.ID),
 		Source:          row.Source,
@@ -209,7 +216,9 @@ func (r *Repository) FindCanonicalByFingerprint(ctx context.Context, fingerprint
 		}
 		return Job{}, err
 	}
-	return jobFromRow(row), nil
+	// FindCanonicalByFingerprintRow and GetJobByIDRow are structurally
+	// identical (same explicit column list) - see jobFromRow's doc comment.
+	return jobFromRow(db.GetJobByIDRow(row)), nil
 }
 
 // SetCanonicalJobID marks jobID as a duplicate of canonicalJobID, so listing
@@ -233,6 +242,71 @@ func (r *Repository) CloseStaleJobs(ctx context.Context, source string, companyI
 		CompanyID:  database.UUIDToPG(companyID),
 		LastSeenAt: database.PGTimestamptz(&cutoff),
 	})
+}
+
+// UpdateEmbedding stores a semantic embedding for a job (Phase E).
+func (r *Repository) UpdateEmbedding(ctx context.Context, jobID uuid.UUID, vector []float32, model string) error {
+	return r.q.UpdateJobEmbedding(ctx, db.UpdateJobEmbeddingParams{
+		ID:             database.UUIDToPG(jobID),
+		Embedding:      pgvector.NewVector(vector),
+		EmbeddingModel: database.PGText(&model),
+	})
+}
+
+// JobMatch pairs a Job with its cosine distance to a query embedding (lower
+// is more similar; 0 = identical, 2 = opposite).
+type JobMatch struct {
+	Job
+	Distance float64
+}
+
+// SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
+// jobs closest to vector by cosine distance (Phase G's semantic-retrieval
+// stage - callers are expected to have already applied cheap hard filters
+// upstream, e.g. via List/ListFilter, since this query has none).
+func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, limit int32) ([]JobMatch, error) {
+	rows, err := r.q.SearchJobsByEmbedding(ctx, db.SearchJobsByEmbeddingParams{
+		Embedding: pgvector.NewVector(vector),
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]JobMatch, 0, len(rows))
+	for _, row := range rows {
+		matches = append(matches, JobMatch{
+			Job: Job{
+				ID:              database.PGToUUID(row.ID),
+				Source:          row.Source,
+				ExternalID:      row.ExternalID,
+				CompanyID:       database.PGToUUID(row.CompanyID),
+				CompanyName:     row.CompanyName,
+				Title:           row.Title,
+				NormalizedTitle: row.NormalizedTitle,
+				Seniority:       database.TextOrNil(row.Seniority),
+				Description:     row.Description,
+				LocationText:    database.TextOrNil(row.LocationText),
+				RemoteType:      database.TextOrNil(row.RemoteType),
+				EmploymentType:  database.TextOrNil(row.EmploymentType),
+				SalaryMin:       database.Int4OrNil(row.SalaryMin),
+				SalaryMax:       database.Int4OrNil(row.SalaryMax),
+				SalaryCurrency:  database.TextOrNil(row.SalaryCurrency),
+				ApplyURL:        database.TextOrNil(row.ApplyUrl),
+				SourceURL:       database.TextOrNil(row.SourceUrl),
+				PostedAt:        database.TimeOrNil(row.PostedAt),
+				FirstSeenAt:     row.FirstSeenAt.Time,
+				UpdatedAt:       row.UpdatedAt.Time,
+				LastSeenAt:      row.LastSeenAt.Time,
+				ContentHash:     row.ContentHash,
+				Fingerprint:     row.Fingerprint,
+				CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
+				Status:          row.Status,
+				CreatedAt:       row.CreatedAt.Time,
+			},
+			Distance: row.Distance,
+		})
+	}
+	return matches, nil
 }
 
 // List returns a page of active jobs matching filter, most-relevant first.
@@ -269,7 +343,10 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 
 	jobs := make([]Job, 0, len(rows))
 	for _, row := range rows {
-		jobs = append(jobs, jobFromRow(row))
+		// ListJobsRow and GetJobByIDRow are structurally identical (same
+		// explicit column list) so this conversion is a free relabeling, not
+		// a runtime cost - see jobFromRow's doc comment.
+		jobs = append(jobs, jobFromRow(db.GetJobByIDRow(row)))
 	}
 	return jobs, total, nil
 }

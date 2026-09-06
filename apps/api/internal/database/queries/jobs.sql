@@ -1,4 +1,8 @@
 -- name: UpsertJob :one
+-- Column list deliberately excludes embedding/embedding_model/embedded_at:
+-- those are NULL for most rows (only set later by EmbedWorker), and pgx
+-- can't scan a NULL vector into pgvector-go's non-nullable Vector type -
+-- callers of UpsertJob never need the embedding anyway.
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
     country, state, city, location_text, remote_type, employment_type,
@@ -30,13 +34,21 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     status = 'ACTIVE',
     updated_at = now(),
     last_seen_at = now()
-RETURNING *, (xmax = 0) AS inserted;
+RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
+    (xmax = 0) AS inserted;
 
 -- name: FindCanonicalByFingerprint :one
 -- Finds an existing, still-canonical job with the same fingerprint from a
 -- DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
 -- so a job never becomes its own canonical.
-SELECT * FROM jobs
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs
 WHERE fingerprint = $1 AND fingerprint != '' AND canonical_job_id IS NULL AND id != $2
 ORDER BY first_seen_at ASC
 LIMIT 1;
@@ -54,7 +66,11 @@ UPDATE jobs SET status = 'CLOSED', updated_at = now()
 WHERE source = $1 AND company_id = $2 AND status = 'ACTIVE' AND last_seen_at < $3;
 
 -- name: GetJobByID :one
-SELECT * FROM jobs WHERE id = $1;
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs WHERE id = $1;
 
 -- name: CountJobs :one
 SELECT count(*) FROM jobs
@@ -66,7 +82,11 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($5::text = '' OR location_text ILIKE '%' || $5 || '%' OR city ILIKE '%' || $5 || '%' OR state ILIKE '%' || $5 || '%' OR country ILIKE '%' || $5 || '%');
 
 -- name: ListJobs :many
-SELECT * FROM jobs
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
@@ -78,3 +98,23 @@ ORDER BY
   CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
   first_seen_at DESC
 LIMIT $7 OFFSET $8;
+
+-- name: UpdateJobEmbedding :exec
+UPDATE jobs SET embedding = $2, embedding_model = $3, embedded_at = now() WHERE id = $1;
+
+-- name: SearchJobsByEmbedding :many
+-- Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
+-- ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
+-- candidate/query embedding. Cheap SQL filters happen upstream via
+-- ListFilter/hard-eligibility, not here - this query is purely the
+-- "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
+-- WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
+    (embedding <=> $1)::float8 AS distance
+FROM jobs
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+ORDER BY embedding <=> $1
+LIMIT $2;

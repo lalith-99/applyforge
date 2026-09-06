@@ -14,6 +14,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 _DEFAULT_MODEL = "gpt-4o-mini"
+_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 class AIProviderError(RuntimeError):
@@ -62,3 +63,18 @@ def structured_completion[T: BaseModel](
     if parsed is None:
         raise AIProviderError("OpenAI returned no parsed structured output")
     return parsed
+
+
+def embed_text(text: str) -> list[float]:
+    """Returns a semantic embedding vector for text (see MASTER_REQUIREMENTS.md
+    Phase E: job/candidate embeddings for semantic retrieval via pgvector)."""
+    client = _get_client()
+    model = os.environ.get("OPENAI_EMBEDDING_MODEL", _DEFAULT_EMBEDDING_MODEL)
+    try:
+        response = client.embeddings.create(model=model, input=text)
+    except Exception as exc:  # openai raises several distinct exception types
+        raise AIProviderError(f"OpenAI embeddings request failed: {exc}") from exc
+
+    if not response.data:
+        raise AIProviderError("OpenAI returned no embedding data")
+    return response.data[0].embedding

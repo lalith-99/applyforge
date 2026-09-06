@@ -479,5 +479,91 @@ concrete step.
    backlog size first — a "flag day" migration like this needs an explicit backfill plan, not the
    same trigger as steady-state per-item processing.
 
+## Phase L: AI usage/cost tracking (pulled forward)
+
+New `ai_usage` table + `internal/aiusage` package record every AI-worker operation's outcome
+(operation, status, latency_ms, cache_hit, error_message). `aiclient.Client` gained a
+`SetUsageRecorder` hook invoked via one `defer c.track(ctx, "op")(&err)` line per public method;
+several hand-rolled HTTP call sites were consolidated onto the existing `postJSON` helper (now
+operation-aware) in the process. `jobrequirements.Service.WithUsageTracking` records cache-hit
+events directly, since a cache hit never reaches `aiclient` at all — this is exactly the signal
+that would have caught the Phase A incident immediately instead of requiring a manual row-count
+cross-check. v1 scope is latency/status/cache_hit only (no tokens/cost/user_id/job_id yet, since
+aiclient's method signatures don't carry user/job IDs and the AI worker doesn't return token usage
+yet) — a reasonable, honestly-scoped first cut given the incident that motivated it.
+
+## Phase C: job lifecycle (ACTIVE/CLOSED)
+
+`jobs.status` existed in the schema since Phase 12 but nothing ever transitioned it — every job
+stayed ACTIVE forever. Added `CloseStaleJobs` (marks `(source, company_id)` jobs CLOSED when
+`last_seen_at` predates the current poll's start) and made `UpsertJob`'s `ON CONFLICT` also reset
+`status = 'ACTIVE'` so a re-listed job revives instead of staying closed. Deliberately **not**
+applied to `ARBEITNOW`: its `MaxPages` cap means "not seen this poll" often just means "pushed past
+the page cap by newer postings," not "actually closed" — applying closure detection there would
+false-positive close jobs that are probably still live. Single-company sources (Greenhouse/Lever/
+Ashby) fetch their full current listing every poll, so it's safe there.
+
+## Phase B: cross-source job deduplication
+
+Rather than the full `job_postings`/`canonical_jobs` table split (large schema+query rewrite
+touching matching/tailoring/frontend, high risk for the same end result), implemented dedupe as a
+self-referencing link: `jobs` gained `fingerprint` (normalized `company|title|remote_type` — uses
+`remote_type` instead of raw location text since it's already normalized identically by every
+connector, unlike free-text location which varies far more across sources) and a nullable
+`canonical_job_id`. `Ingest()` links new rows to an existing canonical job sharing a fingerprint
+from a DIFFERENT source; `ListJobs`/`CountJobs` filter `canonical_job_id IS NULL`. Not backfilled
+for pre-existing jobs (empty fingerprint matches nothing) — same "no flag-day mass update" lesson
+as Phase A/D.
+
+## Phase E: semantic embeddings (pgvector)
+
+Added `pgvector` (via the `pgvector/pgvector:pg16` image — see the critical incident below for why
+this specific image swap was dangerous) and `jobs.embedding vector(1536)` + an HNSW cosine index.
+The AI worker gained a generic `/v1/embeddings` endpoint (`text-embedding-3-small`) reused for both
+job and future candidate-profile embeddings. `aiclient.Embed`, a new `EmbedWorker`, and
+`Repository.SearchByEmbedding` (cosine-distance ANN query, feeding Phase G's semantic-retrieval
+stage) round out the Go side. Eager embedding generation is scoped to newly-inserted jobs only
+(same insert-only trigger as Phase D's enrichment, for the same cost-safety reason) — backfilling
+embeddings for pre-existing jobs is deliberately deferred to its own throttled pass.
+
+sqlc note: the `vector` column is nullable (most rows haven't been embedded yet), but
+`pgvector-go.Vector` can't scan a SQL NULL and sqlc's `nullable: true` override flag didn't produce
+a pointer type in practice. Fix: queries that don't need the embedding (`UpsertJob`, `GetJobByID`,
+`ListJobs`, `FindCanonicalByFingerprint`) now use an explicit column list excluding
+`embedding`/`embedding_model`/`embedded_at` instead of `SELECT *`/`RETURNING *`; only
+`SearchJobsByEmbedding` (which filters `WHERE embedding IS NOT NULL`) selects it, where scanning a
+non-nullable `pgvector.Vector` is safe.
+
+### CRITICAL INCIDENT: Postgres image swap corrupted collation-dependent indexes
+
+Switching `postgres:16-alpine` (musl libc) to `pgvector/pgvector:pg16` (Debian, glibc) while
+reusing the same data volume corrupted every TEXT-column btree index built under the old libc's
+collation ordering. This let genuine duplicates slip past UNIQUE constraints during concurrent
+writes: 97 duplicate `jobs` rows (same `source, external_id`) and 20 duplicate `companies` rows
+(same `normalized_name`) were created by the 5 concurrent background workers before detection. One
+of the brand-new Phase B partial indexes (`jobs_fingerprint_idx`) was corrupted badly enough to
+block writes entirely ("cannot find insert offset").
+
+**Tell that gave it away**: a `duplicate key value violates unique constraint` error on an
+`embed_job` task, whose only SQL is `UPDATE jobs SET embedding = ... WHERE id = $1` — a statement
+that doesn't touch `source`/`external_id` at all. A failing statement that can't possibly cause the
+constraint it's blamed for is the signature of index corruption, not an application bug.
+
+**Fix** (verified at each step): stopped `api` to halt concurrent writers; dropped the actively
+-corrupted indexes; deduplicated `companies` (merge by `normalized_name`, repoint
+`jobs.company_id`/`job_sources.company_id` to the earliest row, delete losers); deduplicated `jobs`
+(true same-source duplicates aren't the cross-source case `canonical_job_id` was built for, so
+losers were deleted outright after confirming `job_requirements.job_id ON DELETE CASCADE` made that
+safe); recreated the dropped indexes fresh; ran `REINDEX DATABASE applyforge` for everything else
+(checked all other TEXT-based unique constraints — users email/google_id, sessions token_hash,
+job_sources, skill_aliases, etc. — found zero additional duplicates, reindexed anyway since
+ordering corruption can exist without yet having produced an observable one). Confirmed: no invalid
+indexes remain, a manual duplicate INSERT is now correctly rejected, full test suite green, live
+pipeline ran cleanly with zero failures afterward.
+
+**Going forward**: never swap Postgres base images across libc families (alpine/musl <-> glibc) on
+a live volume. This repo is now on `pgvector/pgvector:pg16` (glibc) — future Postgres image changes
+must stay within glibc-based images, or migrate to ICU collation deliberately via dump/restore.
+
 
 

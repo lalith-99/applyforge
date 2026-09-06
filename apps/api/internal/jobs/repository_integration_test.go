@@ -184,6 +184,54 @@ func TestRepository_CrossSourceDedupe_LinksAndExcludesFromListing(t *testing.T) 
 
 func strPtrTest(s string) *string { return &s }
 
+func TestRepository_EmbeddingStorageAndSearch(t *testing.T) {
+	q := testdb.OpenTx(t)
+	repo := &Repository{q: q}
+	ctx := context.Background()
+
+	companyID, err := repo.UpsertCompany(ctx, "Acme Embed Co", fmt.Sprintf("acme-embed-%s", t.Name()))
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+
+	upserted, err := repo.UpsertJob(ctx, Job{
+		Source:          "GREENHOUSE",
+		ExternalID:      uuid.NewString(),
+		CompanyID:       companyID,
+		CompanyName:     "Acme Embed Co",
+		Title:           "Senior Backend Engineer",
+		NormalizedTitle: normalizeTitle("Senior Backend Engineer"),
+		Description:     "Go, Kafka, Kubernetes",
+		ContentHash:     contentHash("Acme Embed Co", "Senior Backend Engineer", "", "Go, Kafka, Kubernetes"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob: %v", err)
+	}
+
+	vector := make([]float32, 1536)
+	vector[0] = 1.0
+	if err := repo.UpdateEmbedding(ctx, upserted.Job.ID, vector, "text-embedding-3-small"); err != nil {
+		t.Fatalf("UpdateEmbedding: %v", err)
+	}
+
+	matches, err := repo.SearchByEmbedding(ctx, vector, 5)
+	if err != nil {
+		t.Fatalf("SearchByEmbedding: %v", err)
+	}
+	found := false
+	for _, m := range matches {
+		if m.ID == upserted.Job.ID {
+			found = true
+			if m.Distance > 0.0001 {
+				t.Fatalf("expected ~0 distance for an identical vector, got %f", m.Distance)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected the embedded job to appear in SearchByEmbedding results")
+	}
+}
+
 func TestRepository_ListAndGet(t *testing.T) {
 	q := testdb.OpenTx(t)
 	repo := &Repository{q: q}

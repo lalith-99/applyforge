@@ -129,6 +129,9 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
 					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
 				}
+				if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+					slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+				}
 			}
 		} else {
 			result.Updated++

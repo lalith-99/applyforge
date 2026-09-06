@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 const closeStaleJobs = `-- name: CloseStaleJobs :execrows
@@ -67,7 +68,11 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 }
 
 const findCanonicalByFingerprint = `-- name: FindCanonicalByFingerprint :one
-SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs
 WHERE fingerprint = $1 AND fingerprint != '' AND canonical_job_id IS NULL AND id != $2
 ORDER BY first_seen_at ASC
 LIMIT 1
@@ -78,12 +83,44 @@ type FindCanonicalByFingerprintParams struct {
 	ID          pgtype.UUID `json:"id"`
 }
 
+type FindCanonicalByFingerprintRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	Source          string             `json:"source"`
+	ExternalID      string             `json:"external_id"`
+	CompanyID       pgtype.UUID        `json:"company_id"`
+	CompanyName     string             `json:"company_name"`
+	Title           string             `json:"title"`
+	NormalizedTitle string             `json:"normalized_title"`
+	Seniority       pgtype.Text        `json:"seniority"`
+	Description     string             `json:"description"`
+	Country         pgtype.Text        `json:"country"`
+	State           pgtype.Text        `json:"state"`
+	City            pgtype.Text        `json:"city"`
+	LocationText    pgtype.Text        `json:"location_text"`
+	RemoteType      pgtype.Text        `json:"remote_type"`
+	EmploymentType  pgtype.Text        `json:"employment_type"`
+	SalaryMin       pgtype.Int4        `json:"salary_min"`
+	SalaryMax       pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
+	ApplyUrl        pgtype.Text        `json:"apply_url"`
+	SourceUrl       pgtype.Text        `json:"source_url"`
+	PostedAt        pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash     string             `json:"content_hash"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+}
+
 // Finds an existing, still-canonical job with the same fingerprint from a
 // DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
 // so a job never becomes its own canonical.
-func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (Job, error) {
+func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (FindCanonicalByFingerprintRow, error) {
 	row := q.db.QueryRow(ctx, findCanonicalByFingerprint, arg.Fingerprint, arg.ID)
-	var i Job
+	var i FindCanonicalByFingerprintRow
 	err := row.Scan(
 		&i.ID,
 		&i.Source,
@@ -119,12 +156,48 @@ func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanoni
 }
 
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs WHERE id = $1
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs WHERE id = $1
 `
 
-func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
+type GetJobByIDRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	Source          string             `json:"source"`
+	ExternalID      string             `json:"external_id"`
+	CompanyID       pgtype.UUID        `json:"company_id"`
+	CompanyName     string             `json:"company_name"`
+	Title           string             `json:"title"`
+	NormalizedTitle string             `json:"normalized_title"`
+	Seniority       pgtype.Text        `json:"seniority"`
+	Description     string             `json:"description"`
+	Country         pgtype.Text        `json:"country"`
+	State           pgtype.Text        `json:"state"`
+	City            pgtype.Text        `json:"city"`
+	LocationText    pgtype.Text        `json:"location_text"`
+	RemoteType      pgtype.Text        `json:"remote_type"`
+	EmploymentType  pgtype.Text        `json:"employment_type"`
+	SalaryMin       pgtype.Int4        `json:"salary_min"`
+	SalaryMax       pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
+	ApplyUrl        pgtype.Text        `json:"apply_url"`
+	SourceUrl       pgtype.Text        `json:"source_url"`
+	PostedAt        pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash     string             `json:"content_hash"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+}
+
+func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
 	row := q.db.QueryRow(ctx, getJobByID, id)
-	var i Job
+	var i GetJobByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Source,
@@ -160,7 +233,11 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
+FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
@@ -185,7 +262,39 @@ type ListJobsParams struct {
 	Offset  int32              `json:"offset"`
 }
 
-func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error) {
+type ListJobsRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	Source          string             `json:"source"`
+	ExternalID      string             `json:"external_id"`
+	CompanyID       pgtype.UUID        `json:"company_id"`
+	CompanyName     string             `json:"company_name"`
+	Title           string             `json:"title"`
+	NormalizedTitle string             `json:"normalized_title"`
+	Seniority       pgtype.Text        `json:"seniority"`
+	Description     string             `json:"description"`
+	Country         pgtype.Text        `json:"country"`
+	State           pgtype.Text        `json:"state"`
+	City            pgtype.Text        `json:"city"`
+	LocationText    pgtype.Text        `json:"location_text"`
+	RemoteType      pgtype.Text        `json:"remote_type"`
+	EmploymentType  pgtype.Text        `json:"employment_type"`
+	SalaryMin       pgtype.Int4        `json:"salary_min"`
+	SalaryMax       pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
+	ApplyUrl        pgtype.Text        `json:"apply_url"`
+	SourceUrl       pgtype.Text        `json:"source_url"`
+	PostedAt        pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash     string             `json:"content_hash"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+}
+
+func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error) {
 	rows, err := q.db.Query(ctx, listJobs,
 		arg.Column1,
 		arg.Column2,
@@ -200,9 +309,9 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Job{}
+	items := []ListJobsRow{}
 	for rows.Next() {
-		var i Job
+		var i ListJobsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Source,
@@ -244,6 +353,113 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 	return items, nil
 }
 
+const searchJobsByEmbedding = `-- name: SearchJobsByEmbedding :many
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
+    (embedding <=> $1)::float8 AS distance
+FROM jobs
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+ORDER BY embedding <=> $1
+LIMIT $2
+`
+
+type SearchJobsByEmbeddingParams struct {
+	Embedding pgvector.Vector `json:"embedding"`
+	Limit     int32           `json:"limit"`
+}
+
+type SearchJobsByEmbeddingRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	Source          string             `json:"source"`
+	ExternalID      string             `json:"external_id"`
+	CompanyID       pgtype.UUID        `json:"company_id"`
+	CompanyName     string             `json:"company_name"`
+	Title           string             `json:"title"`
+	NormalizedTitle string             `json:"normalized_title"`
+	Seniority       pgtype.Text        `json:"seniority"`
+	Description     string             `json:"description"`
+	Country         pgtype.Text        `json:"country"`
+	State           pgtype.Text        `json:"state"`
+	City            pgtype.Text        `json:"city"`
+	LocationText    pgtype.Text        `json:"location_text"`
+	RemoteType      pgtype.Text        `json:"remote_type"`
+	EmploymentType  pgtype.Text        `json:"employment_type"`
+	SalaryMin       pgtype.Int4        `json:"salary_min"`
+	SalaryMax       pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
+	ApplyUrl        pgtype.Text        `json:"apply_url"`
+	SourceUrl       pgtype.Text        `json:"source_url"`
+	PostedAt        pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash     string             `json:"content_hash"`
+	Status          string             `json:"status"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+	Distance        float64            `json:"distance"`
+}
+
+// Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
+// ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
+// candidate/query embedding. Cheap SQL filters happen upstream via
+// ListFilter/hard-eligibility, not here - this query is purely the
+// "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
+// WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmbeddingParams) ([]SearchJobsByEmbeddingRow, error) {
+	rows, err := q.db.Query(ctx, searchJobsByEmbedding, arg.Embedding, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchJobsByEmbeddingRow{}
+	for rows.Next() {
+		var i SearchJobsByEmbeddingRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.ExternalID,
+			&i.CompanyID,
+			&i.CompanyName,
+			&i.Title,
+			&i.NormalizedTitle,
+			&i.Seniority,
+			&i.Description,
+			&i.Country,
+			&i.State,
+			&i.City,
+			&i.LocationText,
+			&i.RemoteType,
+			&i.EmploymentType,
+			&i.SalaryMin,
+			&i.SalaryMax,
+			&i.SalaryCurrency,
+			&i.ApplyUrl,
+			&i.SourceUrl,
+			&i.PostedAt,
+			&i.FirstSeenAt,
+			&i.UpdatedAt,
+			&i.LastSeenAt,
+			&i.ContentHash,
+			&i.Status,
+			&i.CreatedAt,
+			&i.Fingerprint,
+			&i.CanonicalJobID,
+			&i.Distance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setCanonicalJobID = `-- name: SetCanonicalJobID :exec
 UPDATE jobs SET canonical_job_id = $2, updated_at = now() WHERE id = $1
 `
@@ -255,6 +471,21 @@ type SetCanonicalJobIDParams struct {
 
 func (q *Queries) SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error {
 	_, err := q.db.Exec(ctx, setCanonicalJobID, arg.ID, arg.CanonicalJobID)
+	return err
+}
+
+const updateJobEmbedding = `-- name: UpdateJobEmbedding :exec
+UPDATE jobs SET embedding = $2, embedding_model = $3, embedded_at = now() WHERE id = $1
+`
+
+type UpdateJobEmbeddingParams struct {
+	ID             pgtype.UUID     `json:"id"`
+	Embedding      pgvector.Vector `json:"embedding"`
+	EmbeddingModel pgtype.Text     `json:"embedding_model"`
+}
+
+func (q *Queries) UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbeddingParams) error {
+	_, err := q.db.Exec(ctx, updateJobEmbedding, arg.ID, arg.Embedding, arg.EmbeddingModel)
 	return err
 }
 
@@ -290,7 +521,11 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     status = 'ACTIVE',
     updated_at = now(),
     last_seen_at = now()
-RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id, (xmax = 0) AS inserted
+RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority,
+    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+    salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
+    last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
+    (xmax = 0) AS inserted
 `
 
 type UpsertJobParams struct {
@@ -351,6 +586,10 @@ type UpsertJobRow struct {
 	Inserted        bool               `json:"inserted"`
 }
 
+// Column list deliberately excludes embedding/embedding_model/embedded_at:
+// those are NULL for most rows (only set later by EmbedWorker), and pgx
+// can't scan a NULL vector into pgvector-go's non-nullable Vector type -
+// callers of UpsertJob never need the embedding anyway.
 func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJobRow, error) {
 	row := q.db.QueryRow(ctx, upsertJob,
 		arg.Source,

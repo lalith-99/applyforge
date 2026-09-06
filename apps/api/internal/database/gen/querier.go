@@ -49,12 +49,12 @@ type Querier interface {
 	// Finds an existing, still-canonical job with the same fingerprint from a
 	// DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
 	// so a job never becomes its own canonical.
-	FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (Job, error)
+	FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (FindCanonicalByFingerprintRow, error)
 	FindJobByTypeAndPayload(ctx context.Context, arg FindJobByTypeAndPayloadParams) (BackgroundJob, error)
 	GetApplicationAnswers(ctx context.Context, userID pgtype.UUID) (ApplicationAnswer, error)
 	GetApplicationForUser(ctx context.Context, arg GetApplicationForUserParams) (Application, error)
 	GetCompanyByNormalizedName(ctx context.Context, normalizedName string) (Company, error)
-	GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error)
+	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
 	GetJobMatch(ctx context.Context, arg GetJobMatchParams) (JobMatch, error)
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
 	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)
@@ -82,7 +82,7 @@ type Querier interface {
 	ListCandidateSkillsForUser(ctx context.Context, userID pgtype.UUID) ([]CandidateSkill, error)
 	ListJobMatchesForUser(ctx context.Context, userID pgtype.UUID) ([]JobMatch, error)
 	ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error)
-	ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error)
+	ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error)
 	ListResumeExperiences(ctx context.Context, resumeID pgtype.UUID) ([]ResumeExperience, error)
 	ListResumeVersionsForResume(ctx context.Context, baseResumeID pgtype.UUID) ([]ResumeVersion, error)
 	ListResumesForUser(ctx context.Context, userID pgtype.UUID) ([]Resume, error)
@@ -93,6 +93,13 @@ type Querier interface {
 	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
 	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
 	RecordAIUsage(ctx context.Context, arg RecordAIUsageParams) error
+	// Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
+	// ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
+	// candidate/query embedding. Cheap SQL filters happen upstream via
+	// ListFilter/hard-eligibility, not here - this query is purely the
+	// "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
+	// WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+	SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmbeddingParams) ([]SearchJobsByEmbeddingRow, error)
 	SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error
 	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error
 	SetResumeVersionDocuments(ctx context.Context, arg SetResumeVersionDocumentsParams) (ResumeVersion, error)
@@ -101,10 +108,15 @@ type Querier interface {
 	UpdateApplicationNotes(ctx context.Context, arg UpdateApplicationNotesParams) (Application, error)
 	UpdateApplicationStatus(ctx context.Context, arg UpdateApplicationStatusParams) (Application, error)
 	UpdateCandidateSkillStatus(ctx context.Context, arg UpdateCandidateSkillStatusParams) (CandidateSkill, error)
+	UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbeddingParams) error
 	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error)
 	UpsertApplicationAnswers(ctx context.Context, arg UpsertApplicationAnswersParams) (ApplicationAnswer, error)
 	UpsertCandidateSkill(ctx context.Context, arg UpsertCandidateSkillParams) (CandidateSkill, error)
 	UpsertCompany(ctx context.Context, arg UpsertCompanyParams) (Company, error)
+	// Column list deliberately excludes embedding/embedding_model/embedded_at:
+	// those are NULL for most rows (only set later by EmbedWorker), and pgx
+	// can't scan a NULL vector into pgvector-go's non-nullable Vector type -
+	// callers of UpsertJob never need the embedding anyway.
 	UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJobRow, error)
 	UpsertJobMatch(ctx context.Context, arg UpsertJobMatchParams) (JobMatch, error)
 	UpsertJobPreferences(ctx context.Context, arg UpsertJobPreferencesParams) (JobPreference, error)

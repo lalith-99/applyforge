@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from app.api.documents import router as documents_router
+from app.api.embeddings import router as embeddings_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.learning import router as learning_router
@@ -17,3 +18,4 @@ app.include_router(jobs_router)
 app.include_router(tailoring_router)
 app.include_router(learning_router)
 app.include_router(documents_router)
+app.include_router(embeddings_router)
