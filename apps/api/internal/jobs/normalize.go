@@ -58,6 +58,23 @@ func normalizeCompanyName(name string) string {
 	return strings.TrimSpace(lower)
 }
 
+// buildFingerprint produces a coarse cross-source dedupe key: the same real
+// posting from two different sources (e.g. a company's own Greenhouse board
+// and an aggregator like Arbeitnow) should normally produce the same
+// fingerprint even though their (source, external_id) differ. Deliberately
+// uses remote_type rather than raw location text, since free-text location
+// formatting varies far more across sources than a normalized title/company
+// pair does - remote_type is already normalized identically by every
+// connector (see source.go's RawJob.RemoteType).
+func buildFingerprint(companyName, title, remoteType string) string {
+	company := normalizeCompanyName(companyName)
+	normTitle := normalizeTitle(title)
+	if company == "" || normTitle == "" {
+		return ""
+	}
+	return company + "|" + normTitle + "|" + strings.ToLower(strings.TrimSpace(remoteType))
+}
+
 // contentHash fingerprints the parts of a job posting that matter for
 // change detection (see MASTER_REQUIREMENTS.md §15).
 func contentHash(company, title, location, description string) string {

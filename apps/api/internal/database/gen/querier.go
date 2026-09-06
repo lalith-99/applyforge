@@ -46,6 +46,10 @@ type Querier interface {
 	EnqueueJob(ctx context.Context, arg EnqueueJobParams) (BackgroundJob, error)
 	FailJob(ctx context.Context, arg FailJobParams) error
 	FailTailoringRun(ctx context.Context, id pgtype.UUID) error
+	// Finds an existing, still-canonical job with the same fingerprint from a
+	// DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
+	// so a job never becomes its own canonical.
+	FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (Job, error)
 	FindJobByTypeAndPayload(ctx context.Context, arg FindJobByTypeAndPayloadParams) (BackgroundJob, error)
 	GetApplicationAnswers(ctx context.Context, userID pgtype.UUID) (ApplicationAnswer, error)
 	GetApplicationForUser(ctx context.Context, arg GetApplicationForUserParams) (Application, error)
@@ -89,6 +93,7 @@ type Querier interface {
 	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
 	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
 	RecordAIUsage(ctx context.Context, arg RecordAIUsageParams) error
+	SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error
 	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error
 	SetResumeVersionDocuments(ctx context.Context, arg SetResumeVersionDocumentsParams) (ResumeVersion, error)
 	TouchJobSource(ctx context.Context, arg TouchJobSourceParams) error

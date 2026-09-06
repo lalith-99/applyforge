@@ -2,9 +2,11 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
@@ -34,6 +36,8 @@ type Job struct {
 	UpdatedAt       time.Time
 	LastSeenAt      time.Time
 	ContentHash     string
+	Fingerprint     string
+	CanonicalJobID  *uuid.UUID // set when this row is a cross-source duplicate of another job
 	Status          string
 	CreatedAt       time.Time
 }
@@ -62,6 +66,8 @@ func jobFromRow(row db.Job) Job {
 		UpdatedAt:       row.UpdatedAt.Time,
 		LastSeenAt:      row.LastSeenAt.Time,
 		ContentHash:     row.ContentHash,
+		Fingerprint:     row.Fingerprint,
+		CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
 		Status:          row.Status,
 		CreatedAt:       row.CreatedAt.Time,
 	}
@@ -135,6 +141,7 @@ func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, er
 		SourceUrl:       database.PGText(in.SourceURL),
 		PostedAt:        database.PGTimestamptz(in.PostedAt),
 		ContentHash:     in.ContentHash,
+		Fingerprint:     in.Fingerprint,
 	})
 	if err != nil {
 		return UpsertJobResult{}, err
@@ -166,6 +173,8 @@ func jobFromUpsertRow(row db.UpsertJobRow) Job {
 		UpdatedAt:       row.UpdatedAt.Time,
 		LastSeenAt:      row.LastSeenAt.Time,
 		ContentHash:     row.ContentHash,
+		Fingerprint:     row.Fingerprint,
+		CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
 		Status:          row.Status,
 		CreatedAt:       row.CreatedAt.Time,
 	}
@@ -178,6 +187,39 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (Job, error) {
 		return Job{}, err
 	}
 	return jobFromRow(row), nil
+}
+
+// ErrNoCanonicalMatch is returned by FindCanonicalByFingerprint when no
+// other canonical job shares the fingerprint.
+var ErrNoCanonicalMatch = errors.New("no canonical job with this fingerprint")
+
+// FindCanonicalByFingerprint looks for an existing, still-canonical job
+// (from any source) sharing fingerprint, excluding excludeJobID itself.
+// Used for cross-source dedupe: when a new posting's fingerprint matches one
+// already ingested from a different source, the new posting is linked to
+// that job instead of appearing as a separate result.
+func (r *Repository) FindCanonicalByFingerprint(ctx context.Context, fingerprint string, excludeJobID uuid.UUID) (Job, error) {
+	row, err := r.q.FindCanonicalByFingerprint(ctx, db.FindCanonicalByFingerprintParams{
+		Fingerprint: fingerprint,
+		ID:          database.UUIDToPG(excludeJobID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Job{}, ErrNoCanonicalMatch
+		}
+		return Job{}, err
+	}
+	return jobFromRow(row), nil
+}
+
+// SetCanonicalJobID marks jobID as a duplicate of canonicalJobID, so listing
+// queries (which filter canonical_job_id IS NULL) stop surfacing it as a
+// separate result.
+func (r *Repository) SetCanonicalJobID(ctx context.Context, jobID, canonicalJobID uuid.UUID) error {
+	return r.q.SetCanonicalJobID(ctx, db.SetCanonicalJobIDParams{
+		ID:             database.UUIDToPG(jobID),
+		CanonicalJobID: database.PGUUID(&canonicalJobID),
+	})
 }
 
 // CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they

@@ -37,7 +37,7 @@ func (q *Queries) CloseStaleJobs(ctx context.Context, arg CloseStaleJobsParams) 
 
 const countJobs = `-- name: CountJobs :one
 SELECT count(*) FROM jobs
-WHERE status = 'ACTIVE'
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -66,8 +66,60 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 	return count, err
 }
 
+const findCanonicalByFingerprint = `-- name: FindCanonicalByFingerprint :one
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs
+WHERE fingerprint = $1 AND fingerprint != '' AND canonical_job_id IS NULL AND id != $2
+ORDER BY first_seen_at ASC
+LIMIT 1
+`
+
+type FindCanonicalByFingerprintParams struct {
+	Fingerprint string      `json:"fingerprint"`
+	ID          pgtype.UUID `json:"id"`
+}
+
+// Finds an existing, still-canonical job with the same fingerprint from a
+// DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
+// so a job never becomes its own canonical.
+func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanonicalByFingerprintParams) (Job, error) {
+	row := q.db.QueryRow(ctx, findCanonicalByFingerprint, arg.Fingerprint, arg.ID)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.ExternalID,
+		&i.CompanyID,
+		&i.CompanyName,
+		&i.Title,
+		&i.NormalizedTitle,
+		&i.Seniority,
+		&i.Description,
+		&i.Country,
+		&i.State,
+		&i.City,
+		&i.LocationText,
+		&i.RemoteType,
+		&i.EmploymentType,
+		&i.SalaryMin,
+		&i.SalaryMax,
+		&i.SalaryCurrency,
+		&i.ApplyUrl,
+		&i.SourceUrl,
+		&i.PostedAt,
+		&i.FirstSeenAt,
+		&i.UpdatedAt,
+		&i.LastSeenAt,
+		&i.ContentHash,
+		&i.Status,
+		&i.CreatedAt,
+		&i.Fingerprint,
+		&i.CanonicalJobID,
+	)
+	return i, err
+}
+
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at FROM jobs WHERE id = $1
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs WHERE id = $1
 `
 
 func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
@@ -101,13 +153,15 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (Job, error) {
 		&i.ContentHash,
 		&i.Status,
 		&i.CreatedAt,
+		&i.Fingerprint,
+		&i.CanonicalJobID,
 	)
 	return i, err
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at FROM jobs
-WHERE status = 'ACTIVE'
+SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id FROM jobs
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -177,6 +231,8 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 			&i.ContentHash,
 			&i.Status,
 			&i.CreatedAt,
+			&i.Fingerprint,
+			&i.CanonicalJobID,
 		); err != nil {
 			return nil, err
 		}
@@ -188,13 +244,27 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 	return items, nil
 }
 
+const setCanonicalJobID = `-- name: SetCanonicalJobID :exec
+UPDATE jobs SET canonical_job_id = $2, updated_at = now() WHERE id = $1
+`
+
+type SetCanonicalJobIDParams struct {
+	ID             pgtype.UUID `json:"id"`
+	CanonicalJobID pgtype.UUID `json:"canonical_job_id"`
+}
+
+func (q *Queries) SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error {
+	_, err := q.db.Exec(ctx, setCanonicalJobID, arg.ID, arg.CanonicalJobID)
+	return err
+}
+
 const upsertJob = `-- name: UpsertJob :one
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
     country, state, city, location_text, remote_type, employment_type,
-    salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash
+    salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash, fingerprint
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     company_id = EXCLUDED.company_id,
@@ -216,10 +286,11 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     source_url = EXCLUDED.source_url,
     posted_at = EXCLUDED.posted_at,
     content_hash = EXCLUDED.content_hash,
+    fingerprint = EXCLUDED.fingerprint,
     status = 'ACTIVE',
     updated_at = now(),
     last_seen_at = now()
-RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, (xmax = 0) AS inserted
+RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id, (xmax = 0) AS inserted
 `
 
 type UpsertJobParams struct {
@@ -244,6 +315,7 @@ type UpsertJobParams struct {
 	SourceUrl       pgtype.Text        `json:"source_url"`
 	PostedAt        pgtype.Timestamptz `json:"posted_at"`
 	ContentHash     string             `json:"content_hash"`
+	Fingerprint     string             `json:"fingerprint"`
 }
 
 type UpsertJobRow struct {
@@ -274,6 +346,8 @@ type UpsertJobRow struct {
 	ContentHash     string             `json:"content_hash"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
 	Inserted        bool               `json:"inserted"`
 }
 
@@ -300,6 +374,7 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJob
 		arg.SourceUrl,
 		arg.PostedAt,
 		arg.ContentHash,
+		arg.Fingerprint,
 	)
 	var i UpsertJobRow
 	err := row.Scan(
@@ -330,6 +405,8 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJob
 		&i.ContentHash,
 		&i.Status,
 		&i.CreatedAt,
+		&i.Fingerprint,
+		&i.CanonicalJobID,
 		&i.Inserted,
 	)
 	return i, err

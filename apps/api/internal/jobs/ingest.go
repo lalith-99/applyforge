@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -31,6 +32,7 @@ type IngestResult struct {
 	Fetched  int
 	Inserted int
 	Updated  int
+	Deduped  int   // new rows linked to an existing canonical job from a different source (see FindCanonicalByFingerprint)
 	Closed   int64 // jobs marked CLOSED for no longer appearing in this poll (0 for aggregator sources, see CloseStaleJobs)
 }
 
@@ -83,12 +85,31 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			SourceURL:       strOrNil(raw.SourceURL),
 			PostedAt:        raw.PostedAt,
 			ContentHash:     contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
+			Fingerprint:     buildFingerprint(jobCompanyName, raw.Title, raw.RemoteType),
 		}
 
 		upserted, err := s.repo.UpsertJob(ctx, job)
 		if err != nil {
 			slog.Error("upsert job failed", "source", sourceName, "external_id", raw.ExternalID, "error", err)
 			continue
+		}
+
+		// Cross-source dedupe: a brand new posting whose fingerprint matches
+		// one already canonical from a DIFFERENT (source, external_id) is
+		// linked to it instead of surfacing as a separate result. Only
+		// relevant for genuinely new rows - an existing job being re-touched
+		// already has whatever canonical link it was given the first time.
+		if upserted.Inserted && job.Fingerprint != "" {
+			canonical, findErr := s.repo.FindCanonicalByFingerprint(ctx, job.Fingerprint, upserted.Job.ID)
+			if findErr == nil {
+				if setErr := s.repo.SetCanonicalJobID(ctx, upserted.Job.ID, canonical.ID); setErr != nil {
+					slog.Error("set canonical job id failed", "job_id", upserted.Job.ID, "canonical_job_id", canonical.ID, "error", setErr)
+				} else {
+					result.Deduped++
+				}
+			} else if !errors.Is(findErr, ErrNoCanonicalMatch) {
+				slog.Error("find canonical by fingerprint failed", "job_id", upserted.Job.ID, "error", findErr)
+			}
 		}
 
 		// Enrich eagerly only for jobs seen for the first time. Re-touching
@@ -172,7 +193,7 @@ func (s *IngestionService) SyncAll(ctx context.Context) error {
 			continue
 		}
 		slog.Info("job source ingestion completed", "source", sourceName, "board_token", cfg.BoardToken,
-			"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "closed", result.Closed)
+			"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "deduped", result.Deduped, "closed", result.Closed)
 	}
 	return nil
 }

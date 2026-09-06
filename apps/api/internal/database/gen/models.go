@@ -125,6 +125,8 @@ type Job struct {
 	ContentHash     string             `json:"content_hash"`
 	Status          string             `json:"status"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Fingerprint     string             `json:"fingerprint"`
+	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
 }
 
 type JobMatch struct {

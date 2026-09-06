@@ -28,6 +28,15 @@ func PGUUID(id *uuid.UUID) pgtype.UUID {
 	return pgtype.UUID{Bytes: *id, Valid: true}
 }
 
+// UUIDPtrOrNil converts a pgx UUID into *uuid.UUID, returning nil if not valid.
+func UUIDPtrOrNil(id pgtype.UUID) *uuid.UUID {
+	if !id.Valid {
+		return nil
+	}
+	v := uuid.UUID(id.Bytes)
+	return &v
+}
+
 // UUIDOrNil converts pgtype.UUID into a nullable uuid.UUID.
 func UUIDOrNil(id pgtype.UUID) *uuid.UUID {
 	if !id.Valid {

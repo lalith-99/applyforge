@@ -107,6 +107,83 @@ func TestRepository_CloseStaleJobs_ClosesUnseenAndRevivesOnReappear(t *testing.T
 	}
 }
 
+func TestRepository_CrossSourceDedupe_LinksAndExcludesFromListing(t *testing.T) {
+	q := testdb.OpenTx(t)
+	repo := &Repository{q: q}
+	ctx := context.Background()
+
+	companyID, err := repo.UpsertCompany(ctx, "Acme Dedupe Co", fmt.Sprintf("acme-dedupe-%s", t.Name()))
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+
+	fp := buildFingerprint("Acme Dedupe Co", "Senior Backend Engineer", "remote")
+
+	first, err := repo.UpsertJob(ctx, Job{
+		Source:          "GREENHOUSE",
+		ExternalID:      uuid.NewString(),
+		CompanyID:       companyID,
+		CompanyName:     "Acme Dedupe Co",
+		Title:           "Senior Backend Engineer",
+		NormalizedTitle: normalizeTitle("Senior Backend Engineer"),
+		RemoteType:      strPtrTest("remote"),
+		Description:     "Build things",
+		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "", "Build things"),
+		Fingerprint:     fp,
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob (source A): %v", err)
+	}
+
+	second, err := repo.UpsertJob(ctx, Job{
+		Source:          "ARBEITNOW",
+		ExternalID:      uuid.NewString(),
+		CompanyID:       companyID,
+		CompanyName:     "Acme Dedupe Co",
+		Title:           "Senior Backend Engineer",
+		NormalizedTitle: normalizeTitle("Senior Backend Engineer"),
+		RemoteType:      strPtrTest("remote"),
+		Description:     "Build things (aggregator copy)",
+		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "", "Build things (aggregator copy)"),
+		Fingerprint:     fp,
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob (source B): %v", err)
+	}
+
+	canonical, err := repo.FindCanonicalByFingerprint(ctx, fp, second.Job.ID)
+	if err != nil {
+		t.Fatalf("FindCanonicalByFingerprint: %v", err)
+	}
+	if canonical.ID != first.Job.ID {
+		t.Fatalf("expected canonical match to be the first-seen job %s, got %s", first.Job.ID, canonical.ID)
+	}
+
+	if err := repo.SetCanonicalJobID(ctx, second.Job.ID, canonical.ID); err != nil {
+		t.Fatalf("SetCanonicalJobID: %v", err)
+	}
+
+	dup, err := repo.GetByID(ctx, second.Job.ID)
+	if err != nil {
+		t.Fatalf("GetByID (dup): %v", err)
+	}
+	if dup.CanonicalJobID == nil || *dup.CanonicalJobID != first.Job.ID {
+		t.Fatalf("expected duplicate job's CanonicalJobID to point at %s, got %v", first.Job.ID, dup.CanonicalJobID)
+	}
+
+	results, _, err := repo.List(ctx, ListFilter{Search: "Senior Backend Engineer"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, r := range results {
+		if r.ID == second.Job.ID {
+			t.Fatalf("expected duplicate job %s to be excluded from listings", second.Job.ID)
+		}
+	}
+}
+
+func strPtrTest(s string) *string { return &s }
+
 func TestRepository_ListAndGet(t *testing.T) {
 	q := testdb.OpenTx(t)
 	repo := &Repository{q: q}
