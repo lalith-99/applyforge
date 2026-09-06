@@ -431,4 +431,53 @@ Phases 2-7 was revisited and implemented, exactly along the "future plug-in" pat
    whether `raw.CompanyName` is populated, which is simple but implicit — worth making explicit if a second
    aggregator connector is added later).
 
+## Big architecture shift: ingest -> enrich -> filter -> retrieve -> rank -> async tailor
+
+Target end-state (12-phase roadmap, tracked in repo memory
+`applyforge-architecture-roadmap.md`): continuously ingest a large job universe, normalize/dedupe,
+AI-enrich each canonical job once, aggressively hard-filter, semantically retrieve, AI-rerank the
+finalists, then asynchronously build a tailored resume. This section covers Phase A, the first
+concrete step.
+
+### Phase A: async ingestion via the existing background queue
+
+1. **Reused `internal/background`, didn't build a new queue.** A Postgres-backed queue
+   (`background_jobs`, `FOR UPDATE SKIP LOCKED`, retry/backoff, dead-letter) already existed for
+   resume parsing. `IngestionService` now depends on it too: `EnqueueSyncTasks()` enqueues one
+   `sync_job_source` task per enabled source instead of `SyncAll()` polling every source
+   sequentially in one request/goroutine. Explicitly **not** introducing Kafka/SQS at this scale —
+   Postgres `SKIP LOCKED` comfortably handles tens of concurrent workers.
+2. **Multiple worker goroutines, not one.** `main.go` now spins up `BACKGROUND_WORKER_COUNT`
+   (default 5) worker goroutines sharing the same queue/handlers. Verified live via the
+   `background_jobs.locked_by` column showing distinct worker names claiming rows concurrently.
+3. **The admin sync endpoint and scheduler are now non-blocking.** `POST /admin/job-sources/sync`
+   returns `202 Accepted` immediately (enqueues, doesn't wait for providers to respond); the
+   scheduler enqueues on its interval instead of running a synchronous sweep.
+
+### Phase D (partial): eager AI enrichment, scoped to new jobs only
+
+4. **JD parsing moves from purely-lazy to eager-on-insert.** `Ingest()` enqueues an `enrich_job`
+   task for every newly inserted job, processed by a new `EnrichWorker` that calls the existing
+   `jobrequirements.Service.GetOrParse` (already cached by `content_hash` — this part pre-existed
+   and needed no change). Falls back to lazy on-demand parsing (unchanged) for anything not eagerly
+   enriched yet.
+5. **Incident: scoped eager enrichment to inserts only, not updates, after a real cost scare.** The
+   first implementation enqueued `enrich_job` for every upserted job, inserted *or* re-seen/updated.
+   Since ~6,252 pre-existing jobs had never been parsed (enrichment was previously lazy-only), the
+   very first sync cycle after deploying this enqueued ~6,982 enrich tasks — the overwhelming
+   majority being genuine, billable OpenAI calls, not cache hits. Caught this at 324 real calls
+   (cross-checked `job_requirements` row count against `ai-worker` request logs), stopped the `api`
+   container, deleted the unprocessed backlog rows from `background_jobs`, and restricted the
+   trigger to `upserted.Inserted == true` only. Verified live that a subsequent sync no longer grows
+   `job_requirements`.
+6. **Backfilling AI enrichment for the ~6,252 pre-existing jobs is deliberately deferred**, not
+   silently folded into steady-state ingestion. A one-time backfill needs its own throttled,
+   cost-aware pass (e.g. capped batch size per interval, or an explicit admin-triggered job with a
+   dry-run cost estimate first) — exactly the kind of decision `ai_usage` cost tracking (a later
+   phase) is meant to make routine instead of a surprise.
+7. **Lesson:** whenever flipping a lazy/on-demand code path to eager/proactive, check the existing
+   backlog size first — a "flag day" migration like this needs an explicit backfill plan, not the
+   same trigger as steady-state per-item processing.
+
+
 
