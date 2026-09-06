@@ -275,9 +275,31 @@ export interface ResumeVersion {
   MatchScore: number | null;
   AlignmentScore: number | null;
   TailoringMode: string | null;
+  Content: ResumeVersionContent;
   PDFStorageKey: string | null;
   DocxStorageKey: string | null;
   CreatedAt: string;
+}
+
+export interface ResumeVersionContent {
+  Contact: {
+    Name: string | null;
+    Email: string | null;
+    Phone: string | null;
+    Location: string | null;
+  };
+  Summary: string | null;
+  Skills: string[];
+  Experiences: {
+    Company: string | null;
+    Title: string | null;
+    StartDate: string | null;
+    EndDate: string | null;
+    Location: string | null;
+    Bullets: string[];
+  }[];
+  Education: string[];
+  Certifications: string[];
 }
 
 export type ApplicationStatus =
