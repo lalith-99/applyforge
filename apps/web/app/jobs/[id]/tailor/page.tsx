@@ -16,6 +16,9 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
   const [mode, setMode] = useState<(typeof MODES)[number]>("GROWTH");
   const [run, setRun] = useState<TailoringRun | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editedContent, setEditedContent] = useState<ResumeVersionContent | null>(null);
+  const [latestVersion, setLatestVersion] = useState<ResumeVersion | null>(null);
 
   const resumesQuery = useQuery({
     queryKey: ["resumes"],
@@ -60,8 +63,13 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
       api.post<ResumeVersion>(`/resumes/${run!.resume_id}/versions`, {
         job_id: jobId,
         tailoring_run_id: run!.id,
+        ...(editedContent ? { content: serializeResumeContent(editedContent) } : {}),
       }),
-    onSuccess: () => setPreviewOpen(true),
+    onSuccess: (version) => {
+      setLatestVersion(version);
+      setEditedContent(normalizeResumeContent(version.Content));
+      setPreviewOpen(true);
+    },
   });
 
   const parsedResumes = resumesQuery.data?.filter((r) => r.status === "PARSED") ?? [];
@@ -141,6 +149,10 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
               </button>
             </div>
 
+            {!isProcessing && run.alignment_score_after !== null && (
+              <TailoringScore run={run} />
+            )}
+
             {isProcessing && (
               <p className="text-sm text-black/60 dark:text-white/60">
                 Tailoring in progress ({run.status.toLowerCase()})…
@@ -184,10 +196,20 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                   >
                     {previewOpen ? "Hide Preview" : "Preview Resume"}
                   </button>
-                  {previewOpen && <ResumePreview content={generateResume.data.Content} />}
+                  {previewOpen && <ResumePreview content={editedContent ?? latestVersion?.Content ?? generateResume.data.Content} />}
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen((open) => !open)}
+                    className="self-start rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
+                  >
+                    {editOpen ? "Hide Editor" : "Edit Resume"}
+                  </button>
+                  {editOpen && editedContent && (
+                    <ResumeEditor content={editedContent} onChange={setEditedContent} />
+                  )}
                   <div className="flex gap-4">
                   <a
-                    href={`${API_BASE_URL}/resume-versions/${generateResume.data.ID}/download?format=pdf`}
+                    href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=pdf`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
@@ -195,7 +217,7 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                     Download PDF
                   </a>
                   <a
-                    href={`${API_BASE_URL}/resume-versions/${generateResume.data.ID}/download?format=docx`}
+                    href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=docx`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
@@ -210,6 +232,70 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
         )}
       </main>
     </>
+  );
+}
+
+function TailoringScore({ run }: { run: TailoringRun }) {
+  const alignment = run.alignment_score_after ?? 0;
+  const ats = run.critic_result?.ats_score ?? Math.round((run.keyword_coverage?.after ?? 0) * 100);
+  const overall = Math.round((alignment + ats) / 2);
+
+  return (
+    <section className="rounded-md border border-black/10 p-4 dark:border-white/15">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm text-black/60 dark:text-white/60">Tailoring Score</p>
+          <p className="text-3xl font-semibold">{overall}/100</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-right text-sm">
+          <ScoreMetric label="Alignment" value={alignment} />
+          <ScoreMetric label="ATS" value={ats} />
+          <ScoreMetric label="Keywords" value={Math.round((run.keyword_coverage?.after ?? 0) * 100)} />
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-black/60 dark:text-white/60">
+        Combines job alignment and ATS keyword coverage. Review every suggestion before downloading.
+      </p>
+    </section>
+  );
+}
+
+function ScoreMetric({ label, value }: { label: string; value: number }) {
+  return <div><p className="text-black/60 dark:text-white/60">{label}</p><p className="text-lg font-semibold">{value}%</p></div>;
+}
+
+function ResumeEditor({ content, onChange }: { content: ResumeVersionContent; onChange: (content: ResumeVersionContent) => void }) {
+  function updateExperience(index: number, field: "Company" | "Title" | "Location" | "StartDate" | "EndDate", value: string) {
+    const experiences = content.Experiences.map((experience, experienceIndex) =>
+      experienceIndex === index ? { ...experience, [field]: value || null } : experience,
+    );
+    onChange({ ...content, Experiences: experiences });
+  }
+
+  function updateBullet(experienceIndex: number, bulletIndex: number, value: string) {
+    const experiences = content.Experiences.map((experience, index) =>
+      index === experienceIndex
+        ? { ...experience, Bullets: experience.Bullets.map((bullet, currentIndex) => currentIndex === bulletIndex ? value : bullet) }
+        : experience,
+    );
+    onChange({ ...content, Experiences: experiences });
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-md border border-black/10 p-4 dark:border-white/15">
+      <label className="flex flex-col gap-1 text-sm"><span className="font-medium">Summary</span><textarea value={content.Summary ?? ""} onChange={(e) => onChange({ ...content, Summary: e.target.value || null })} rows={4} className="rounded-md border border-black/10 p-2 dark:border-white/15" /></label>
+      <label className="flex flex-col gap-1 text-sm"><span className="font-medium">Skills (one per line)</span><textarea value={content.Skills.join("\n")} onChange={(e) => onChange({ ...content, Skills: e.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} rows={4} className="rounded-md border border-black/10 p-2 dark:border-white/15" /></label>
+      {content.Experiences.map((experience, experienceIndex) => (
+        <fieldset key={experienceIndex} className="flex flex-col gap-2 rounded-md border border-black/10 p-3 dark:border-white/15">
+          <legend className="px-1 text-sm font-medium">Experience {experienceIndex + 1}</legend>
+          {(["Title", "Company", "Location", "StartDate", "EndDate"] as const).map((field) => (
+            <input key={field} value={experience[field] ?? ""} placeholder={field} onChange={(e) => updateExperience(experienceIndex, field, e.target.value)} className="rounded-md border border-black/10 p-2 text-sm dark:border-white/15" />
+          ))}
+          {experience.Bullets.map((bullet, bulletIndex) => <textarea key={bulletIndex} value={bullet} onChange={(e) => updateBullet(experienceIndex, bulletIndex, e.target.value)} rows={3} className="rounded-md border border-black/10 p-2 text-sm dark:border-white/15" />)}
+        </fieldset>
+      ))}
+      <p className="text-xs text-black/60 dark:text-white/60">Edit the content, then click Generate PDF/DOCX to create a new downloadable version.</p>
+    </div>
   );
 }
 
@@ -298,6 +384,31 @@ function stringValue(value: unknown): string | null {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function serializeResumeContent(content: ResumeVersionContent) {
+  return {
+    contact: {
+      name: content.Contact.Name,
+      email: content.Contact.Email,
+      phone: content.Contact.Phone,
+      location: content.Contact.Location,
+    },
+    summary: content.Summary,
+    skills: content.Skills,
+    experiences: content.Experiences.map((experience) => ({
+      company: experience.Company,
+      title: experience.Title,
+      start_date: experience.StartDate,
+      end_date: experience.EndDate,
+      location: experience.Location,
+      bullets: experience.Bullets,
+      detected_skills: [],
+      technologies: [],
+    })),
+    education: content.Education,
+    certifications: content.Certifications,
+  };
 }
 
 function PreviewSection({ title, children }: { title: string; children: ReactNode }) {

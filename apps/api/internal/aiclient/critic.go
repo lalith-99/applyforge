@@ -20,6 +20,7 @@ type CritiqueRequest struct {
 	MasterSkills        []string             `json:"master_skills"`
 	RequiredSkills      []string             `json:"required_skills"`
 	PreferredSkills     []string             `json:"preferred_skills"`
+	Responsibilities    []string             `json:"responsibilities"`
 	Suggestions         []CritiqueSuggestion `json:"suggestions"`
 }
 
@@ -29,6 +30,7 @@ type CritiqueResult struct {
 	MissingHighValueKeywords []string `json:"missing_high_value_keywords"`
 	WeakBullets              []string `json:"weak_bullets"`
 	Repetition               []string `json:"repetition"`
+	ATSIssues                []string `json:"ats_issues"`
 	ATSScore                 int      `json:"ats_score"`
 	TechnicalMatchScore      int      `json:"technical_match_score"`
 	HumanReadability         int      `json:"human_readability"`

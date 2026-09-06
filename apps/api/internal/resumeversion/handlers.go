@@ -1,6 +1,7 @@
 package resumeversion
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
 	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
@@ -35,8 +37,9 @@ func (h *Handlers) Mount(r chi.Router) {
 }
 
 type generateRequest struct {
-	JobID          *string `json:"job_id"`
-	TailoringRunID *string `json:"tailoring_run_id"`
+	JobID          *string         `json:"job_id"`
+	TailoringRunID *string         `json:"tailoring_run_id"`
+	Content        json.RawMessage `json:"content"`
 }
 
 func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +74,17 @@ func (h *Handlers) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version, err := h.svc.GenerateVersion(r.Context(), u.ID, resumeID, jobID, tailoringRunID)
+	var editedContent *aiclient.ResumeProfile
+	if len(req.Content) > 0 && string(req.Content) != "null" {
+		var content aiclient.ResumeProfile
+		if err := json.Unmarshal(req.Content, &content); err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid resume content")
+			return
+		}
+		editedContent = &content
+	}
+
+	version, err := h.svc.GenerateVersion(r.Context(), u.ID, resumeID, jobID, tailoringRunID, editedContent)
 	if err != nil {
 		if errors.Is(err, ErrResumeNotParsed) {
 			httpx.WriteError(w, http.StatusConflict, "resume has not finished parsing")

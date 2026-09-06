@@ -11,21 +11,18 @@ from __future__ import annotations
 from app.providers.openai_provider import structured_completion
 from app.tailoring.critic_models import CritiqueRequest, CritiqueResult
 
-_SYSTEM_PROMPT = """You are a truthfulness and quality critic reviewing AI-generated resume \
-tailoring suggestions before they're shown to a candidate. Compare the suggested_text of each \
-suggestion against the master_resume_summary and master_skills (the ONLY verified evidence of \
-what the candidate has actually done) and flag: unsupported_claims (any suggested_text that \
-asserts an accomplishment, tool, or experience NOT grounded in the master resume or an honestly-\
-labeled "growth area"/"transferable" framing - fabrication is the most serious issue here), \
-missing_high_value_keywords (important required_skills/preferred_skills that no suggestion \
-mentions at all), weak_bullets (suggested_text that's vague, generic, or could apply to any \
-candidate), and repetition (the same skill/phrase repeated near-identically across multiple \
-suggestions). Score ats_score (0-100, keyword/structure match for applicant tracking systems), \
-technical_match_score (0-100, genuine technical fit for required_skills), and human_readability \
-(0-100, how natural and specific the writing reads to a human reviewer). Set \
-recommend_regeneration=true if there are ANY unsupported_claims, or if ats_score < 80. Write a \
-short, actionable feedback string usable as instructions for a revision pass (e.g. "remove the \
-claimed AWS certification not present in the resume; add a keyword for Kubernetes")."""
+_SYSTEM_PROMPT = """You are the final ATS and human-review quality gate for resume tailoring. Review every \
+suggestion against the master resume summary and skills, which are the verified evidence of what the \
+candidate has done. Also check that each suggestion maps to a required skill, preferred skill, or job \
+responsibility. Flag unsupported_claims for invented tools, certifications, metrics, scope, ownership, \
+or outcomes; vague_bullets for generic wording that would not help an interviewer understand impact; \
+missing_high_value_keywords for important requirements absent from the suggestions; repetition for \
+duplicated phrases; and ATS_issues for keyword stuffing, unclear section intent, or formatting that \
+would parse poorly. Exact job keywords should be used when supported, but never at the cost of truth. \
+Prefer concise bullets with action + work + verified outcome. Score ats_score (0-100) for keyword and \
+parseability match, technical_match_score (0-100) for genuine fit, and human_readability (0-100) for \
+specific, natural writing. Set recommend_regeneration=true for any unsupported claim, any ATS issue \
+that materially harms parsing, or ats_score < 80. Give short, actionable revision instructions."""
 
 
 def critique_heuristic(request: CritiqueRequest) -> CritiqueResult:
@@ -56,6 +53,7 @@ Master resume summary: {request.master_resume_summary or 'none'}
 Master resume skills (verified evidence): {', '.join(request.master_skills) or 'none'}
 Required skills: {', '.join(request.required_skills) or 'none'}
 Preferred skills: {', '.join(request.preferred_skills) or 'none'}
+Job responsibilities: {', '.join(request.responsibilities) or 'none'}
 
 Generated suggestions to review:
 {suggestions_text or 'none'}"""

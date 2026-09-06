@@ -196,6 +196,8 @@ func toRunDetail(run Run, suggestions []Suggestion) map[string]any {
 		"summary_suggestion":     summarySuggestion,
 		"alignment_score_before": run.AlignmentScoreBefore,
 		"alignment_score_after":  run.AlignmentScoreAfter,
+		"keyword_coverage":       run.KeywordCoverage,
+		"critic_result":          run.CriticResult,
 		"created_at":             run.CreatedAt,
 		"completed_at":           run.CompletedAt,
 		"suggestions":            suggestions,

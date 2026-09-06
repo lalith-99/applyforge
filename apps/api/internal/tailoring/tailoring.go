@@ -60,6 +60,7 @@ type Run struct {
 	SummarySuggestion    json.RawMessage
 	AlignmentScoreBefore *int32
 	AlignmentScoreAfter  *int32
+	KeywordCoverage      json.RawMessage
 	CriticResult         json.RawMessage
 	RevisionCount        int32
 	CreatedAt            time.Time
@@ -77,6 +78,7 @@ func runFromRow(row db.TailoringRun) Run {
 		SummarySuggestion:    row.SummarySuggestion,
 		AlignmentScoreBefore: database.Int4OrNil(row.AlignmentScoreBefore),
 		AlignmentScoreAfter:  database.Int4OrNil(row.AlignmentScoreAfter),
+		KeywordCoverage:      row.KeywordCoverage,
 		CriticResult:         row.CriticResult,
 		RevisionCount:        row.RevisionCount,
 		CreatedAt:            row.CreatedAt.Time,

@@ -208,7 +208,6 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     # against, so a bullet that picks up several skills gets ONE combined,
     # honestly-worded suggestion instead of several near-duplicates.
     bullet_transfer_skills: dict[str, list[str]] = {}
-    bullet_growth_skills: dict[str, list[str]] = {}
     for skill in required_missing + preferred_missing:
         importance = "required" if skill in required_missing else "preferred"
         transfer = _transfer_for(skill, request.transferable_matches)
@@ -223,17 +222,12 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
             exp = _find_experience_by_skill(transfer.source_skill, request.experiences)
             if exp:
                 bullet_transfer_skills.setdefault(exp.bullets[0], []).append(skill)
-        elif request.mode == "MAX_MATCH":
-            relevant = _lower_set(request.required_skills) | _lower_set(request.preferred_skills)
-            exp = _most_relevant_experience(request.experiences, relevant)
-            if exp and exp.bullets:
-                bullet_growth_skills.setdefault(exp.bullets[0], []).append(skill)
 
     linked_experience_suggestions = [
         _added_skills_experience_suggestion(
-            bullet, bullet_transfer_skills.get(bullet, []), bullet_growth_skills.get(bullet, []), request.job_title
+            bullet, bullet_transfer_skills.get(bullet, []), [], request.job_title
         )
-        for bullet in dict.fromkeys(list(bullet_transfer_skills) + list(bullet_growth_skills))
+        for bullet in bullet_transfer_skills
     ]
 
     summary_suggestion = _summary_suggestion(
@@ -289,31 +283,32 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
     from app.providers.openai_provider import structured_completion
 
     system = (
-        "You are an expert resume writer helping a candidate tailor their resume for a specific job, "
-        "without ever fabricating experience they don't have. "
+        "You are an expert resume writer and ATS optimization specialist. Tailor the candidate's "
+        "resume for the target job to maximize the chance of passing automated screening and earning "
+        "a human interview, without ever fabricating experience, metrics, tools, certifications, "
+        "scope, or outcomes. "
         + _MODE_POLICY[request.mode]
-        + " Rewrite the professional summary (if one exists) to foreground the candidate's most "
-        "relevant real skills and experience for this specific role — set its section to 'summary' and "
-        "original_text to the exact existing summary. Suggest at most one strengthened experience "
-        "bullet drawn from the candidate's existing bullets, rephrased to more clearly connect it to "
-        "this job's stated requirements/responsibilities — set its section to 'experience' and "
-        "original_text to the exact existing bullet text you're improving. For any skill you suggest "
-        "adding, create a suggestion with section='skills', original_text=null, and list the skill in "
-        "skills_added. IMPORTANT: a skill should never be suggested in the skills section without "
-        "also being reflected in the experience section — for every skill you add, also create a "
-        "SEPARATE experience-section suggestion against the most relevant existing bullet: (a) if the "
-        "skill is backed by a transferable_matches entry, rephrase the bullet that demonstrates the "
-        "source skill to honestly connect it to the newly added skill (LOW/MEDIUM risk_level); (b) if "
-        "the skill has no transferable_matches evidence (a pure keyword-coverage MAX_MATCH addition), "
-        "still add it to the most relevant bullet but phrase it as a growth area or related exposure "
-        "(e.g. '...with related exposure to X as a growth area'), NEVER as a claimed accomplishment or "
-        "hands-on ownership since that would fabricate experience, and mark it risk_level='HIGH'. "
-        "Always populate requirements_addressed with the specific required/preferred skills or "
-        "responsibilities each suggestion relates to. Set source to 'MASTER_RESUME' if a suggestion "
-        "only rephrases content already fully evidenced by the resume, or 'AI_SUGGESTED' if it adds "
-        "something (like a new skill) not already directly stated. Compute keyword_coverage_before "
-        "and keyword_coverage_after as the fraction (0.0-1.0) of required_skills+preferred_skills "
-        "reflected in the resume before vs. after your suggestions."
+        + " Follow these priorities: (1) preserve truth and the candidate's strongest evidence; "
+        "(2) use the exact wording of supported required skills and responsibilities naturally, with "
+        "common synonyms only when they are accurate; (3) make bullets specific and interview-worthy "
+        "using action + work performed + outcome, but only reuse metrics or outcomes present in the "
+        "master resume; (4) remove filler, generic adjectives, first-person language, and keyword "
+        "stuffing. Keep suggestions concise and compatible with standard ATS parsing: plain text, "
+        "clear section semantics, no tables/columns/symbol-heavy formatting. Rewrite the summary (if "
+        "one exists) to foreground the candidate's most relevant verified skills and experience for "
+        "this role — section='summary' and original_text must be the exact existing summary. Suggest "
+        "up to three high-value experience bullet rewrites, each grounded in an exact existing bullet, "
+        "and connect them to the most relevant job responsibility or requirement. For a missing skill, "
+        "create section='skills', original_text=null, and list it in skills_added only when the mode "
+        "allows it. A skill backed by transferable_matches may receive an honest experience rewrite. "
+        "A skill with no evidence must NEVER be inserted into an experience accomplishment; it may be "
+        "listed as an AI_SUGGESTED high-risk keyword for MAX_MATCH review only. Do not claim hands-on "
+        "ownership, proficiency, certification, or results for unsupported skills. Always populate "
+        "requirements_addressed with the exact requirements or responsibilities addressed, and explain "
+        "the value of every suggestion in reason. Set source='MASTER_RESUME' for evidence-only rewrites "
+        "and source='AI_SUGGESTED' for additions. Compute keyword_coverage_before/after as the "
+        "fraction (0.0-1.0) of required_skills+preferred_skills reflected in the resume before and "
+        "after suggestions; do not inflate coverage for unsupported experience claims."
     )
     user = request.model_dump_json(indent=2)
     return structured_completion(system, user, TailoringResponse)

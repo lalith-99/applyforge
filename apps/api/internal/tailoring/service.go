@@ -189,7 +189,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
 		return err
 	}
-	critic, criticErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, aiResp))
+	critic, criticErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, reqs.Responsibilities, aiResp))
 
 	revisionCount := int32(0)
 	if criticErr == nil && critic.RecommendRegeneration && revisionCount < maxRevisions {
@@ -210,7 +210,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 			if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
 				return err
 			}
-			if reCritic, reErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, aiResp)); reErr == nil {
+			if reCritic, reErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, reqs.Responsibilities, aiResp)); reErr == nil {
 				critic = reCritic
 			}
 		}
@@ -263,7 +263,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	return err
 }
 
-func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, requiredNames, preferredNames []string, aiResp aiclient.TailoringResponse) aiclient.CritiqueRequest {
+func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, requiredNames, preferredNames, responsibilities []string, aiResp aiclient.TailoringResponse) aiclient.CritiqueRequest {
 	all := make([]aiclient.CritiqueSuggestion, 0, len(aiResp.SkillSuggestions)+len(aiResp.ExperienceSuggestions)+1)
 	if aiResp.SummarySuggestion != nil {
 		all = append(all, toCritiqueSuggestion(*aiResp.SummarySuggestion))
@@ -280,6 +280,7 @@ func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, 
 		MasterSkills:        masterSkills,
 		RequiredSkills:      requiredNames,
 		PreferredSkills:     preferredNames,
+		Responsibilities:    responsibilities,
 		Suggestions:         all,
 	}
 }

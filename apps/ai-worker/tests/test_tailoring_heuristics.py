@@ -58,6 +58,12 @@ def test_max_match_mode_suggests_all_missing_skills() -> None:
     assert "Kubernetes" in added
 
 
+def test_max_match_does_not_claim_unsupported_skills_in_experience() -> None:
+    response = generate_tailoring(_request("MAX_MATCH"))
+    experience_text = " ".join(s.suggested_text for s in response.experience_suggestions).lower()
+    assert "kubernetes" not in experience_text
+
+
 def test_skill_suggestion_with_transfer_has_lower_risk_than_without() -> None:
     transfers = [
         TransferableMatchInput(

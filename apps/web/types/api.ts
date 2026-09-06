@@ -165,6 +165,8 @@ export interface TailoringRun {
   status: string;
   alignment_score_before: number | null;
   alignment_score_after: number | null;
+  keyword_coverage: { before?: number; after?: number } | null;
+  critic_result: { ats_score?: number; technical_match_score?: number; human_readability?: number } | null;
   created_at: string;
   completed_at: string | null;
   suggestions: TailoringSuggestion[] | null;

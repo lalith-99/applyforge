@@ -61,7 +61,7 @@ func NewService(
 // GenerateVersion merges any approved/edited tailoring suggestions for the
 // given run onto the base resume's parsed profile, persists a new version,
 // and generates + stores PDF/DOCX documents for it.
-func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUID, jobID, tailoringRunID *uuid.UUID) (Version, error) {
+func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUID, jobID, tailoringRunID *uuid.UUID, editedContent *aiclient.ResumeProfile) (Version, error) {
 	baseResume, err := s.resumeRepo.Get(ctx, resumeID, userID)
 	if err != nil {
 		return Version{}, err
@@ -94,6 +94,9 @@ func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUI
 	}
 
 	merged := mergeContent(base, suggestions)
+	if editedContent != nil {
+		merged = *editedContent
+	}
 
 	var matchScore *int32
 	if jobID != nil {

@@ -24,6 +24,7 @@ class CritiqueRequest(BaseModel):
     master_skills: list[str] = Field(default_factory=list)
     required_skills: list[str] = Field(default_factory=list)
     preferred_skills: list[str] = Field(default_factory=list)
+    responsibilities: list[str] = Field(default_factory=list)
     suggestions: list[SuggestionInput] = Field(default_factory=list)
 
 
@@ -32,6 +33,7 @@ class CritiqueResult(BaseModel):
     missing_high_value_keywords: list[str] = Field(default_factory=list)
     weak_bullets: list[str] = Field(default_factory=list)
     repetition: list[str] = Field(default_factory=list)
+    ats_issues: list[str] = Field(default_factory=list)
     ats_score: int = 0
     technical_match_score: int = 0
     human_readability: int = 0
