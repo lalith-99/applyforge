@@ -167,7 +167,7 @@ export interface TailoringRun {
   alignment_score_after: number | null;
   created_at: string;
   completed_at: string | null;
-  suggestions: TailoringSuggestion[];
+  suggestions: TailoringSuggestion[] | null;
 }
 
 export interface ComponentScores {

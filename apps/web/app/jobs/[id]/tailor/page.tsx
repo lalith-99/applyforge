@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { AppNav } from "@/components/AppNav";
 import { api, ApiError, API_BASE_URL } from "@/lib/api";
 import { DefendBulletDrawer } from "@/features/learning/DefendBulletDrawer";
@@ -26,13 +26,24 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
     onSuccess: (data) => setRun(data),
   });
 
+  const isProcessing = !!run && run.status !== "COMPLETED" && run.status !== "FAILED";
+
+  useEffect(() => {
+    if (!isProcessing || !run) return;
+    const interval = setInterval(async () => {
+      const latest = await api.get<TailoringRun>(`/tailoring/${run.id}`);
+      setRun(latest);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isProcessing, run]);
+
   const updateSuggestion = useMutation({
     mutationFn: ({ suggestionId, status }: { suggestionId: string; status: string }) =>
       api.patch<TailoringSuggestion>(`/tailoring/${run!.id}/suggestions/${suggestionId}`, { status }),
     onSuccess: (updated) => {
       setRun((prev) =>
         prev
-          ? { ...prev, suggestions: prev.suggestions.map((s) => (s.ID === updated.ID ? updated : s)) }
+          ? { ...prev, suggestions: (prev.suggestions ?? []).map((s) => (s.ID === updated.ID ? updated : s)) }
           : prev,
       );
     },
@@ -121,14 +132,21 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
               <button
                 type="button"
                 onClick={() => approveAll.mutate()}
-                className="rounded-md border border-black/10 px-4 py-2 text-sm dark:border-white/15"
+                disabled={isProcessing}
+                className="rounded-md border border-black/10 px-4 py-2 text-sm dark:border-white/15 disabled:opacity-60"
               >
                 Approve All Selected
               </button>
             </div>
 
+            {isProcessing && (
+              <p className="text-sm text-black/60 dark:text-white/60">
+                Tailoring in progress ({run.status.toLowerCase()})…
+              </p>
+            )}
+
             <div className="flex flex-col gap-4">
-              {run.suggestions.map((s) => (
+              {(run.suggestions ?? []).map((s) => (
                 <SuggestionCard
                   key={s.ID}
                   suggestion={s}
