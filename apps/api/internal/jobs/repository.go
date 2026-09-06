@@ -180,6 +180,19 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (Job, error) {
 	return jobFromRow(row), nil
 }
 
+// CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
+// weren't touched (last_seen_at) since cutoff, and returns how many were
+// closed. Intended to be called once per poll of a source that returns its
+// full current listing every time (see CloseStaleJobs SQL doc comment for
+// why aggregator sources with a page cap must not use this).
+func (r *Repository) CloseStaleJobs(ctx context.Context, source string, companyID uuid.UUID, cutoff time.Time) (int64, error) {
+	return r.q.CloseStaleJobs(ctx, db.CloseStaleJobsParams{
+		Source:     source,
+		CompanyID:  database.UUIDToPG(companyID),
+		LastSeenAt: database.PGTimestamptz(&cutoff),
+	})
+}
+
 // List returns a page of active jobs matching filter, most-relevant first.
 func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64, error) {
 	limit := filter.Limit

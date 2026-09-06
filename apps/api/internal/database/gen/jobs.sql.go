@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const closeStaleJobs = `-- name: CloseStaleJobs :execrows
+UPDATE jobs SET status = 'CLOSED', updated_at = now()
+WHERE source = $1 AND company_id = $2 AND status = 'ACTIVE' AND last_seen_at < $3
+`
+
+type CloseStaleJobsParams struct {
+	Source     string             `json:"source"`
+	CompanyID  pgtype.UUID        `json:"company_id"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+}
+
+// Marks jobs CLOSED when a source poll completed without re-seeing them
+// (last_seen_at predates the poll's start). Only meaningful for sources that
+// fetch their FULL current listing every poll (Greenhouse/Lever/Ashby); an
+// aggregator with a page cap (Arbeitnow) never calls this - "not seen this
+// poll" would just mean "pushed past the page cap", not "actually closed".
+func (q *Queries) CloseStaleJobs(ctx context.Context, arg CloseStaleJobsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeStaleJobs, arg.Source, arg.CompanyID, arg.LastSeenAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countJobs = `-- name: CountJobs :one
 SELECT count(*) FROM jobs
 WHERE status = 'ACTIVE'
@@ -192,6 +216,7 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     source_url = EXCLUDED.source_url,
     posted_at = EXCLUDED.posted_at,
     content_hash = EXCLUDED.content_hash,
+    status = 'ACTIVE',
     updated_at = now(),
     last_seen_at = now()
 RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority, description, country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at, (xmax = 0) AS inserted

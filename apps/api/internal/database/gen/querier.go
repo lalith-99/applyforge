@@ -13,6 +13,12 @@ import (
 type Querier interface {
 	ApproveAllPendingSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) error
 	ClaimNextJob(ctx context.Context, lockedBy pgtype.Text) (BackgroundJob, error)
+	// Marks jobs CLOSED when a source poll completed without re-seeing them
+	// (last_seen_at predates the poll's start). Only meaningful for sources that
+	// fetch their FULL current listing every poll (Greenhouse/Lever/Ashby); an
+	// aggregator with a page cap (Arbeitnow) never calls this - "not seen this
+	// poll" would just mean "pushed past the page cap", not "actually closed".
+	CloseStaleJobs(ctx context.Context, arg CloseStaleJobsParams) (int64, error)
 	CompleteJob(ctx context.Context, id pgtype.UUID) error
 	CompleteTailoringRun(ctx context.Context, arg CompleteTailoringRunParams) (TailoringRun, error)
 	CountApplicationEventsByToStatusForUser(ctx context.Context, userID pgtype.UUID) ([]CountApplicationEventsByToStatusForUserRow, error)

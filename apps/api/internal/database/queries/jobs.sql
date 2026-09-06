@@ -26,9 +26,19 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     source_url = EXCLUDED.source_url,
     posted_at = EXCLUDED.posted_at,
     content_hash = EXCLUDED.content_hash,
+    status = 'ACTIVE',
     updated_at = now(),
     last_seen_at = now()
 RETURNING *, (xmax = 0) AS inserted;
+
+-- name: CloseStaleJobs :execrows
+-- Marks jobs CLOSED when a source poll completed without re-seeing them
+-- (last_seen_at predates the poll's start). Only meaningful for sources that
+-- fetch their FULL current listing every poll (Greenhouse/Lever/Ashby); an
+-- aggregator with a page cap (Arbeitnow) never calls this - "not seen this
+-- poll" would just mean "pushed past the page cap", not "actually closed".
+UPDATE jobs SET status = 'CLOSED', updated_at = now()
+WHERE source = $1 AND company_id = $2 AND status = 'ACTIVE' AND last_seen_at < $3;
 
 -- name: GetJobByID :one
 SELECT * FROM jobs WHERE id = $1;

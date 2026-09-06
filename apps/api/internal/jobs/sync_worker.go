@@ -64,6 +64,6 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	}
 
 	slog.Info("job source ingestion completed", "source", sourceName, "board_token", cfg.BoardToken,
-		"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated)
+		"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "closed", result.Closed)
 	return nil
 }

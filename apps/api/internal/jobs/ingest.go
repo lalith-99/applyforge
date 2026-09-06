@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -30,6 +31,7 @@ type IngestResult struct {
 	Fetched  int
 	Inserted int
 	Updated  int
+	Closed   int64 // jobs marked CLOSED for no longer appearing in this poll (0 for aggregator sources, see CloseStaleJobs)
 }
 
 // Ingest fetches all postings from source and upserts them, attributing them
@@ -40,6 +42,7 @@ type IngestResult struct {
 // upserted/reused instead, so a single job_sources row can ingest postings
 // from many different companies.
 func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source JobSource, companyID uuid.UUID, companyName string) (IngestResult, error) {
+	pollStart := time.Now()
 	rawJobs, _, err := source.Fetch(ctx, nil)
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("fetch from %s: %w", sourceName, err)
@@ -111,6 +114,19 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		}
 	}
 
+	// Closure detection: only valid for sources that return their FULL
+	// current listing every poll. Arbeitnow's page cap means "not seen this
+	// poll" doesn't reliably mean "closed" - see CloseStaleJobs's doc
+	// comment - so it's deliberately excluded here.
+	if sourceName != "ARBEITNOW" {
+		closed, closeErr := s.repo.CloseStaleJobs(ctx, sourceName, companyID, pollStart)
+		if closeErr != nil {
+			slog.Error("close stale jobs failed", "source", sourceName, "company_id", companyID, "error", closeErr)
+		} else {
+			result.Closed = closed
+		}
+	}
+
 	return result, nil
 }
 
@@ -156,7 +172,7 @@ func (s *IngestionService) SyncAll(ctx context.Context) error {
 			continue
 		}
 		slog.Info("job source ingestion completed", "source", sourceName, "board_token", cfg.BoardToken,
-			"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated)
+			"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "closed", result.Closed)
 	}
 	return nil
 }

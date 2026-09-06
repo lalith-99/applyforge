@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -49,6 +50,60 @@ func TestRepository_UpsertJob_IsIdempotent(t *testing.T) {
 	}
 	if second.Job.ID != first.Job.ID {
 		t.Fatalf("expected same job id across repeated polls")
+	}
+}
+
+func TestRepository_CloseStaleJobs_ClosesUnseenAndRevivesOnReappear(t *testing.T) {
+	q := testdb.OpenTx(t)
+	repo := &Repository{q: q}
+	ctx := context.Background()
+
+	companyID, err := repo.UpsertCompany(ctx, "Acme Closure Co", fmt.Sprintf("acme-closure-%s", t.Name()))
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+
+	job := Job{
+		Source:          "GREENHOUSE",
+		ExternalID:      uuid.NewString(),
+		CompanyID:       companyID,
+		CompanyName:     "Acme Closure Co",
+		Title:           "Backend Engineer",
+		NormalizedTitle: normalizeTitle("Backend Engineer"),
+		Description:     "Build things",
+		ContentHash:     contentHash("Acme Closure Co", "Backend Engineer", "", "Build things"),
+	}
+	upserted, err := repo.UpsertJob(ctx, job)
+	if err != nil {
+		t.Fatalf("UpsertJob: %v", err)
+	}
+
+	// Simulate a poll that completed after this job's last_seen_at, i.e. the
+	// board no longer listed it.
+	cutoff := time.Now().Add(1 * time.Second)
+	closed, err := repo.CloseStaleJobs(ctx, "GREENHOUSE", companyID, cutoff)
+	if err != nil {
+		t.Fatalf("CloseStaleJobs: %v", err)
+	}
+	if closed != 1 {
+		t.Fatalf("expected 1 job closed, got %d", closed)
+	}
+
+	fetched, err := repo.GetByID(ctx, upserted.Job.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if fetched.Status != "CLOSED" {
+		t.Fatalf("expected status CLOSED, got %s", fetched.Status)
+	}
+
+	// The job reappears in a later poll - upserting it again should revive it.
+	revived, err := repo.UpsertJob(ctx, job)
+	if err != nil {
+		t.Fatalf("UpsertJob (revive): %v", err)
+	}
+	if revived.Job.Status != "ACTIVE" {
+		t.Fatalf("expected status ACTIVE after re-appearing in a poll, got %s", revived.Job.Status)
 	}
 }
 
