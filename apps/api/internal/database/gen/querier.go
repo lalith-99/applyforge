@@ -79,12 +79,14 @@ type Querier interface {
 	GetUserByGoogleID(ctx context.Context, googleID pgtype.Text) (User, error)
 	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	GetUserProfile(ctx context.Context, userID pgtype.UUID) (UserProfile, error)
+	InsertJobRecommendation(ctx context.Context, arg InsertJobRecommendationParams) error
 	LinkGoogleAccount(ctx context.Context, arg LinkGoogleAccountParams) (User, error)
 	ListApplicationEvents(ctx context.Context, applicationID pgtype.UUID) ([]ApplicationEvent, error)
 	ListApplicationsForUser(ctx context.Context, userID pgtype.UUID) ([]Application, error)
 	ListApplicationsWithJobForUser(ctx context.Context, userID pgtype.UUID) ([]ListApplicationsWithJobForUserRow, error)
 	ListCandidateSkillsForUser(ctx context.Context, userID pgtype.UUID) ([]CandidateSkill, error)
 	ListJobMatchesForUser(ctx context.Context, userID pgtype.UUID) ([]JobMatch, error)
+	ListJobRecommendations(ctx context.Context, arg ListJobRecommendationsParams) ([]ListJobRecommendationsRow, error)
 	ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error)
 	ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error)
 	ListResumeExperiences(ctx context.Context, resumeID pgtype.UUID) ([]ResumeExperience, error)
@@ -97,6 +99,10 @@ type Querier interface {
 	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
 	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
 	RecordAIUsage(ctx context.Context, arg RecordAIUsageParams) error
+	// Replaces a user's whole recommendation set atomically (delete-then-insert
+	// is simpler and cheap here since the set is small, N<=~50, and always
+	// fully recomputed together rather than updated piecemeal).
+	ReplaceJobRecommendations(ctx context.Context, userID pgtype.UUID) error
 	// Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
 	// combines cheap hard filters (remote_type/employment_type/posted_after -
 	// same predicates as ListJobs) with cosine-distance ranking in one query,

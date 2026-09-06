@@ -647,6 +647,48 @@ Verified: go build/vet/test all green, including new `airank` unit tests (httpte
 network) covering batching, judgment merging, fit_score-driven reordering, and graceful fallback to
 `TotalScore` when the AI call fails.
 
+## Phase I: async precomputed recommendations
+
+`/jobs` (or a future recommendations UI) shouldn't run the full funnel (hard filter -> semantic
+retrieval -> deterministic score -> AI rerank) on every request. New `job_recommendations` table
+materializes the ranked result once per profile change; reads become a simple indexed `SELECT`.
+
+1. **`jobrecommendations.ComputeWorker`** runs Phase G's `Recommend()` + Phase H's `airank.Rank()`
+   and calls `ReplaceForUser` (delete-then-insert, atomic enough for a small N<=50 set fully
+   recomputed together every time - no piecemeal updates to reconcile).
+2. **Trigger**: `candidateprofile.BuildWorker` gained an optional `onBuilt` callback (`SetOnBuilt`,
+   same pattern as `resume.ParseWorker`'s `onParsed` - a callback instead of a direct import, since
+   `jobrecommendations` already imports `candidateprofile`) invoked after a profile is built AND
+   embedded; wired in `main.go` to enqueue `compute_recommendations`.
+3. **`final_score`** is the AI `fit_score` when available, falling back to the deterministic
+   `TotalScore` for any job whose AI ranking failed - both are stored, not just the winner, so it's
+   possible to see later why a job ranked where it did.
+4. **New `GET /recommendations`** (`jobrecommendations.Handlers`) - a fast, purely indexed read.
+5. **Not yet wired**: a "new job arrives -> find candidates whose embedding is close -> recompute
+   their recommendations" trigger in the other direction (would need a reverse-nearest-neighbor
+   query against all candidate embeddings). Deferred - profile-change-triggered recompute is the
+   higher-value v1 trigger, and this fan-out adds real complexity for a less common event.
+
+### Debugging note: an empty-looking end-to-end test that wasn't actually a bug
+
+Live verification initially produced zero recommendations. Traced through a temporary standalone
+Go program (`cmd/debugrecommend`, deleted after use) that called each pipeline stage directly
+against the real dev DB: `Recommend()` alone worked perfectly (6 real candidate jobs, correct
+distances, correct eligibility) - the actual cause was that **the ai-worker container had never
+been rebuilt after Phase H's ranking endpoint was added** (a separate rebuild step from the `api`
+container, easy to forget since most of this session's changes only needed one or the other).
+`POST /v1/candidates/rank-jobs` was returning 404, `airank.Service.Rank` correctly treated that as a
+failed AI call and fell back to `TotalScore`-only ordering (working as designed) - the "bug" was an
+un-rebuilt container, not application logic. Once rebuilt, live verification showed a genuinely
+useful result: the deterministic scorer ranked "Account Maintenance Associate" highest (55, pure
+keyword-overlap coincidence) while the AI reranker correctly recognized it's irrelevant to a backend
+engineering candidate and ranked it last (10) - exactly Phase H's intended value.
+
+Verified: go build/vet/test all green. Live: real `compute_recommendations` run via the actual
+background worker (not just a debug script) produced 6 AI-ranked, persisted recommendations with
+sensible reasoning, confirming Phases G, H, and I work together correctly end-to-end.
+
+
 
 
 

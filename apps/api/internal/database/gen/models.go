@@ -206,6 +206,19 @@ type JobPreference struct {
 	UpdatedAt                           pgtype.Timestamptz `json:"updated_at"`
 }
 
+type JobRecommendation struct {
+	ID                      pgtype.UUID        `json:"id"`
+	UserID                  pgtype.UUID        `json:"user_id"`
+	JobID                   pgtype.UUID        `json:"job_id"`
+	DeterministicScore      int32              `json:"deterministic_score"`
+	AiFitScore              pgtype.Int4        `json:"ai_fit_score"`
+	AiRecommendation        pgtype.Text        `json:"ai_recommendation"`
+	AiReason                string             `json:"ai_reason"`
+	FinalScore              int32              `json:"final_score"`
+	CandidateProfileVersion pgtype.Int4        `json:"candidate_profile_version"`
+	ComputedAt              pgtype.Timestamptz `json:"computed_at"`
+}
+
 type JobRequirement struct {
 	ID                            pgtype.UUID        `json:"id"`
 	JobID                         pgtype.UUID        `json:"job_id"`

@@ -26,11 +26,20 @@ type BuildWorker struct {
 	service  *Service
 	repo     *Repository
 	aiClient *aiclient.Client
+	onBuilt  func(ctx context.Context, userID uuid.UUID) // optional; see SetOnBuilt
 }
 
 // NewBuildWorker builds a BuildWorker.
 func NewBuildWorker(service *Service, repo *Repository, aiClient *aiclient.Client) *BuildWorker {
 	return &BuildWorker{service: service, repo: repo, aiClient: aiClient}
+}
+
+// SetOnBuilt registers a callback invoked after a profile is successfully
+// built and embedded (e.g. to enqueue a job_recommendations recompute - kept
+// as a callback, not a direct import, so package candidateprofile doesn't
+// need to know about jobrecommendations, which already imports it).
+func (w *BuildWorker) SetOnBuilt(fn func(ctx context.Context, userID uuid.UUID)) {
+	w.onBuilt = fn
 }
 
 // Handle implements background.Handler for JobTypeBuild.
@@ -55,5 +64,12 @@ func (w *BuildWorker) Handle(ctx context.Context, job background.Job) error {
 		return fmt.Errorf("embed candidate profile: %w", err)
 	}
 
-	return w.repo.UpdateEmbedding(ctx, p.ID, resp.Embedding, resp.Model)
+	if err := w.repo.UpdateEmbedding(ctx, p.ID, resp.Embedding, resp.Model); err != nil {
+		return err
+	}
+
+	if w.onBuilt != nil {
+		w.onBuilt(ctx, userID)
+	}
+	return nil
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/account"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
+	"github.com/lalithlochan/applyforge/apps/api/internal/airank"
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiusage"
 	"github.com/lalithlochan/applyforge/apps/api/internal/analytics"
 	"github.com/lalithlochan/applyforge/apps/api/internal/applications"
@@ -26,6 +27,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/jobrecommendations"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
 	"github.com/lalithlochan/applyforge/apps/api/internal/learning"
@@ -128,6 +130,20 @@ func run() error {
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
+	matchingRepo := matching.NewRepository(db)
+	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo)
+	matchingHandlers := matching.NewHandlers(matchingService)
+
+	airankService := airank.NewService(aiWorkerClient)
+	jobRecommendationsRepo := jobrecommendations.NewRepository(db)
+	jobRecommendationsHandlers := jobrecommendations.NewHandlers(jobRecommendationsRepo)
+	jobRecommendationsWorker := jobrecommendations.NewComputeWorker(matchingService, airankService, candidateProfileRepo, jobRecommendationsRepo)
+	candidateProfileWorker.SetOnBuilt(func(ctx context.Context, userID uuid.UUID) {
+		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
+			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
+		}
+	})
+
 	// Multiple worker goroutines claim from the shared queue concurrently
 	// (SELECT ... FOR UPDATE SKIP LOCKED makes this safe), so slow/rate
 	// -limited providers or AI calls don't serialize every other job.
@@ -146,6 +162,7 @@ func run() error {
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
+		w.Register(jobrecommendations.JobTypeCompute, jobRecommendationsWorker.Handle)
 		go w.Run(workerCtx, 2*time.Second)
 	}
 
@@ -158,10 +175,6 @@ func run() error {
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	defer stopScheduler()
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
-
-	matchingRepo := matching.NewRepository(db)
-	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo)
-	matchingHandlers := matching.NewHandlers(matchingService)
 
 	tailoringRepo := tailoring.NewRepository(db)
 	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
@@ -191,7 +204,7 @@ func run() error {
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
 	})
 
 	server := &http.Server{
