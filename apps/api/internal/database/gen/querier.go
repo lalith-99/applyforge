@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 type Querier interface {
@@ -60,6 +61,7 @@ type Querier interface {
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
 	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)
 	GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobSourceByIDRow, error)
+	GetLatestCandidateProfileEmbedding(ctx context.Context, userID pgtype.UUID) (pgvector.Vector, error)
 	GetLatestCandidateProfileVersion(ctx context.Context, userID pgtype.UUID) (GetLatestCandidateProfileVersionRow, error)
 	GetLearningPlan(ctx context.Context, arg GetLearningPlanParams) (LearningPlan, error)
 	GetNextResumeVersionNumber(ctx context.Context, baseResumeID pgtype.UUID) (int32, error)
@@ -96,11 +98,11 @@ type Querier interface {
 	MarkResumeParsing(ctx context.Context, id pgtype.UUID) error
 	RecordAIUsage(ctx context.Context, arg RecordAIUsageParams) error
 	// Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
-	// ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
-	// candidate/query embedding. Cheap SQL filters happen upstream via
-	// ListFilter/hard-eligibility, not here - this query is purely the
-	// "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
-	// WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+	// combines cheap hard filters (remote_type/employment_type/posted_after -
+	// same predicates as ListJobs) with cosine-distance ranking in one query,
+	// so the ANN index only has to rank whatever survives the filters rather
+	// than the whole table. embedding IS NOT NULL is guaranteed by the WHERE
+	// clause, so scanning it as a non-nullable pgvector.Vector is safe.
 	SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmbeddingParams) ([]SearchJobsByEmbeddingRow, error)
 	SetCanonicalJobID(ctx context.Context, arg SetCanonicalJobIDParams) error
 	SetResumeStorageKey(ctx context.Context, arg SetResumeStorageKeyParams) error

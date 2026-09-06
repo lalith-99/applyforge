@@ -214,7 +214,7 @@ func TestRepository_EmbeddingStorageAndSearch(t *testing.T) {
 		t.Fatalf("UpdateEmbedding: %v", err)
 	}
 
-	matches, err := repo.SearchByEmbedding(ctx, vector, 5)
+	matches, err := repo.SearchByEmbedding(ctx, vector, 5, EmbeddingSearchFilter{})
 	if err != nil {
 		t.Fatalf("SearchByEmbedding: %v", err)
 	}

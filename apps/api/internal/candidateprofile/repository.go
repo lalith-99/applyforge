@@ -81,6 +81,19 @@ func (r *Repository) GetLatest(ctx context.Context, userID uuid.UUID) (Profile, 
 		row.Summary, row.SourceContentHash, row.CreatedAt.Time)
 }
 
+// GetLatestEmbedding returns the most recent non-null embedding for a user's
+// profile (Phase G's candidate-side semantic retrieval input).
+func (r *Repository) GetLatestEmbedding(ctx context.Context, userID uuid.UUID) ([]float32, error) {
+	vec, err := r.q.GetLatestCandidateProfileEmbedding(ctx, database.UUIDToPG(userID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return vec.Slice(), nil
+}
+
 // Create inserts the next version of a user's profile (version = 1 + the
 // current latest, or 1 if none exists yet).
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, p Profile) (Profile, error) {

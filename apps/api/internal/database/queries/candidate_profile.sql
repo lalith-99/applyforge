@@ -22,3 +22,9 @@ LIMIT 1;
 -- name: UpdateCandidateProfileEmbedding :exec
 UPDATE candidate_profile_versions SET embedding = $2, embedding_model = $3, embedded_at = now()
 WHERE id = $1;
+
+-- name: GetLatestCandidateProfileEmbedding :one
+SELECT embedding FROM candidate_profile_versions
+WHERE user_id = $1 AND embedding IS NOT NULL
+ORDER BY version DESC
+LIMIT 1;

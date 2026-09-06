@@ -100,6 +100,20 @@ func (q *Queries) CreateCandidateProfileVersion(ctx context.Context, arg CreateC
 	return i, err
 }
 
+const getLatestCandidateProfileEmbedding = `-- name: GetLatestCandidateProfileEmbedding :one
+SELECT embedding FROM candidate_profile_versions
+WHERE user_id = $1 AND embedding IS NOT NULL
+ORDER BY version DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestCandidateProfileEmbedding(ctx context.Context, userID pgtype.UUID) (pgvector.Vector, error) {
+	row := q.db.QueryRow(ctx, getLatestCandidateProfileEmbedding, userID)
+	var embedding pgvector.Vector
+	err := row.Scan(&embedding)
+	return embedding, err
+}
+
 const getLatestCandidateProfileVersion = `-- name: GetLatestCandidateProfileVersion :one
 SELECT id, user_id, version, target_roles, seniority, years_experience, core_skills,
     secondary_skills, transferable_skills, domains, architecture_strengths, leadership_signals,

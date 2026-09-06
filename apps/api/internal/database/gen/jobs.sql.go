@@ -361,13 +361,19 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     (embedding <=> $1)::float8 AS distance
 FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+  AND ($3::text = '' OR remote_type = $3)
+  AND ($4::text = '' OR employment_type = $4)
+  AND ($5::timestamptz IS NULL OR posted_at >= $5 OR (posted_at IS NULL AND first_seen_at >= $5))
 ORDER BY embedding <=> $1
 LIMIT $2
 `
 
 type SearchJobsByEmbeddingParams struct {
-	Embedding pgvector.Vector `json:"embedding"`
-	Limit     int32           `json:"limit"`
+	Embedding pgvector.Vector    `json:"embedding"`
+	Limit     int32              `json:"limit"`
+	Column3   string             `json:"column_3"`
+	Column4   string             `json:"column_4"`
+	Column5   pgtype.Timestamptz `json:"column_5"`
 }
 
 type SearchJobsByEmbeddingRow struct {
@@ -404,13 +410,19 @@ type SearchJobsByEmbeddingRow struct {
 }
 
 // Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
-// ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
-// candidate/query embedding. Cheap SQL filters happen upstream via
-// ListFilter/hard-eligibility, not here - this query is purely the
-// "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
-// WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+// combines cheap hard filters (remote_type/employment_type/posted_after -
+// same predicates as ListJobs) with cosine-distance ranking in one query,
+// so the ANN index only has to rank whatever survives the filters rather
+// than the whole table. embedding IS NOT NULL is guaranteed by the WHERE
+// clause, so scanning it as a non-nullable pgvector.Vector is safe.
 func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmbeddingParams) ([]SearchJobsByEmbeddingRow, error) {
-	rows, err := q.db.Query(ctx, searchJobsByEmbedding, arg.Embedding, arg.Limit)
+	rows, err := q.db.Query(ctx, searchJobsByEmbedding,
+		arg.Embedding,
+		arg.Limit,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+	)
 	if err != nil {
 		return nil, err
 	}

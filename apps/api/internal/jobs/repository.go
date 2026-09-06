@@ -260,14 +260,26 @@ type JobMatch struct {
 	Distance float64
 }
 
+// EmbeddingSearchFilter narrows semantic retrieval with the same cheap hard
+// filters as ListFilter (remote_type/employment_type/posted_after), applied
+// in the same query as the cosine-distance ranking so the ANN index only
+// has to rank whatever survives them.
+type EmbeddingSearchFilter struct {
+	RemoteType     string
+	EmploymentType string
+	PostedAfter    *time.Time
+}
+
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
-// jobs closest to vector by cosine distance (Phase G's semantic-retrieval
-// stage - callers are expected to have already applied cheap hard filters
-// upstream, e.g. via List/ListFilter, since this query has none).
-func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, limit int32) ([]JobMatch, error) {
+// jobs matching filter, closest to vector by cosine distance (Phase G's
+// hard-filter + semantic-retrieval stage).
+func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, limit int32, filter EmbeddingSearchFilter) ([]JobMatch, error) {
 	rows, err := r.q.SearchJobsByEmbedding(ctx, db.SearchJobsByEmbeddingParams{
 		Embedding: pgvector.NewVector(vector),
 		Limit:     limit,
+		Column3:   filter.RemoteType,
+		Column4:   filter.EmploymentType,
+		Column5:   database.PGTimestamptz(filter.PostedAfter),
 	})
 	if err != nil {
 		return nil, err

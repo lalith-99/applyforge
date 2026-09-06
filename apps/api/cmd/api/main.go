@@ -160,7 +160,7 @@ func run() error {
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
 
 	matchingRepo := matching.NewRepository(db)
-	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo)
+	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo)
 	matchingHandlers := matching.NewHandlers(matchingService)
 
 	tailoringRepo := tailoring.NewRepository(db)

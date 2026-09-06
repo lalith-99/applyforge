@@ -104,11 +104,11 @@ UPDATE jobs SET embedding = $2, embedding_model = $3, embedded_at = now() WHERE 
 
 -- name: SearchJobsByEmbedding :many
 -- Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
--- ranks ACTIVE, canonical, already-embedded jobs by cosine distance to a
--- candidate/query embedding. Cheap SQL filters happen upstream via
--- ListFilter/hard-eligibility, not here - this query is purely the
--- "semantically closest" stage. embedding IS NOT NULL is guaranteed by the
--- WHERE clause, so scanning it as a non-nullable pgvector.Vector is safe.
+-- combines cheap hard filters (remote_type/employment_type/posted_after -
+-- same predicates as ListJobs) with cosine-distance ranking in one query,
+-- so the ANN index only has to rank whatever survives the filters rather
+-- than the whole table. embedding IS NOT NULL is guaranteed by the WHERE
+-- clause, so scanning it as a non-nullable pgvector.Vector is safe.
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
     description, country, state, city, location_text, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
@@ -116,5 +116,8 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     (embedding <=> $1)::float8 AS distance
 FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+  AND ($3::text = '' OR remote_type = $3)
+  AND ($4::text = '' OR employment_type = $4)
+  AND ($5::timestamptz IS NULL OR posted_at >= $5 OR (posted_at IS NULL AND first_seen_at >= $5))
 ORDER BY embedding <=> $1
 LIMIT $2;
