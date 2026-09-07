@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Response, UploadFile
 
-from app.providers.openai_provider import AIProviderError, is_configured
+from app.providers.openai_provider import (
+    AIProviderError,
+    apply_usage_headers,
+    clear_usage_metadata,
+    is_configured,
+)
 from app.resume.extraction import SUPPORTED_MIME_TYPES, UnsupportedResumeType, extract_text
 from app.resume.models import ExtractResponse, ParseRequest, ParseResponse
 from app.resume.parsing import parse_resume_text, parse_resume_text_ai
@@ -38,10 +43,13 @@ async def extract(file: UploadFile) -> ExtractResponse:
 
 
 @router.post("/parse", response_model=ParseResponse)
-def parse(request: ParseRequest) -> ParseResponse:
+def parse(request: ParseRequest, response: Response) -> ParseResponse:
     if is_configured():
+        clear_usage_metadata()
         try:
-            return ParseResponse(profile=parse_resume_text_ai(request.raw_text))
+            result = ParseResponse(profile=parse_resume_text_ai(request.raw_text))
+            apply_usage_headers(response)
+            return result
         except AIProviderError:
             logger.warning("AI resume parsing failed, falling back to heuristic", exc_info=True)
 
