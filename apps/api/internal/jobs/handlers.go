@@ -78,7 +78,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	jobsList, total, err := h.repo.List(r.Context(), ListFilter{
 		Search:         q.Get("search"),
 		RemoteType:     q.Get("remote_type"),
-		EmploymentType: q.Get("employment_type"),
+		EmploymentType: normalizeEmploymentType(q.Get("employment_type")),
 		PostedAfter:    postedAfter,
 		Location:       location,
 		CountryCode:    countryCode,
