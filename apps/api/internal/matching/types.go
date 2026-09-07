@@ -116,6 +116,8 @@ type Result struct {
 	TargetProfileMatch       int
 	SuggestedTargetAdditions []string
 	Eligibility              EligibilityResult
+	ImmigrationRelevant      bool
+	ImmigrationPriorityScore int
 }
 
 // EligibilityResult is computed before scoring (see MASTER_REQUIREMENTS.md §19).
