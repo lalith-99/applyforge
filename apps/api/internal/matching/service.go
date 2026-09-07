@@ -276,7 +276,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		job := candidateByID[jobID]
 		result, err := s.Match(ctx, job.ID, userID)
 		if err != nil {
-			slog.Error("match failed during recommend", "job_id", m.Job.ID, "user_id", userID, "error", err)
+			slog.Error("match failed during recommend", "job_id", job.ID, "user_id", userID, "error", err)
 			continue
 		}
 		if !result.Eligibility.Eligible {
