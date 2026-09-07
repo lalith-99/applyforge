@@ -96,7 +96,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			EligibleCountryCodes: location.EligibleCountryCodes,
 			LocationConfidence:   location.LocationConfidence,
 			RemoteType:           strOrNil(raw.RemoteType),
-			EmploymentType:       strOrNil(raw.EmploymentType),
+			EmploymentType:       strOrNil(normalizeEmploymentType(raw.EmploymentType)),
 			ApplyURL:             strOrNil(raw.ApplyURL),
 			SourceURL:            strOrNil(raw.SourceURL),
 			PostedAt:             raw.PostedAt,
@@ -139,7 +139,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		// change - just not proactively.
 		if upserted.Inserted {
 			result.Inserted++
-			if s.queue != nil && location.CountryCode == "US" && classification.Classification == "IC_SOFTWARE" {
+			if s.queue != nil && location.CountryCode == "US" && classification.Classification == "IC_SOFTWARE" && isFreshForEagerAI(raw.PostedAt, pollStart) {
 				payload := EnrichPayload{JobID: upserted.Job.ID.String()}
 				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
 					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
@@ -242,6 +242,18 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+const eagerAIMaxJobAge = 30 * 24 * time.Hour
+
+func isFreshForEagerAI(postedAt *time.Time, now time.Time) bool {
+	if postedAt == nil {
+		return false
+	}
+	age := now.Sub(*postedAt)
+	// Future timestamps within a small provider-clock skew are still fresh;
+	// wildly future timestamps should not consume AI budget.
+	return age >= -24*time.Hour && age <= eagerAIMaxJobAge
 }
 
 func strOrNil(s string) *string {
