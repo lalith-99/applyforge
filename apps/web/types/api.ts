@@ -239,9 +239,14 @@ export interface MatchResult {
     HardFailures: string[] | null;
     Warnings: string[] | null;
     Immigration: {
-      Status: "SUPPORTED" | "NOT_SUPPORTED" | "UNKNOWN";
+      Status: "SUPPORTED" | "NOT_SUPPORTED" | "HISTORICAL_SUPPORT" | "UNKNOWN";
       Confidence: "HIGH" | "MEDIUM" | "LOW";
       Evidence: string;
+      EvidenceSource: "JOB_POSTING" | "DOL_HISTORY" | "NONE";
+      H1BCertifiedCases: number;
+      PERMCertifiedCases: number;
+      LatestEvidenceFiscalYear: number;
+      MatchedEmployers: string[] | null;
     };
   };
 }
