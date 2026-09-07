@@ -21,6 +21,10 @@ class JobRankingInput(BaseModel):
     missing_preferred_skills: list[str] = Field(default_factory=list)
     transferable_notes: list[str] = Field(default_factory=list)
     deterministic_score: int = 0
+    immigration_status: str = "UNKNOWN"
+    immigration_confidence: str = "LOW"
+    immigration_evidence: str = ""
+    immigration_relevant: bool = False
 
 
 class RankJobsRequest(BaseModel):
