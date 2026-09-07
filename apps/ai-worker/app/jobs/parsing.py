@@ -168,7 +168,10 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "include generic role descriptors, competency areas, or soft skills as a skill — phrases like "
         "'backend engineering', 'software engineering', 'system architecture', 'API design', "
         "'problem solving', 'ownership', or years-of-experience statements are NOT skills; capture "
-        "that kind of language in responsibilities or seniority/required_experience_years instead."
+        "that kind of language in responsibilities or seniority/required_experience_years instead. "
+        "For work_authorization_requirements, preserve explicit visa/sponsorship constraints with high fidelity. "
+        "In particular, never omit language saying the employer will not sponsor, cannot sponsor, requires "
+        "authorization without sponsorship, or asks whether sponsorship is needed now or in the future."
     )
     user = f"Job title: {title}\n\nJob description:\n{description}"
     return structured_completion(system, user, JobRequirements)
