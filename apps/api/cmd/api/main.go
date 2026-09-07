@@ -70,6 +70,9 @@ func run() error {
 	dsn := getenv("DATABASE_URL", "postgres://applyforge:applyforge@localhost:5432/applyforge?sslmode=disable")
 	webBaseURL := getenv("WEB_BASE_URL", "http://localhost:3000")
 	environment := getenv("ENVIRONMENT", "development")
+	if err := validateProductionConfig(environment); err != nil {
+		return err
+	}
 
 	db, err := database.New(ctx, dsn)
 	if err != nil {
