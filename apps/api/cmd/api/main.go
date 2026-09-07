@@ -154,6 +154,14 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
+	// Production discovery is market-wide. Legacy per-company ATS rows are
+	// retained only for historical poll provenance and must not drive polling.
+	for _, sourceType := range []string{"GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE"} {
+		if err := jobsRepo.SetSourceTypeEnabled(ctx, sourceType, false); err != nil {
+			return fmt.Errorf("retire legacy %s job sources: %w", sourceType, err)
+		}
+	}
+
 	brightDataEnabled := strings.EqualFold(getenv("BRIGHTDATA_ENABLED", "false"), "true")
 	if brightDataEnabled {
 		if _, err := jobs.BrightDataConfigFromEnv(); err != nil {
