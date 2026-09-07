@@ -51,6 +51,11 @@ RETURNING id, source, external_id, company_id, company_name, title, normalized_t
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
     (xmax = 0) AS inserted;
 
+-- name: GetJobContentHashBySourceExternalID :one
+SELECT content_hash
+FROM jobs
+WHERE source = $1 AND external_id = $2;
+
 -- name: FindCanonicalByFingerprint :one
 -- Finds an existing, still-canonical job with the same fingerprint from a
 -- DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
