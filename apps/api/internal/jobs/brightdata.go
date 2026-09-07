@@ -17,28 +17,57 @@ import (
 
 const (
 	defaultBrightDataBaseURL = "https://api.brightdata.com"
-	defaultBrightDataLimit   = 10000
+	defaultBrightDataLimit   = 1500
 )
 
-var brightDataSoftwareTitleTerms = []string{
-	"Software Engineer",
-	"Backend Engineer",
-	"Frontend Engineer",
-	"Full Stack Engineer",
-	"Platform Engineer",
-	"Infrastructure Engineer",
-	"Site Reliability Engineer",
-	"DevOps Engineer",
-	"Cloud Engineer",
-	"Data Engineer",
-	"Machine Learning Engineer",
-	"AI Engineer",
-	"Security Engineer",
-	"Mobile Engineer",
-	"Embedded Software Engineer",
-	"Systems Software Engineer",
+var brightDataTitleShards = map[string][]string{
+	"us-software-general-24h": {
+		"Software Engineer", "Software Developer", "Software Development Engineer",
+		"Application Engineer", "Application Developer",
+	},
+	"us-java-24h": {
+		"Java Developer", "Java Engineer", "Java Backend Developer",
+		"Java Full Stack Developer", "Spring Boot Developer", "Spring Boot Engineer",
+		"J2EE Developer",
+	},
+	"us-go-24h": {
+		"Golang Developer", "Golang Engineer", "Go Developer", "Go Engineer",
+		"Backend Engineer Golang", "Backend Engineer Go",
+	},
+	"us-fullstack-web-24h": {
+		"Full Stack Developer", "Full Stack Engineer", "Frontend Developer",
+		"Frontend Engineer", "React Developer", "Angular Developer",
+		"Node.js Developer", "TypeScript Developer",
+	},
+	"us-backend-platform-24h": {
+		"Backend Engineer", "Backend Developer", "Platform Engineer",
+		"Infrastructure Engineer", "Distributed Systems Engineer",
+		"API Engineer", "Microservices Engineer",
+	},
+	"us-devops-cloud-24h": {
+		"DevOps Engineer", "DevSecOps Engineer", "Site Reliability Engineer",
+		"Cloud Engineer", "Kubernetes Engineer", "Build Engineer", "Release Engineer",
+	},
+	"us-data-ai-24h": {
+		"Data Engineer", "Machine Learning Engineer", "AI Engineer",
+		"MLOps Engineer", "Security Engineer",
+	},
+	"us-language-developers-24h": {
+		"Python Developer", "Python Engineer", ".NET Developer", ".NET Engineer",
+		"C# Developer", "C# Engineer", "Scala Developer", "Kotlin Developer",
+		"Salesforce Developer", "Integration Developer",
+	},
 }
 
+// Keep the legacy token useful for existing installations. New deployments
+// should use the explicit shards above.
+var brightDataLegacySoftwareTitles = []string{
+	"Software Engineer", "Backend Engineer", "Frontend Engineer", "Full Stack Engineer",
+	"Platform Engineer", "Infrastructure Engineer", "Site Reliability Engineer",
+	"DevOps Engineer", "Cloud Engineer", "Data Engineer", "Machine Learning Engineer",
+	"AI Engineer", "Security Engineer", "Mobile Engineer", "Embedded Software Engineer",
+	"Systems Software Engineer",
+}
 type BrightDataConfig struct {
 	APIKey          string
 	DatasetID       string
@@ -90,9 +119,9 @@ func envOr(key, fallback string) string {
 }
 
 // BrightDataSource uses Bright Data's asynchronous Marketplace Dataset filter
-// API. It intentionally performs one broad software-title snapshot per poll;
+// API. Each configured source row represents one shared role/technology shard;
 // ApplyForge still owns canonical US validation, role classification, dedupe,
-// and strict posted_at freshness after records are downloaded.
+// sponsorship filtering, and strict posted_at freshness after download.
 type BrightDataSource struct {
 	Shard string
 	cfg   BrightDataConfig
@@ -139,7 +168,7 @@ func (s *BrightDataSource) triggerSnapshot(ctx context.Context) (string, error) 
 	filters := []any{
 		map[string]any{
 			"operator": "or",
-			"filters":  brightDataTitleFilters(s.cfg.TitleField),
+			"filters":  brightDataTitleFilters(s.cfg.TitleField, s.Shard),
 		},
 		map[string]any{
 			"name":     s.cfg.PostedDateField,
@@ -196,9 +225,13 @@ func (s *BrightDataSource) triggerSnapshot(ctx context.Context) (string, error) 
 	return out.SnapshotID, nil
 }
 
-func brightDataTitleFilters(field string) []any {
-	out := make([]any, 0, len(brightDataSoftwareTitleTerms))
-	for _, title := range brightDataSoftwareTitleTerms {
+func brightDataTitleFilters(field, shard string) []any {
+	titles := brightDataTitleShards[shard]
+	if len(titles) == 0 {
+		titles = brightDataLegacySoftwareTitles
+	}
+	out := make([]any, 0, len(titles))
+	for _, title := range titles {
 		out = append(out, map[string]any{
 			"name":     field,
 			"operator": "includes",
