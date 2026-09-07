@@ -33,9 +33,11 @@ per job_id given, in any order.
 
 When immigration_relevant=true, use immigration_status/evidence as opportunity context:
 SUPPORTED is a strong positive signal; HISTORICAL_SUPPORT is useful but weaker and not a guarantee;
-UNKNOWN is uncertainty, not a rejection. Explicitly incompatible jobs are filtered before this stage.
-Keep fit_score focused primarily on technical/career fit; ApplyForge applies deterministic immigration
-weighting after your judgment. You may mention strong sponsorship evidence in reason/recommendation."""
+UNKNOWN is uncertainty, not a rejection. Explicitly incompatible jobs are
+filtered before this stage. Keep fit_score focused primarily on technical
+and career fit; ApplyForge applies deterministic immigration weighting after
+your judgment. You may mention strong sponsorship evidence in the reason or
+recommendation."""
 
 
 def rank_jobs_heuristic(request: RankJobsRequest) -> RankJobsResult:
