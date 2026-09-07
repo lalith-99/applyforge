@@ -58,10 +58,20 @@ def test_max_match_mode_suggests_all_missing_skills() -> None:
     assert "Kubernetes" in added
 
 
-def test_max_match_does_not_claim_unsupported_skills_in_experience() -> None:
+def test_max_match_weaves_unsupported_skills_into_a_bullet_as_growth_area() -> None:
     response = generate_tailoring(_request("MAX_MATCH"))
     experience_text = " ".join(s.suggested_text for s in response.experience_suggestions).lower()
-    assert "kubernetes" not in experience_text
+    # Unsupported skills (no transferable_matches evidence) may now appear in
+    # a bullet, but only as an honest growth/learning claim, never as a claim
+    # of already-completed production ownership.
+    assert "kubernetes" in experience_text
+    assert "built" not in experience_text.split("kubernetes")[-1][:40]
+
+    growth_suggestion = next(
+        s for s in response.experience_suggestions if "kubernetes" in s.suggested_text.lower()
+    )
+    assert growth_suggestion.risk_level == "HIGH"
+    assert "growth area" in growth_suggestion.reason.lower()
 
 
 def test_skill_suggestion_with_transfer_has_lower_risk_than_without() -> None:
@@ -98,3 +108,14 @@ def test_keyword_coverage_improves_with_more_permissive_modes() -> None:
     strict = generate_tailoring(_request("STRICT"))
     max_match = generate_tailoring(_request("MAX_MATCH"))
     assert max_match.keyword_coverage_after >= strict.keyword_coverage_after
+
+
+def test_max_match_touches_summary_skills_and_experience() -> None:
+    response = generate_tailoring(_request("MAX_MATCH"))
+    total_touchpoints = (
+        (1 if response.summary_suggestion else 0)
+        + len(response.skill_suggestions)
+        + len(response.experience_suggestions)
+    )
+    assert total_touchpoints >= 5
+    assert response.keyword_coverage_after == 1.0

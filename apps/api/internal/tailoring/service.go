@@ -3,6 +3,7 @@ package tailoring
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -222,6 +223,10 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 		}
 	}
 
+	if run.Mode == ModeMaxMatch {
+		ensureAddedSkillsReachABullet(&aiResp, experiences)
+	}
+
 	var suggestions []Suggestion
 	if aiResp.SummarySuggestion != nil {
 		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(*aiResp.SummarySuggestion)); err == nil {
@@ -261,6 +266,57 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 
 	_, err = s.repo.CompleteRun(ctx, runID, summaryJSON, coverageJSON, int32(alignmentAfter))
 	return err
+}
+
+// ensureAddedSkillsReachABullet guarantees MAX_MATCH's promise that every
+// suggested skill is honestly reflected on the resume, not just listed in
+// isolation - if the AI response added skills but didn't weave any of them
+// into an experience bullet (soft prompt instructions aren't always
+// followed), one bullet is synthesized here with an explicit, clearly-
+// labeled growth claim rather than a fabricated accomplishment.
+func ensureAddedSkillsReachABullet(aiResp *aiclient.TailoringResponse, experiences []resume.Experience) {
+	mentioned := ""
+	for _, sg := range aiResp.ExperienceSuggestions {
+		mentioned += " " + strings.ToLower(sg.SuggestedText)
+	}
+
+	var orphaned []string
+	for _, sg := range aiResp.SkillSuggestions {
+		for _, skill := range sg.SkillsAdded {
+			if skill != "" && !strings.Contains(mentioned, strings.ToLower(skill)) {
+				orphaned = append(orphaned, skill)
+			}
+		}
+	}
+	if len(orphaned) == 0 {
+		return
+	}
+
+	var bullet string
+	for _, e := range experiences {
+		if len(e.Bullets) > 0 {
+			bullet = e.Bullets[0]
+			break
+		}
+	}
+	if bullet == "" {
+		return
+	}
+
+	originalText := bullet
+	aiResp.ExperienceSuggestions = append(aiResp.ExperienceSuggestions, aiclient.TailoringSuggestion{
+		Section:               "experience",
+		OriginalText:          &originalText,
+		SuggestedText:         fmt.Sprintf("%s, while actively building hands-on proficiency in %s.", strings.TrimRight(bullet, "."), strings.Join(orphaned, ", ")),
+		RequirementsAddressed: orphaned,
+		SkillsAdded:           orphaned,
+		Source:                "AI_SUGGESTED",
+		Reason: "Connects every AI-suggested skill to your resume instead of leaving it isolated in " +
+			"the skills list, honestly framed as an area you are actively developing rather than an " +
+			"already-completed accomplishment.",
+		Confidence: 0.3,
+		RiskLevel:  "HIGH",
+	})
 }
 
 func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, requiredNames, preferredNames, responsibilities []string, aiResp aiclient.TailoringResponse) aiclient.CritiqueRequest {
