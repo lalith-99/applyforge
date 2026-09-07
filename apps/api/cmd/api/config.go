@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -58,6 +59,9 @@ func validateProductionConfig(environment string) error {
 		return errors.New("production ADMIN_SYNC_TOKEN must be at least 24 characters when configured")
 	}
 
+	if _, err := authCookieSameSite(environment); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -79,5 +83,28 @@ func requireServiceURL(name, raw string) error {
 		return nil
 	default:
 		return fmt.Errorf("production %s must use http or https", name)
+	}
+}
+
+
+func authCookieSameSite(environment string) (http.SameSite, error) {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_COOKIE_SAME_SITE")))
+	if raw == "" {
+		return http.SameSiteLaxMode, nil
+	}
+	switch raw {
+	case "lax":
+		return http.SameSiteLaxMode, nil
+	case "strict":
+		return http.SameSiteStrictMode, nil
+	case "none":
+		if strings.EqualFold(strings.TrimSpace(environment), "production") {
+			// Production cookies are Secure in main.go. Browsers require
+			// SameSite=None cookies to also carry Secure.
+			return http.SameSiteNoneMode, nil
+		}
+		return http.SameSiteNoneMode, nil
+	default:
+		return 0, errors.New("AUTH_COOKIE_SAME_SITE must be one of lax, strict, none")
 	}
 }
