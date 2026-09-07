@@ -442,8 +442,9 @@ type CoverageBreakdown struct {
 type MarketCoverageHealth struct {
 	UniqueCompanies24H          int64               `json:"unique_companies_24h"`
 	ExplicitSponsorshipSupport24H int64             `json:"explicit_sponsorship_support_24h"`
-	HistoricalSupport24H        int64               `json:"historical_support_24h"`
-	SponsorshipUnknown24H       int64               `json:"sponsorship_unknown_24h"`
+	HistoricalSupport24H          int64             `json:"historical_support_24h"`
+	SponsorshipUnknown24H         int64             `json:"sponsorship_unknown_24h"`
+	ExplicitSponsorshipDenied24H  int64             `json:"explicit_sponsorship_denied_24h"`
 	BySource24H                 []CoverageBreakdown `json:"by_source_24h"`
 	ByRoleFamily24H             []CoverageBreakdown `json:"by_role_family_24h"`
 	ByLanguageSignal24H         []CoverageBreakdown `json:"by_language_signal_24h"`
@@ -476,7 +477,7 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 	// remains separate because it is weaker evidence than the role itself.
 	if err := r.pool.QueryRow(ctx, `
 		WITH fresh AS (
-			SELECT j.id, j.company_id, lower(j.description) AS description
+			SELECT j.id, j.company_id, lower(j.description) AS description, j.explicit_sponsorship_denied
 			FROM jobs j
 			WHERE `+basePredicate+`
 		),
@@ -493,7 +494,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 		)
 		SELECT
 			count(*) FILTER (
-				WHERE description LIKE ANY (ARRAY[
+				WHERE explicit_sponsorship_denied = false
+				  AND description LIKE ANY (ARRAY[
 					'%h-1b sponsorship available%',
 					'%h1b sponsorship available%',
 					'%visa sponsorship available%',
@@ -530,7 +532,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 				])
 			)::bigint,
 			count(*) FILTER (
-				WHERE NOT (
+				WHERE explicit_sponsorship_denied = false
+				  AND NOT (
 					description LIKE ANY (ARRAY[
 						'%h-1b sponsorship available%',
 						'%h1b sponsorship available%',
@@ -548,7 +551,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 				AND company_id IN (SELECT company_id FROM dol)
 			)::bigint,
 			count(*) FILTER (
-				WHERE NOT (
+				WHERE explicit_sponsorship_denied = false
+				  AND NOT (
 					description LIKE ANY (ARRAY[
 						'%h-1b sponsorship available%',
 						'%h1b sponsorship available%',
@@ -564,12 +568,14 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 					])
 				)
 				AND company_id NOT IN (SELECT company_id FROM dol)
-			)::bigint
+			)::bigint,
+			count(*) FILTER (WHERE explicit_sponsorship_denied = true)::bigint
 		FROM fresh
 	`).Scan(
 		&health.ExplicitSponsorshipSupport24H,
 		&health.HistoricalSupport24H,
 		&health.SponsorshipUnknown24H,
+		&health.ExplicitSponsorshipDenied24H,
 	); err != nil {
 		return MarketCoverageHealth{}, err
 	}
