@@ -574,7 +574,7 @@ func (r *Repository) CloseRetiredManualSourceJobs(ctx context.Context) (int64, e
 	}
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE jobs
-		SET status = 'CLOSED', closed_at = now(), updated_at = now()
+		SET status = 'CLOSED', updated_at = now()
 		WHERE status = 'ACTIVE'
 		  AND source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
 		  AND last_seen_at < now() - INTERVAL '48 hours'
