@@ -22,7 +22,11 @@ type Recommendation struct {
 	AIRecommendation        *string
 	AIReason                string
 	FinalScore              int32
-	CandidateProfileVersion *int32
+	CandidateProfileVersion   *int32
+	ImmigrationStatus         string
+	ImmigrationConfidence     string
+	ImmigrationEvidence       string
+	ImmigrationPriorityScore  int32
 }
 
 // RecommendationWithJob is a Recommendation joined with the job summary
@@ -65,6 +69,10 @@ func (r *Repository) ReplaceForUser(ctx context.Context, userID uuid.UUID, recs 
 			AiReason:                rec.AIReason,
 			FinalScore:              rec.FinalScore,
 			CandidateProfileVersion: database.PGInt4(rec.CandidateProfileVersion),
+			ImmigrationStatus:       rec.ImmigrationStatus,
+			ImmigrationConfidence:   rec.ImmigrationConfidence,
+			ImmigrationEvidence:     rec.ImmigrationEvidence,
+			ImmigrationPriorityScore: rec.ImmigrationPriorityScore,
 		}); err != nil {
 			return err
 		}
@@ -93,6 +101,10 @@ func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID, limit in
 				AIReason:                row.AiReason,
 				FinalScore:              row.FinalScore,
 				CandidateProfileVersion: database.Int4OrNil(row.CandidateProfileVersion),
+				ImmigrationStatus:       row.ImmigrationStatus,
+				ImmigrationConfidence:   row.ImmigrationConfidence,
+				ImmigrationEvidence:     row.ImmigrationEvidence,
+				ImmigrationPriorityScore: row.ImmigrationPriorityScore,
 			},
 			Title:          row.Title,
 			CompanyName:    row.CompanyName,
