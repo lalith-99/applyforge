@@ -137,3 +137,21 @@ func TestAssessImmigration_H1BStatusKeepsSilentPostingEligible(t *testing.T) {
 		t.Fatalf("expected UNKNOWN sponsorship status: %+v", result.Immigration)
 	}
 }
+
+
+func TestAssessImmigration_CommonPositiveH1BSignals(t *testing.T) {
+	for _, description := range []string{
+		"Visa sponsorship provided for qualified candidates.",
+		"We can sponsor H-1B candidates for this position.",
+		"H-1B portability is supported.",
+		"H1B sponsorship support is available.",
+	} {
+		got := AssessImmigration(Input{
+			ImmigrationStatus: "H-1B",
+			JobDescription:    description,
+		})
+		if got.Status != "SUPPORTED" || got.EvidenceSource != "JOB_POSTING" {
+			t.Fatalf("expected explicit support for %q, got %+v", description, got)
+		}
+	}
+}
