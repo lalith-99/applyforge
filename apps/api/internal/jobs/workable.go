@@ -96,7 +96,6 @@ func (s *WorkableSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Curso
 		jobs = append(jobs, RawJob{
 			ExternalID:     j.Shortcode,
 			Title:          j.Title,
-			CompanyName:    s.Subdomain,
 			Description:    stripTags(j.Description),
 			LocationText:   location,
 			Country:        countryName,
