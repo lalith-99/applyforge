@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -170,7 +171,12 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return nil, err
 	}
 
-	filter := jobs.EmbeddingSearchFilter{CountryCode: "US"}
+	const recommendedJobMaxAge = 7 * 24 * time.Hour
+	postedAfter := time.Now().UTC().Add(-recommendedJobMaxAge)
+	filter := jobs.EmbeddingSearchFilter{
+		CountryCode: "US",
+		PostedAfter: &postedAfter,
+	}
 	if prefs.Remote && !prefs.Hybrid && !prefs.Onsite {
 		filter.RemoteType = "remote"
 	}
