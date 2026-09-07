@@ -163,6 +163,17 @@ func run() error {
 	if err := jobsRepo.SetSourceTypeEnabled(ctx, "BRIGHTDATA", brightDataEnabled); err != nil {
 		return fmt.Errorf("configure Bright Data job sources: %w", err)
 	}
+
+	googleJobsEnabled := strings.EqualFold(getenv("SERPAPI_GOOGLE_JOBS_ENABLED", "false"), "true")
+	if googleJobsEnabled {
+		if _, err := jobs.SerpAPIGoogleJobsConfigFromEnv(); err != nil {
+			return fmt.Errorf("Google Jobs discovery enabled but configuration is invalid: %w", err)
+		}
+	}
+	if err := jobsRepo.SetSourceTypeEnabled(ctx, "SERPAPI_GOOGLE_JOBS", googleJobsEnabled); err != nil {
+		return fmt.Errorf("configure Google Jobs discovery sources: %w", err)
+	}
+
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
