@@ -40,3 +40,21 @@ func (c *Client) ParseJobRequirements(ctx context.Context, title, description st
 	}, &out)
 	return out.Requirements, err
 }
+
+
+type JobRoleClassification struct {
+	Family         string  `json:"family"`
+	Classification string  `json:"classification"`
+	Confidence     float32 `json:"confidence"`
+	Reason         string  `json:"reason"`
+}
+
+func (c *Client) ClassifyJobRole(ctx context.Context, title, description string) (JobRoleClassification, error) {
+	var out struct {
+		Result JobRoleClassification `json:"result"`
+	}
+	err := c.postJSON(ctx, "classify_job_role", "/v1/jobs/classify-role", map[string]string{
+		"title": title, "description": description,
+	}, &out)
+	return out.Result, err
+}
