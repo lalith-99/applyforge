@@ -139,7 +139,7 @@ func (s *BrightDataSource) triggerSnapshot(ctx context.Context) (string, error) 
 	filters := []any{
 		map[string]any{
 			"operator": "or",
-			"filters": brightDataTitleFilters(s.cfg.TitleField),
+			"filters":  brightDataTitleFilters(s.cfg.TitleField),
 		},
 		map[string]any{
 			"name":     s.cfg.PostedDateField,

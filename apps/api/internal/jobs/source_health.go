@@ -25,32 +25,32 @@ type SourcePollOutcome struct {
 }
 
 type SourceHealth struct {
-	JobSourceID uuid.UUID  `json:"job_source_id"`
-	SourceType  string     `json:"source_type"`
-	BoardToken  string     `json:"board_token"`
-	CompanyName string     `json:"company_name"`
-	Enabled     bool       `json:"enabled"`
+	JobSourceID  uuid.UUID  `json:"job_source_id"`
+	SourceType   string     `json:"source_type"`
+	BoardToken   string     `json:"board_token"`
+	CompanyName  string     `json:"company_name"`
+	Enabled      bool       `json:"enabled"`
 	LastPolledAt *time.Time `json:"last_polled_at,omitempty"`
-	LastError   *string    `json:"last_error,omitempty"`
+	LastError    *string    `json:"last_error,omitempty"`
 
-	LastStatus    *string    `json:"last_status,omitempty"`
-	LastStartedAt *time.Time `json:"last_started_at,omitempty"`
+	LastStatus      *string    `json:"last_status,omitempty"`
+	LastStartedAt   *time.Time `json:"last_started_at,omitempty"`
 	LastCompletedAt *time.Time `json:"last_completed_at,omitempty"`
-	LastDurationMS *int32     `json:"last_duration_ms,omitempty"`
-	LastFetched    *int32     `json:"last_fetched,omitempty"`
-	LastInserted   *int32     `json:"last_inserted,omitempty"`
-	LastUpdated    *int32     `json:"last_updated,omitempty"`
-	LastDeduped    *int32     `json:"last_deduped,omitempty"`
-	LastClosed     *int32     `json:"last_closed,omitempty"`
-	LastRunError   *string    `json:"last_run_error,omitempty"`
+	LastDurationMS  *int32     `json:"last_duration_ms,omitempty"`
+	LastFetched     *int32     `json:"last_fetched,omitempty"`
+	LastInserted    *int32     `json:"last_inserted,omitempty"`
+	LastUpdated     *int32     `json:"last_updated,omitempty"`
+	LastDeduped     *int32     `json:"last_deduped,omitempty"`
+	LastClosed      *int32     `json:"last_closed,omitempty"`
+	LastRunError    *string    `json:"last_run_error,omitempty"`
 }
 
 type CatalogHealth struct {
-	RawDiscovered24H              int64 `json:"raw_discovered_24h"`
-	CanonicalUSSoftwarePosted24H  int64 `json:"canonical_us_software_posted_24h"`
-	ActiveCanonicalUSSoftware     int64 `json:"active_canonical_us_software"`
-	FreshWithDescription24H       int64 `json:"fresh_with_description_24h"`
-	FreshWithApplyURL24H          int64 `json:"fresh_with_apply_url_24h"`
+	RawDiscovered24H             int64 `json:"raw_discovered_24h"`
+	CanonicalUSSoftwarePosted24H int64 `json:"canonical_us_software_posted_24h"`
+	ActiveCanonicalUSSoftware    int64 `json:"active_canonical_us_software"`
+	FreshWithDescription24H      int64 `json:"fresh_with_description_24h"`
+	FreshWithApplyURL24H         int64 `json:"fresh_with_apply_url_24h"`
 }
 
 func (r *Repository) RecordSourcePoll(ctx context.Context, outcome SourcePollOutcome) error {
@@ -151,20 +151,20 @@ func (r *Repository) ListSourceHealth(ctx context.Context, limit int) ([]SourceH
 	out := make([]SourceHealth, 0)
 	for rows.Next() {
 		var (
-			id pgtype.UUID
-			lastPolled pgtype.Timestamptz
-			lastError pgtype.Text
-			lastStatus pgtype.Text
-			lastStarted pgtype.Timestamptz
+			id            pgtype.UUID
+			lastPolled    pgtype.Timestamptz
+			lastError     pgtype.Text
+			lastStatus    pgtype.Text
+			lastStarted   pgtype.Timestamptz
 			lastCompleted pgtype.Timestamptz
-			lastDuration pgtype.Int4
-			lastFetched pgtype.Int4
-			lastInserted pgtype.Int4
-			lastUpdated pgtype.Int4
-			lastDeduped pgtype.Int4
-			lastClosed pgtype.Int4
-			lastRunError pgtype.Text
-			item SourceHealth
+			lastDuration  pgtype.Int4
+			lastFetched   pgtype.Int4
+			lastInserted  pgtype.Int4
+			lastUpdated   pgtype.Int4
+			lastDeduped   pgtype.Int4
+			lastClosed    pgtype.Int4
+			lastRunError  pgtype.Text
+			item          SourceHealth
 		)
 		if err := rows.Scan(
 			&id,
@@ -262,14 +262,13 @@ func (r *Repository) GetCatalogHealth(ctx context.Context) (CatalogHealth, error
 	return health, err
 }
 
-
 type QueueTypeHealth struct {
-	JobType     string `json:"job_type"`
-	Pending     int64  `json:"pending"`
-	Running     int64  `json:"running"`
-	Retrying    int64  `json:"retrying"`
-	DeadLetter  int64  `json:"dead_letter"`
-	Completed24H int64 `json:"completed_24h"`
+	JobType      string `json:"job_type"`
+	Pending      int64  `json:"pending"`
+	Running      int64  `json:"running"`
+	Retrying     int64  `json:"retrying"`
+	DeadLetter   int64  `json:"dead_letter"`
+	Completed24H int64  `json:"completed_24h"`
 }
 
 type QueueHealth struct {
@@ -353,24 +352,23 @@ func (r *Repository) GetQueueHealth(ctx context.Context) (QueueHealth, error) {
 	return health, rows.Err()
 }
 
-
 type AIOperationHealth struct {
-	Operation        string  `json:"operation"`
-	Calls24H         int64   `json:"calls_24h"`
-	Errors24H        int64   `json:"errors_24h"`
-	TotalTokens24H   int64   `json:"total_tokens_24h"`
-	KnownCostUSD24H  float64 `json:"known_cost_usd_24h"`
+	Operation       string  `json:"operation"`
+	Calls24H        int64   `json:"calls_24h"`
+	Errors24H       int64   `json:"errors_24h"`
+	TotalTokens24H  int64   `json:"total_tokens_24h"`
+	KnownCostUSD24H float64 `json:"known_cost_usd_24h"`
 }
 
 type AIUsageHealth struct {
-	Calls24H          int64               `json:"calls_24h"`
-	Errors24H         int64               `json:"errors_24h"`
-	PromptTokens24H   int64               `json:"prompt_tokens_24h"`
-	CompletionTokens24H int64             `json:"completion_tokens_24h"`
-	TotalTokens24H    int64               `json:"total_tokens_24h"`
-	KnownCostUSD24H   float64             `json:"known_cost_usd_24h"`
-	CallsMissingCost24H int64             `json:"calls_missing_cost_24h"`
-	ByOperation       []AIOperationHealth `json:"by_operation"`
+	Calls24H            int64               `json:"calls_24h"`
+	Errors24H           int64               `json:"errors_24h"`
+	PromptTokens24H     int64               `json:"prompt_tokens_24h"`
+	CompletionTokens24H int64               `json:"completion_tokens_24h"`
+	TotalTokens24H      int64               `json:"total_tokens_24h"`
+	KnownCostUSD24H     float64             `json:"known_cost_usd_24h"`
+	CallsMissingCost24H int64               `json:"calls_missing_cost_24h"`
+	ByOperation         []AIOperationHealth `json:"by_operation"`
 }
 
 func (r *Repository) GetAIUsageHealth(ctx context.Context) (AIUsageHealth, error) {

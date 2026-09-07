@@ -39,8 +39,7 @@ func AssessImmigration(in Input) ImmigrationAssessment {
 	text := strings.ToLower(strings.Join([]string{
 		in.WorkAuthorizationRequirements,
 		in.JobDescription,
-	}, "
-"))
+	}, "\n"))
 
 	negative := []string{
 		"will not sponsor",

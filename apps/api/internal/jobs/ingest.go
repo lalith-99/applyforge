@@ -282,7 +282,6 @@ func strOrNil(s string) *string {
 	return &s
 }
 
-
 func sourcePriority(source string) int {
 	switch source {
 	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE":

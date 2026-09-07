@@ -139,7 +139,6 @@ func (h *Handlers) handleSession(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, userResponse(u))
 }
 
-
 type passwordResetRequest struct {
 	Email string `json:"email"`
 }
@@ -166,7 +165,7 @@ func (h *Handlers) handlePasswordResetRequest(w http.ResponseWriter, r *http.Req
 	}
 	// Always identical to prevent account enumeration and mailer-status leaks.
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{
-		"status": "accepted",
+		"status":  "accepted",
 		"message": "If an account exists, a password reset email will be sent.",
 	})
 }

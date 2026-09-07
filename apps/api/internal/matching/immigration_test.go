@@ -5,7 +5,7 @@ import "testing"
 func TestAssessImmigration_ExplicitNoSponsorshipIsHardFailure(t *testing.T) {
 	in := Input{
 		RequiresH1BTransfer: true,
-		JobDescription: "Applicants must be authorized to work in the United States without sponsorship now or in the future.",
+		JobDescription:      "Applicants must be authorized to work in the United States without sponsorship now or in the future.",
 	}
 	result := CheckEligibility(in)
 	if result.Eligible {
@@ -19,7 +19,7 @@ func TestAssessImmigration_ExplicitNoSponsorshipIsHardFailure(t *testing.T) {
 func TestAssessImmigration_SilenceIsWarningNotRejection(t *testing.T) {
 	in := Input{
 		RequiresH1BTransfer: true,
-		JobDescription: "Build distributed systems in Go and Kubernetes.",
+		JobDescription:      "Build distributed systems in Go and Kubernetes.",
 	}
 	result := CheckEligibility(in)
 	if !result.Eligible {
@@ -33,7 +33,7 @@ func TestAssessImmigration_SilenceIsWarningNotRejection(t *testing.T) {
 func TestAssessImmigration_ExplicitH1BTransferSupport(t *testing.T) {
 	in := Input{
 		RequiresH1BTransfer: true,
-		JobDescription: "We support H-1B transfer for qualified candidates.",
+		JobDescription:      "We support H-1B transfer for qualified candidates.",
 	}
 	result := CheckEligibility(in)
 	if !result.Eligible || result.Immigration.Status != "SUPPORTED" {
@@ -44,7 +44,7 @@ func TestAssessImmigration_ExplicitH1BTransferSupport(t *testing.T) {
 func TestAssessImmigration_NegativeLanguageOverridesPositiveHistoryLikeLanguage(t *testing.T) {
 	in := Input{
 		RequiresH1BTransfer: true,
-		JobDescription: "We have sponsored H-1B workers historically. This role will not sponsor employment visas.",
+		JobDescription:      "We have sponsored H-1B workers historically. This role will not sponsor employment visas.",
 	}
 	result := CheckEligibility(in)
 	if result.Eligible || result.Immigration.Status != "NOT_SUPPORTED" {
@@ -52,15 +52,14 @@ func TestAssessImmigration_NegativeLanguageOverridesPositiveHistoryLikeLanguage(
 	}
 }
 
-
 func TestAssessImmigration_HistoricalH1BEvidenceIsSecondarySignal(t *testing.T) {
 	in := Input{
-		RequiresH1BTransfer:        true,
-		JobDescription:             "Build distributed systems in Go.",
-		CompanyH1BCertifiedCases:   14,
-		CompanyH1BTotalCases:       16,
-		CompanyEvidenceLatestFY:    2026,
-		CompanyEvidenceEmployers:   []string{"Acme Technologies, Inc."},
+		RequiresH1BTransfer:      true,
+		JobDescription:           "Build distributed systems in Go.",
+		CompanyH1BCertifiedCases: 14,
+		CompanyH1BTotalCases:     16,
+		CompanyEvidenceLatestFY:  2026,
+		CompanyEvidenceEmployers: []string{"Acme Technologies, Inc."},
 	}
 	result := CheckEligibility(in)
 	if !result.Eligible {
@@ -76,11 +75,11 @@ func TestAssessImmigration_HistoricalH1BEvidenceIsSecondarySignal(t *testing.T) 
 
 func TestAssessImmigration_ExplicitNoSponsorshipOverridesDOLHistory(t *testing.T) {
 	in := Input{
-		RequiresH1BTransfer:      true,
-		JobDescription:           "This role will not sponsor employment visas.",
-		CompanyH1BCertifiedCases: 250,
+		RequiresH1BTransfer:       true,
+		JobDescription:            "This role will not sponsor employment visas.",
+		CompanyH1BCertifiedCases:  250,
 		CompanyPERMCertifiedCases: 40,
-		CompanyEvidenceLatestFY:  2026,
+		CompanyEvidenceLatestFY:   2026,
 	}
 	result := CheckEligibility(in)
 	if result.Eligible || result.Immigration.Status != "NOT_SUPPORTED" {

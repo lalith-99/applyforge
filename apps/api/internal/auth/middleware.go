@@ -49,7 +49,6 @@ func RequireAuth(svc *Service) func(http.Handler) http.Handler {
 	}
 }
 
-
 // RequireVerifiedEmail is intended to run after RequireAuth. It keeps the
 // verification endpoints themselves available while allowing deployments to
 // gate product routes until a password-account email is verified.

@@ -26,16 +26,16 @@ type TransferableSkill struct {
 // the scorer has no database/HTTP dependencies and is fully unit-testable.
 type Input struct {
 	// Candidate
-	CandidateSkills          map[string]bool // normalized skill name -> present on resume/profile
-	CandidateTargetSkills    map[string]bool // normalized skill name -> user-approved target skill
-	TransferableFromSkills   []TransferableSkill
-	CandidateSeniority       string
-	PreferredRemote          bool
-	PreferredHybrid          bool
-	PreferredOnsite          bool
-	PreferredEmploymentTypes []string
-	ExcludedCompanies        []string
-	ExcludedLocations        []string
+	CandidateSkills                     map[string]bool // normalized skill name -> present on resume/profile
+	CandidateTargetSkills               map[string]bool // normalized skill name -> user-approved target skill
+	TransferableFromSkills              []TransferableSkill
+	CandidateSeniority                  string
+	PreferredRemote                     bool
+	PreferredHybrid                     bool
+	PreferredOnsite                     bool
+	PreferredEmploymentTypes            []string
+	ExcludedCompanies                   []string
+	ExcludedLocations                   []string
 	RequiresH1BTransfer                 bool
 	RequiresNewH1BCapSponsorship        bool
 	RequiresFutureEmploymentSponsorship bool
@@ -45,27 +45,27 @@ type Input struct {
 
 	// Historical employer evidence. These are secondary signals from DOL
 	// disclosure data and never override explicit role-level job-posting text.
-	CompanyH1BCertifiedCases int
-	CompanyH1BTotalCases     int
+	CompanyH1BCertifiedCases  int
+	CompanyH1BTotalCases      int
 	CompanyPERMCertifiedCases int
 	CompanyPERMTotalCases     int
 	CompanyEvidenceLatestFY   int
 	CompanyEvidenceEmployers  []string
 
 	// Job
-	CompanyName      string
-	LocationText     string
-	RemoteType       string
-	EmploymentType   string
-	JobSeniority     string
-	RequiredSkills   []SkillRequirement
-	PreferredSkills  []SkillRequirement
-	Responsibilities []string
-	HasEducationReqs bool
-	HasCertReqs      bool
-	PostedAt         *time.Time
-	FirstSeenAt                  time.Time
-	JobDescription               string
+	CompanyName                   string
+	LocationText                  string
+	RemoteType                    string
+	EmploymentType                string
+	JobSeniority                  string
+	RequiredSkills                []SkillRequirement
+	PreferredSkills               []SkillRequirement
+	Responsibilities              []string
+	HasEducationReqs              bool
+	HasCertReqs                   bool
+	PostedAt                      *time.Time
+	FirstSeenAt                   time.Time
+	JobDescription                string
 	WorkAuthorizationRequirements string
 }
 

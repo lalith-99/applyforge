@@ -41,7 +41,6 @@ func (c *Client) ParseJobRequirements(ctx context.Context, title, description st
 	return out.Requirements, err
 }
 
-
 type JobRoleClassification struct {
 	Family         string  `json:"family"`
 	Classification string  `json:"classification"`

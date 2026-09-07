@@ -2,9 +2,9 @@ package jobs
 
 import (
 	"context"
-	"strings"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 

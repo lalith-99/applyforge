@@ -36,7 +36,6 @@ func (c *Client) track(ctx context.Context, operation string) func(errPtr *error
 	}
 }
 
-
 type DetailedUsage struct {
 	Operation        string
 	LatencyMS        int64
@@ -75,13 +74,13 @@ func (c *Client) trackDetailed(ctx context.Context, operation string, headers *h
 			h = *headers
 		}
 		event := DetailedUsage{
-			Operation:    operation,
-			LatencyMS:    time.Since(start).Milliseconds(),
-			Status:       status,
-			ErrorMessage: errMsg,
-			Provider:     headerString(h, "X-ApplyForge-AI-Provider"),
-			Model:        headerString(h, "X-ApplyForge-AI-Model"),
-			PromptTokens: headerInt(h, "X-ApplyForge-AI-Prompt-Tokens"),
+			Operation:        operation,
+			LatencyMS:        time.Since(start).Milliseconds(),
+			Status:           status,
+			ErrorMessage:     errMsg,
+			Provider:         headerString(h, "X-ApplyForge-AI-Provider"),
+			Model:            headerString(h, "X-ApplyForge-AI-Model"),
+			PromptTokens:     headerInt(h, "X-ApplyForge-AI-Prompt-Tokens"),
 			CompletionTokens: headerInt(h, "X-ApplyForge-AI-Completion-Tokens"),
 			TotalTokens:      headerInt(h, "X-ApplyForge-AI-Total-Tokens"),
 		}

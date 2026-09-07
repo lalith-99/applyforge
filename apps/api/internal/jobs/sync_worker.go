@@ -74,7 +74,6 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	return nil
 }
 
-
 func (w *SyncSourceWorker) recordPoll(ctx context.Context, cfg JobSourceConfig, startedAt time.Time, result IngestResult, pollErr error) {
 	outcome := SourcePollOutcome{
 		JobSourceID: cfg.ID,

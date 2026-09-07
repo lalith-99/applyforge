@@ -38,7 +38,7 @@ func NewActionService(pool *database.Pool, mailer Mailer, webBaseURL string) *Ac
 
 func (s *ActionService) RequestPasswordReset(ctx context.Context, email string) error {
 	var (
-		userID uuid.UUID
+		userID      uuid.UUID
 		storedEmail string
 	)
 	err := s.pool.QueryRow(ctx,
@@ -65,12 +65,8 @@ func (s *ActionService) RequestPasswordReset(ctx context.Context, email string) 
 		ctx,
 		storedEmail,
 		"Reset your ApplyForge password",
-		"Use this one-time link within 30 minutes to reset your ApplyForge password:
-
-"+link+
-			"
-
-If you did not request this, you can ignore this email.",
+		"Use this one-time link within 30 minutes to reset your ApplyForge password:\n\n"+link+
+			"\n\nIf you did not request this, you can ignore this email.",
 	); err != nil {
 		_ = s.invalidateRawToken(context.WithoutCancel(ctx), raw, actionPasswordReset)
 		return err
@@ -91,9 +87,7 @@ func (s *ActionService) SendVerification(ctx context.Context, userID uuid.UUID, 
 		ctx,
 		email,
 		"Verify your ApplyForge email",
-		"Verify your email address using this one-time link within 24 hours:
-
-"+link,
+		"Verify your email address using this one-time link within 24 hours:\n\n"+link,
 	); err != nil {
 		_ = s.invalidateRawToken(context.WithoutCancel(ctx), raw, actionEmailVerify)
 		return err
@@ -194,9 +188,9 @@ func (s *ActionService) lockValidToken(ctx context.Context, rawToken, purpose st
 	}
 
 	var (
-		userID uuid.UUID
+		userID    uuid.UUID
 		expiresAt time.Time
-		usedAt *time.Time
+		usedAt    *time.Time
 	)
 	err = tx.QueryRow(ctx,
 		"SELECT user_id, expires_at, used_at FROM auth_action_tokens WHERE token_hash = $1 AND purpose = $2 FOR UPDATE",

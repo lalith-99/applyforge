@@ -28,14 +28,14 @@ var (
 )
 
 type EvidenceRow struct {
-	EmployerName        string     `json:"employer_name"`
-	Program             string     `json:"program"`
-	FiscalYear          int        `json:"fiscal_year"`
-	CertifiedCount      int        `json:"certified_count"`
-	DeniedCount         int        `json:"denied_count"`
-	WithdrawnCount      int        `json:"withdrawn_count"`
-	OtherCount          int        `json:"other_count"`
-	TotalCount          int        `json:"total_count"`
+	EmployerName       string     `json:"employer_name"`
+	Program            string     `json:"program"`
+	FiscalYear         int        `json:"fiscal_year"`
+	CertifiedCount     int        `json:"certified_count"`
+	DeniedCount        int        `json:"denied_count"`
+	WithdrawnCount     int        `json:"withdrawn_count"`
+	OtherCount         int        `json:"other_count"`
+	TotalCount         int        `json:"total_count"`
 	LatestDecisionDate *time.Time `json:"latest_decision_date,omitempty"`
 }
 
@@ -46,12 +46,12 @@ type ImportBatch struct {
 }
 
 type CompanyEvidence struct {
-	H1BCertified      int      `json:"h1b_certified"`
-	H1BTotal          int      `json:"h1b_total"`
-	PERMCertified     int      `json:"perm_certified"`
-	PERMTotal         int      `json:"perm_total"`
-	LatestFiscalYear  int      `json:"latest_fiscal_year"`
-	MatchedEmployers  []string `json:"matched_employers"`
+	H1BCertified     int      `json:"h1b_certified"`
+	H1BTotal         int      `json:"h1b_total"`
+	PERMCertified    int      `json:"perm_certified"`
+	PERMTotal        int      `json:"perm_total"`
+	LatestFiscalYear int      `json:"latest_fiscal_year"`
+	MatchedEmployers []string `json:"matched_employers"`
 }
 
 type Repository struct {
@@ -185,10 +185,10 @@ func validateEvidenceRow(row EvidenceRow) error {
 	}
 	for name, value := range map[string]int{
 		"certified_count": row.CertifiedCount,
-		"denied_count": row.DeniedCount,
+		"denied_count":    row.DeniedCount,
 		"withdrawn_count": row.WithdrawnCount,
-		"other_count": row.OtherCount,
-		"total_count": row.TotalCount,
+		"other_count":     row.OtherCount,
+		"total_count":     row.TotalCount,
 	} {
 		if value < 0 {
 			return fmt.Errorf("%s cannot be negative", name)

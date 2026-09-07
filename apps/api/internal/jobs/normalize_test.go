@@ -86,7 +86,6 @@ func TestStripTags_DecodesEscapedHTMLAndPreservesBlocks(t *testing.T) {
 	}
 }
 
-
 func TestNormalizeLocation_DoesNotTreatEnglishWordsAsStateCodes(t *testing.T) {
 	for _, input := range []string{
 		"Remote in Europe",
@@ -110,12 +109,12 @@ func TestNormalizeLocation_RecognizesUppercaseUSStateSuffix(t *testing.T) {
 
 func TestNormalizeEmploymentType(t *testing.T) {
 	cases := map[string]string{
-		"Full-time": "FullTime",
-		"full": "FullTime",
-		"Permanent": "FullTime",
+		"Full-time":  "FullTime",
+		"full":       "FullTime",
+		"Permanent":  "FullTime",
 		"Contractor": "Contract",
-		"intern": "Internship",
-		"part_time": "PartTime",
+		"intern":     "Internship",
+		"part_time":  "PartTime",
 	}
 	for input, want := range cases {
 		if got := normalizeEmploymentType(input); got != want {
@@ -144,7 +143,6 @@ func TestIsFreshForEagerAI(t *testing.T) {
 	}
 }
 
-
 func TestBuildFingerprint_PreservesSeniorityAndLocation(t *testing.T) {
 	senior := buildFingerprint("Acme", "Senior Backend Engineer", "Austin, TX", "Build APIs with Go.")
 	junior := buildFingerprint("Acme", "Junior Backend Engineer", "Austin, TX", "Build APIs with Go.")
@@ -170,7 +168,6 @@ func TestBuildFingerprint_RequiresDescription(t *testing.T) {
 		t.Fatalf("description-less jobs are too ambiguous for cross-source dedupe: %q", got)
 	}
 }
-
 
 func TestStripTags_RemovesUnsafeBlocksAndPreservesLists(t *testing.T) {
 	input := `<section><h2>Responsibilities</h2><ul><li>Build APIs</li><li>Operate Kafka</li></ul><script>alert("x")</script><style>.x{}</style></section>`

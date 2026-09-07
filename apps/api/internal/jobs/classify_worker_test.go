@@ -14,22 +14,22 @@ func TestSanitizeAIClassification(t *testing.T) {
 	}{
 		{
 			name: "accepted software family",
-			in: aiclient.JobRoleClassification{Family: "PLATFORM", Classification: "IC_SOFTWARE", Confidence: 0.91},
+			in:   aiclient.JobRoleClassification{Family: "PLATFORM", Classification: "IC_SOFTWARE", Confidence: 0.91},
 			want: RoleClassification{Family: "PLATFORM", Classification: "IC_SOFTWARE", Confidence: 0.91},
 		},
 		{
 			name: "unsupported software family becomes unknown",
-			in: aiclient.JobRoleClassification{Family: "ROCKET_ENGINEERING", Classification: "IC_SOFTWARE", Confidence: 0.99},
+			in:   aiclient.JobRoleClassification{Family: "ROCKET_ENGINEERING", Classification: "IC_SOFTWARE", Confidence: 0.99},
 			want: RoleClassification{Family: "UNKNOWN", Classification: "UNKNOWN", Confidence: 0.25},
 		},
 		{
 			name: "non software collapses to excluded",
-			in: aiclient.JobRoleClassification{Family: "MECHANICAL", Classification: "NON_SOFTWARE", Confidence: 0.88},
+			in:   aiclient.JobRoleClassification{Family: "MECHANICAL", Classification: "NON_SOFTWARE", Confidence: 0.88},
 			want: RoleClassification{Family: "EXCLUDED", Classification: "NON_SOFTWARE", Confidence: 0.88},
 		},
 		{
 			name: "invalid classification becomes unknown",
-			in: aiclient.JobRoleClassification{Family: "BACKEND", Classification: "MAYBE", Confidence: 0.8},
+			in:   aiclient.JobRoleClassification{Family: "BACKEND", Classification: "MAYBE", Confidence: 0.8},
 			want: RoleClassification{Family: "UNKNOWN", Classification: "UNKNOWN", Confidence: 0.25},
 		},
 	}

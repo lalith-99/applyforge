@@ -63,6 +63,8 @@ def classify_role(request: ClassifyRoleRequest, response: Response) -> ClassifyR
             apply_usage_headers(response)
             return ClassifyRoleResponse(result=result)
         except AIProviderError:
-            logger.warning("AI role classification failed, falling back to heuristic", exc_info=True)
+            logger.warning(
+                "AI role classification failed, falling back to heuristic", exc_info=True
+            )
 
     return ClassifyRoleResponse(result=classify_job_role(request.title, request.description))
