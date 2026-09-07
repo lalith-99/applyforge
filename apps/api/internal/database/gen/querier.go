@@ -13,6 +13,10 @@ import (
 
 type Querier interface {
 	ApproveAllPendingSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) error
+	// Interactive, user-triggered job types (parse_resume, build_candidate_profile,
+	// compute_recommendations, process_tailoring_run) are claimed ahead of bulk
+	// background ingestion (enrich_job, embed_job, sync_job_source), so a large
+	// ingestion backlog never stalls a user actively waiting on a result.
 	ClaimNextJob(ctx context.Context, lockedBy pgtype.Text) (BackgroundJob, error)
 	// Marks jobs CLOSED when a source poll completed without re-seeing them
 	// (last_seen_at predates the poll's start). Only meaningful for sources that
