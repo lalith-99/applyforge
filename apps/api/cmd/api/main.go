@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -75,7 +76,9 @@ func run() error {
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 	})
-	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production")
+	authActions := auth.NewActionService(db, auth.NewMailerFromEnv(), webBaseURL)
+	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production").
+		WithActionService(authActions)
 
 	profileRepo := profile.NewRepository(db)
 	profileHandlers := profile.NewHandlers(profileRepo)
@@ -253,10 +256,18 @@ func run() error {
 	accountService := account.NewService(userRepo, resumeRepo, resumeVersionRepo, storageClient)
 	accountHandlers := account.NewHandlers(accountService, environment == "production")
 
+	requireAuthMiddleware := auth.RequireAuth(authService)
+	if strings.EqualFold(getenv("REQUIRE_EMAIL_VERIFICATION", "false"), "true") {
+		baseRequireAuth := requireAuthMiddleware
+		requireAuthMiddleware = func(next http.Handler) http.Handler {
+			return baseRequireAuth(auth.RequireVerifiedEmail(next))
+		}
+	}
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
-		RequireAuth: auth.RequireAuth(authService),
+		RequireAuth: requireAuthMiddleware,
 		Auth:        authHandlers,
 		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
 	})
