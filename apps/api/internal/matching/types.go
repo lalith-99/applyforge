@@ -36,6 +36,12 @@ type Input struct {
 	PreferredEmploymentTypes []string
 	ExcludedCompanies        []string
 	ExcludedLocations        []string
+	RequiresH1BTransfer                 bool
+	RequiresNewH1BCapSponsorship        bool
+	RequiresFutureEmploymentSponsorship bool
+	GreenCardSupportPreferred           bool
+	GreenCardSupportRequired            bool
+	PermSupportPreferred                bool
 
 	// Job
 	CompanyName      string
@@ -49,7 +55,9 @@ type Input struct {
 	HasEducationReqs bool
 	HasCertReqs      bool
 	PostedAt         *time.Time
-	FirstSeenAt      time.Time
+	FirstSeenAt                  time.Time
+	JobDescription               string
+	WorkAuthorizationRequirements string
 }
 
 // ComponentScores breaks total_score down per MASTER_REQUIREMENTS.md §20.
@@ -100,10 +108,17 @@ type Result struct {
 }
 
 // EligibilityResult is computed before scoring (see MASTER_REQUIREMENTS.md §19).
+type ImmigrationAssessment struct {
+	Status     string // SUPPORTED | NOT_SUPPORTED | UNKNOWN
+	Confidence string // HIGH | MEDIUM | LOW
+	Evidence   string
+}
+
 type EligibilityResult struct {
 	Eligible     bool
 	HardFailures []string
 	Warnings     []string
+	Immigration  ImmigrationAssessment
 }
 
 // Grade thresholds (configurable — see MASTER_REQUIREMENTS.md §20).
