@@ -261,3 +261,94 @@ func (r *Repository) GetCatalogHealth(ctx context.Context) (CatalogHealth, error
 	)
 	return health, err
 }
+
+
+type QueueTypeHealth struct {
+	JobType     string `json:"job_type"`
+	Pending     int64  `json:"pending"`
+	Running     int64  `json:"running"`
+	Retrying    int64  `json:"retrying"`
+	DeadLetter  int64  `json:"dead_letter"`
+	Completed24H int64 `json:"completed_24h"`
+}
+
+type QueueHealth struct {
+	Pending              int64             `json:"pending"`
+	Running              int64             `json:"running"`
+	Retrying             int64             `json:"retrying"`
+	DeadLetter           int64             `json:"dead_letter"`
+	Completed24H         int64             `json:"completed_24h"`
+	OldestPendingAgeSecs int64             `json:"oldest_pending_age_seconds"`
+	ByType               []QueueTypeHealth `json:"by_type"`
+}
+
+func (r *Repository) GetQueueHealth(ctx context.Context) (QueueHealth, error) {
+	if r.pool == nil {
+		return QueueHealth{}, ErrSourceHealthUnavailable
+	}
+
+	var health QueueHealth
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE status = 'PENDING')::bigint,
+			count(*) FILTER (WHERE status = 'RUNNING')::bigint,
+			count(*) FILTER (WHERE status = 'PENDING' AND attempts > 0)::bigint,
+			count(*) FILTER (WHERE status = 'DEAD_LETTER')::bigint,
+			count(*) FILTER (
+				WHERE status = 'COMPLETED'
+				  AND completed_at >= now() - INTERVAL '24 hours'
+			)::bigint,
+			COALESCE(
+				EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE status = 'PENDING'))),
+				0
+			)::bigint
+		FROM background_jobs
+	`).Scan(
+		&health.Pending,
+		&health.Running,
+		&health.Retrying,
+		&health.DeadLetter,
+		&health.Completed24H,
+		&health.OldestPendingAgeSecs,
+	); err != nil {
+		return QueueHealth{}, err
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			job_type,
+			count(*) FILTER (WHERE status = 'PENDING')::bigint,
+			count(*) FILTER (WHERE status = 'RUNNING')::bigint,
+			count(*) FILTER (WHERE status = 'PENDING' AND attempts > 0)::bigint,
+			count(*) FILTER (WHERE status = 'DEAD_LETTER')::bigint,
+			count(*) FILTER (
+				WHERE status = 'COMPLETED'
+				  AND completed_at >= now() - INTERVAL '24 hours'
+			)::bigint
+		FROM background_jobs
+		WHERE created_at >= now() - INTERVAL '7 days'
+		   OR status IN ('PENDING', 'RUNNING', 'DEAD_LETTER')
+		GROUP BY job_type
+		ORDER BY job_type
+	`)
+	if err != nil {
+		return QueueHealth{}, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item QueueTypeHealth
+		if err := rows.Scan(
+			&item.JobType,
+			&item.Pending,
+			&item.Running,
+			&item.Retrying,
+			&item.DeadLetter,
+			&item.Completed24H,
+		); err != nil {
+			return QueueHealth{}, err
+		}
+		health.ByType = append(health.ByType, item)
+	}
+	return health, rows.Err()
+}
