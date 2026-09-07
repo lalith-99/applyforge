@@ -157,7 +157,7 @@ func run() error {
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
-	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).WithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).\n\t\tWithPreferences(preferencesRepo).\n\t\tWithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
 
 	immigrationRepo := immigration.NewRepository(db)
 	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
