@@ -59,7 +59,6 @@ func TestRateLimiter_Middleware_Returns429WhenExceeded(t *testing.T) {
 	}
 }
 
-
 type fakeRateLimitStore struct {
 	allowed bool
 	err     error

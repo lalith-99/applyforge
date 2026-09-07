@@ -86,7 +86,6 @@ func requireServiceURL(name, raw string) error {
 	}
 }
 
-
 func authCookieSameSite(environment string) (http.SameSite, error) {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_COOKIE_SAME_SITE")))
 	if raw == "" {

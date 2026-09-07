@@ -257,16 +257,16 @@ func (r *Repository) listCatalogBackfillBatch(
 	out := make([]catalogBackfillRow, 0, limit)
 	for rows.Next() {
 		var (
-			item                     catalogBackfillRow
-			country                  pgtype.Text
-			state                    pgtype.Text
-			city                     pgtype.Text
-			locationText             pgtype.Text
-			countryCode              pgtype.Text
-			stateCode                pgtype.Text
-			remoteType               pgtype.Text
-			employmentType           pgtype.Text
-			postedAt                 pgtype.Timestamptz
+			item           catalogBackfillRow
+			country        pgtype.Text
+			state          pgtype.Text
+			city           pgtype.Text
+			locationText   pgtype.Text
+			countryCode    pgtype.Text
+			stateCode      pgtype.Text
+			remoteType     pgtype.Text
+			employmentType pgtype.Text
+			postedAt       pgtype.Timestamptz
 		)
 		if err := rows.Scan(
 			&item.ID,
