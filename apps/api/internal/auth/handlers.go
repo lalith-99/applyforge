@@ -180,7 +180,7 @@ func (h *Handlers) handleGoogleCallback(w http.ResponseWriter, r *http.Request) 
 		MaxAge:   -1,
 	})
 	h.setSessionCookie(w, issued.Token)
-	http.Redirect(w, r, h.webBaseURL+"/onboarding", http.StatusFound)
+	http.Redirect(w, r, h.webBaseURL+"/auth/continue", http.StatusFound)
 }
 
 func (h *Handlers) setSessionCookie(w http.ResponseWriter, token string) {
