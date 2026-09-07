@@ -123,7 +123,8 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
     OR city ILIKE '%' || $5 || '%'
     OR state ILIKE '%' || $5 || '%'
   )
-  AND ($6::text = '' OR country_code = $6);
+  AND ($6::text = '' OR country_code = $6)
+  AND (NOT $7::bool OR explicit_sponsorship_denied = false);
 
 -- name: ListJobs :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
@@ -144,6 +145,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
     OR state ILIKE '%' || $5 || '%'
   )
   AND ($6::text = '' OR country_code = $6)
+  AND (NOT $10::bool OR explicit_sponsorship_denied = false)
 ORDER BY
   CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
   CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
@@ -173,5 +175,6 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND ($4::text = '' OR employment_type = $4)
   AND ($5::timestamptz IS NULL OR posted_at >= $5)
   AND ($6::text = '' OR country_code = $6)
+  AND (NOT $7::bool OR explicit_sponsorship_denied = false)
 ORDER BY embedding <=> $1
 LIMIT $2;
