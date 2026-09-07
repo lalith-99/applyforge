@@ -10,12 +10,18 @@ ORDER BY created_at DESC
 LIMIT 1;
 
 -- name: ClaimNextJob :one
+-- Interactive, user-triggered job types (parse_resume, build_candidate_profile,
+-- compute_recommendations, process_tailoring_run) are claimed ahead of bulk
+-- background ingestion (enrich_job, embed_job, sync_job_source), so a large
+-- ingestion backlog never stalls a user actively waiting on a result.
 UPDATE background_jobs
 SET status = 'RUNNING', attempts = attempts + 1, locked_at = now(), locked_by = $1
 WHERE id = (
     SELECT id FROM background_jobs
     WHERE status = 'PENDING' AND available_at <= now()
-    ORDER BY available_at ASC
+    ORDER BY
+        CASE WHEN job_type IN ('parse_resume', 'build_candidate_profile', 'compute_recommendations', 'process_tailoring_run') THEN 0 ELSE 1 END,
+        available_at ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )

@@ -17,13 +17,19 @@ SET status = 'RUNNING', attempts = attempts + 1, locked_at = now(), locked_by = 
 WHERE id = (
     SELECT id FROM background_jobs
     WHERE status = 'PENDING' AND available_at <= now()
-    ORDER BY available_at ASC
+    ORDER BY
+        CASE WHEN job_type IN ('parse_resume', 'build_candidate_profile', 'compute_recommendations', 'process_tailoring_run') THEN 0 ELSE 1 END,
+        available_at ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
 RETURNING id, job_type, payload, status, attempts, max_attempts, available_at, locked_at, locked_by, last_error, created_at, completed_at
 `
 
+// Interactive, user-triggered job types (parse_resume, build_candidate_profile,
+// compute_recommendations, process_tailoring_run) are claimed ahead of bulk
+// background ingestion (enrich_job, embed_job, sync_job_source), so a large
+// ingestion backlog never stalls a user actively waiting on a result.
 func (q *Queries) ClaimNextJob(ctx context.Context, lockedBy pgtype.Text) (BackgroundJob, error) {
 	row := q.db.QueryRow(ctx, claimNextJob, lockedBy)
 	var i BackgroundJob
