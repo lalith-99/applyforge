@@ -202,8 +202,9 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	const recommendedJobMaxAge = 7 * 24 * time.Hour
 	postedAfter := time.Now().UTC().Add(-recommendedJobMaxAge)
 	filter := jobs.EmbeddingSearchFilter{
-		CountryCode: "US",
-		PostedAfter: &postedAfter,
+		CountryCode:              "US",
+		PostedAfter:              &postedAfter,
+		ExcludeSponsorshipDenied: preferences.RequiresH1BSupport(prefs),
 	}
 	if prefs.Remote && !prefs.Hybrid && !prefs.Onsite {
 		filter.RemoteType = "remote"
