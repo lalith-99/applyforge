@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,6 +142,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		if shouldRefreshAI && s.queue != nil &&
 			location.CountryCode == "US" &&
 			classification.Classification == "IC_SOFTWARE" &&
+			strings.TrimSpace(raw.Description) != "" &&
 			isFreshForEagerAI(raw.PostedAt, pollStart) {
 			payload := EnrichPayload{JobID: upserted.Job.ID.String()}
 			if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
@@ -156,7 +158,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 	// current listing every poll. Arbeitnow's page cap means "not seen this
 	// poll" doesn't reliably mean "closed" - see CloseStaleJobs's doc
 	// comment - so it's deliberately excluded here.
-	if sourceName != "ARBEITNOW" {
+	if sourceName != "ARBEITNOW" && sourceName != "BRIGHTDATA" {
 		closed, closeErr := s.repo.CloseStaleJobs(ctx, sourceName, companyID, pollStart)
 		if closeErr != nil {
 			slog.Error("close stale jobs failed", "source", sourceName, "company_id", companyID, "error", closeErr)
@@ -183,6 +185,12 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 		return NewWorkableSource(cfg.BoardToken), "WORKABLE", nil
 	case "ARBEITNOW":
 		return NewArbeitnowSource(), "ARBEITNOW", nil
+	case "BRIGHTDATA":
+		config, err := BrightDataConfigFromEnv()
+		if err != nil {
+			return nil, "", err
+		}
+		return NewBrightDataSource(cfg.BoardToken, config), "BRIGHTDATA", nil
 	default:
 		return nil, "", fmt.Errorf("unknown source type: %s", cfg.SourceType)
 	}
