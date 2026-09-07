@@ -29,7 +29,13 @@ gaps), CONSIDER (plausible but real gaps), or SKIP (weak fit / major gaps). A lo
 deterministic_score with easily-transferable gaps can still deserve APPLY_NOW; a high \
 deterministic_score with a fundamental mismatch (e.g. wrong seniority/domain) can still \
 deserve SKIP - use judgment, don't just echo deterministic_score back. Return one ranking \
-per job_id given, in any order."""
+per job_id given, in any order.
+
+When immigration_relevant=true, use immigration_status/evidence as opportunity context:
+SUPPORTED is a strong positive signal; HISTORICAL_SUPPORT is useful but weaker and not a guarantee;
+UNKNOWN is uncertainty, not a rejection. Explicitly incompatible jobs are filtered before this stage.
+Keep fit_score focused primarily on technical/career fit; ApplyForge applies deterministic immigration
+weighting after your judgment. You may mention strong sponsorship evidence in reason/recommendation."""
 
 
 def rank_jobs_heuristic(request: RankJobsRequest) -> RankJobsResult:
@@ -82,4 +88,7 @@ Deterministic score: {job.deterministic_score}
 Matched skills: {', '.join(job.matched_skills) or 'none'}
 Missing required skills: {', '.join(job.missing_required_skills) or 'none'}
 Missing preferred skills: {', '.join(job.missing_preferred_skills) or 'none'}
-Transferable notes: {', '.join(job.transferable_notes) or 'none'}"""
+Transferable notes: {', '.join(job.transferable_notes) or 'none'}
+Immigration relevant: {job.immigration_relevant}
+Immigration status: {job.immigration_status} ({job.immigration_confidence})
+Immigration evidence: {job.immigration_evidence or 'none'}"""
