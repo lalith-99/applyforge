@@ -42,6 +42,8 @@ type Input struct {
 	GreenCardSupportPreferred           bool
 	GreenCardSupportRequired            bool
 	PermSupportPreferred                bool
+	WorkAuthorization                   string
+	ImmigrationStatus                   string
 
 	// Historical employer evidence. These are secondary signals from DOL
 	// disclosure data and never override explicit role-level job-posting text.
@@ -114,6 +116,8 @@ type Result struct {
 	TargetProfileMatch       int
 	SuggestedTargetAdditions []string
 	Eligibility              EligibilityResult
+	ImmigrationRelevant      bool
+	ImmigrationPriorityScore int
 }
 
 // EligibilityResult is computed before scoring (see MASTER_REQUIREMENTS.md §19).

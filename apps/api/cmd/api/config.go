@@ -59,6 +59,19 @@ func validateProductionConfig(environment string) error {
 		return errors.New("production ADMIN_SYNC_TOKEN must be at least 24 characters when configured")
 	}
 
+	// Production discovery is market-wide, not a hand-maintained company
+	// registry. Bright Data is currently the primary high-volume provider;
+	// Google Jobs and Arbeitnow are supplemental and are not sufficient by
+	// themselves to guarantee broad U.S. coverage.
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("BRIGHTDATA_ENABLED")), "true") {
+		return errors.New("production BRIGHTDATA_ENABLED must be true for market-wide U.S. job discovery")
+	}
+	for _, key := range []string{"BRIGHTDATA_API_KEY", "BRIGHTDATA_JOBS_DATASET_ID"} {
+		if strings.TrimSpace(os.Getenv(key)) == "" {
+			return fmt.Errorf("production %s is required when market-wide job discovery is enabled", key)
+		}
+	}
+
 	if _, err := authCookieSameSite(environment); err != nil {
 		return err
 	}

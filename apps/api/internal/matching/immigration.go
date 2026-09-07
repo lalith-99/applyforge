@@ -6,9 +6,7 @@ import (
 )
 
 func immigrationRequired(in Input) bool {
-	return in.RequiresH1BTransfer ||
-		in.RequiresNewH1BCapSponsorship ||
-		in.RequiresFutureEmploymentSponsorship ||
+	return h1bSupportRequired(in) ||
 		in.GreenCardSupportPreferred ||
 		in.GreenCardSupportRequired ||
 		in.PermSupportPreferred
@@ -17,7 +15,15 @@ func immigrationRequired(in Input) bool {
 func h1bSupportRequired(in Input) bool {
 	return in.RequiresH1BTransfer ||
 		in.RequiresNewH1BCapSponsorship ||
-		in.RequiresFutureEmploymentSponsorship
+		in.RequiresFutureEmploymentSponsorship ||
+		looksLikeH1B(in.ImmigrationStatus) ||
+		looksLikeH1B(in.WorkAuthorization)
+}
+
+func looksLikeH1B(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("-", "", " ", "", "_", "").Replace(normalized)
+	return strings.Contains(normalized, "h1b")
 }
 
 func permSupportRelevant(in Input) bool {
@@ -79,12 +85,23 @@ func AssessImmigration(in Input) ImmigrationAssessment {
 		"h-1b sponsorship available",
 		"h1b sponsorship available",
 		"visa sponsorship available",
+		"visa sponsorship provided",
+		"sponsorship is available",
+		"sponsorship available",
 		"we sponsor h-1b",
 		"we sponsor h1b",
+		"sponsor h-1b",
+		"sponsor h1b",
+		"h-1b visa sponsorship",
+		"h1b visa sponsorship",
 		"h-1b transfer",
 		"h1b transfer",
+		"h-1b portability",
+		"h1b portability",
 		"support h-1b",
 		"support h1b",
+		"h-1b sponsorship support",
+		"h1b sponsorship support",
 		"provide visa sponsorship",
 		"provides visa sponsorship",
 	}

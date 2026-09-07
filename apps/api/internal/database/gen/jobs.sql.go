@@ -50,6 +50,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
     OR state ILIKE '%' || $5 || '%'
   )
   AND ($6::text = '' OR country_code = $6)
+  AND (NOT $7::bool OR explicit_sponsorship_denied = false)
 `
 
 type CountJobsParams struct {
@@ -59,6 +60,7 @@ type CountJobsParams struct {
 	Column4 pgtype.Timestamptz `json:"column_4"`
 	Column5 string             `json:"column_5"`
 	Column6 string             `json:"column_6"`
+	Column7 bool               `json:"column_7"`
 }
 
 func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, error) {
@@ -69,6 +71,7 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
+		arg.Column7,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -303,6 +306,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
     OR state ILIKE '%' || $5 || '%'
   )
   AND ($6::text = '' OR country_code = $6)
+  AND (NOT $10::bool OR explicit_sponsorship_denied = false)
 ORDER BY
   CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
   CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
@@ -311,15 +315,16 @@ LIMIT $8 OFFSET $9
 `
 
 type ListJobsParams struct {
-	Column1 string             `json:"column_1"`
-	Column2 string             `json:"column_2"`
-	Column3 string             `json:"column_3"`
-	Column4 pgtype.Timestamptz `json:"column_4"`
-	Column5 string             `json:"column_5"`
-	Column6 string             `json:"column_6"`
-	Column7 string             `json:"column_7"`
-	Limit   int32              `json:"limit"`
-	Offset  int32              `json:"offset"`
+	Column1  string             `json:"column_1"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  string             `json:"column_5"`
+	Column6  string             `json:"column_6"`
+	Column7  string             `json:"column_7"`
+	Limit    int32              `json:"limit"`
+	Offset   int32              `json:"offset"`
+	Column10 bool               `json:"column_10"`
 }
 
 type ListJobsRow struct {
@@ -371,6 +376,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 		arg.Column7,
 		arg.Limit,
 		arg.Offset,
+		arg.Column10,
 	)
 	if err != nil {
 		return nil, err
@@ -440,6 +446,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND ($4::text = '' OR employment_type = $4)
   AND ($5::timestamptz IS NULL OR posted_at >= $5)
   AND ($6::text = '' OR country_code = $6)
+  AND (NOT $7::bool OR explicit_sponsorship_denied = false)
 ORDER BY embedding <=> $1
 LIMIT $2
 `
@@ -451,6 +458,7 @@ type SearchJobsByEmbeddingParams struct {
 	Column4   string             `json:"column_4"`
 	Column5   pgtype.Timestamptz `json:"column_5"`
 	Column6   string             `json:"column_6"`
+	Column7   bool               `json:"column_7"`
 }
 
 type SearchJobsByEmbeddingRow struct {
@@ -506,6 +514,7 @@ func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmb
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
+		arg.Column7,
 	)
 	if err != nil {
 		return nil, err

@@ -69,6 +69,8 @@ func Score(in Input) Result {
 		TargetProfileMatch:       targetMatch,
 		SuggestedTargetAdditions: suggestedAdditions,
 		Eligibility:              eligibility,
+		ImmigrationRelevant:      immigrationRequired(in),
+		ImmigrationPriorityScore: immigrationPriorityScore(eligibility.Immigration, immigrationRequired(in)),
 	}
 
 	switch result.Eligibility.Immigration.Status {
@@ -391,5 +393,38 @@ func describeRatio(ratio float64) string {
 		return "reasonable"
 	default:
 		return "weak"
+	}
+}
+
+func immigrationPriorityScore(assessment ImmigrationAssessment, relevant bool) int {
+	if !relevant {
+		return 50
+	}
+	switch assessment.Status {
+	case "NOT_SUPPORTED":
+		return 0
+	case "SUPPORTED":
+		// Role-level posting evidence is the strongest signal available.
+		if assessment.EvidenceSource == "JOB_POSTING" && assessment.Confidence == "HIGH" {
+			return 100
+		}
+		return 90
+	case "HISTORICAL_SUPPORT":
+		// Employer history is useful but must never equal an explicit
+		// role-level sponsorship statement.
+		switch {
+		case assessment.H1BCertifiedCases >= 50:
+			return 78
+		case assessment.H1BCertifiedCases >= 10:
+			return 72
+		case assessment.H1BCertifiedCases >= 3:
+			return 66
+		default:
+			return 60
+		}
+	default:
+		// Unknown is intentionally not a rejection, but explicit/recent
+		// sponsorship evidence should rank ahead of it for H-1B users.
+		return 45
 	}
 }

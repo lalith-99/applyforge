@@ -100,15 +100,16 @@ func jobFromRow(row db.GetJobByIDRow) Job {
 
 // ListFilter narrows a job listing query. Zero values mean "no filter".
 type ListFilter struct {
-	Search         string
-	RemoteType     string
-	EmploymentType string
-	PostedAfter    *time.Time
-	Location       string // matched against location_text/city/state
-	CountryCode    string // exact ISO 3166-1 alpha-2 match
-	Sort           string // "newest" | "salary" | "" (default: first_seen_at desc)
-	Limit          int32
-	Offset         int32
+	Search                   string
+	RemoteType               string
+	EmploymentType           string
+	PostedAfter              *time.Time
+	Location                 string // matched against location_text/city/state
+	CountryCode              string // exact ISO 3166-1 alpha-2 match
+	ExcludeSponsorshipDenied bool   // true for candidates who require visa/transfer support
+	Sort                     string // "newest" | "salary" | "" (default: first_seen_at desc)
+	Limit                    int32
+	Offset                   int32
 }
 
 // Repository provides access to company/job-source/job records.
@@ -372,6 +373,17 @@ func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UU
 	})
 }
 
+func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID uuid.UUID, denied bool) error {
+	if r.pool == nil {
+		return errors.New("sponsorship prefilter update requires a repository backed by a database pool")
+	}
+	_, err := r.pool.Exec(ctx,
+		"UPDATE jobs SET explicit_sponsorship_denied = $2, updated_at = now() WHERE id = $1",
+		jobID, denied,
+	)
+	return err
+}
+
 // CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
 // weren't touched (last_seen_at) since cutoff, and returns how many were
 // closed. Intended to be called once per poll of a source that returns its
@@ -406,10 +418,11 @@ type JobMatch struct {
 // in the same query as the cosine-distance ranking so the ANN index only
 // has to rank whatever survives them.
 type EmbeddingSearchFilter struct {
-	RemoteType     string
-	EmploymentType string
-	PostedAfter    *time.Time
-	CountryCode    string
+	RemoteType               string
+	EmploymentType           string
+	PostedAfter              *time.Time
+	CountryCode              string
+	ExcludeSponsorshipDenied bool
 }
 
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
@@ -423,6 +436,7 @@ func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, li
 		Column4:   filter.EmploymentType,
 		Column5:   database.PGTimestamptz(filter.PostedAfter),
 		Column6:   filter.CountryCode,
+		Column7:   filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, err
@@ -481,15 +495,16 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 	}
 
 	rows, err := r.q.ListJobs(ctx, db.ListJobsParams{
-		Column1: filter.Search,
-		Column2: filter.RemoteType,
-		Column3: filter.EmploymentType,
-		Column4: database.PGTimestamptz(filter.PostedAfter),
-		Column5: filter.Location,
-		Column6: filter.CountryCode,
-		Column7: filter.Sort,
-		Limit:   limit,
-		Offset:  filter.Offset,
+		Column1:  filter.Search,
+		Column2:  filter.RemoteType,
+		Column3:  filter.EmploymentType,
+		Column4:  database.PGTimestamptz(filter.PostedAfter),
+		Column5:  filter.Location,
+		Column6:  filter.CountryCode,
+		Column7:  filter.Sort,
+		Limit:    limit,
+		Offset:   filter.Offset,
+		Column10: filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -502,6 +517,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
 		Column5: filter.Location,
 		Column6: filter.CountryCode,
+		Column7: filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -540,6 +556,41 @@ func (r *Repository) CreateJobSource(ctx context.Context, sourceType string, com
 	return database.PGToUUID(row.ID), nil
 }
 
+// SetSourceTypeEnabled toggles all configured shards/connectors for a source
+// type. Optional paid providers use this at startup so secrets + an explicit
+// environment flag are enough to activate their pre-seeded shards.
+// CloseRetiredManualSourceJobs prevents historical company-seeded ATS
+// records from remaining ACTIVE forever after scheduled polling is retired.
+// A 48-hour grace period avoids immediately hiding a recently-seen posting
+// while the market-wide providers populate their canonical replacement.
+func (r *Repository) CloseRetiredManualSourceJobs(ctx context.Context) (int64, error) {
+	if r.pool == nil {
+		return 0, errors.New("retired source cleanup requires a repository backed by a database pool")
+	}
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE jobs
+		SET status = 'CLOSED', closed_at = now(), updated_at = now()
+		WHERE status = 'ACTIVE'
+		  AND source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
+		  AND last_seen_at < now() - INTERVAL '48 hours'
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string, enabled bool) error {
+	if r.pool == nil {
+		return errors.New("source enablement requires a repository backed by a database pool")
+	}
+	_, err := r.pool.Exec(ctx,
+		"UPDATE job_sources SET enabled = $2 WHERE source_type = $1",
+		sourceType, enabled,
+	)
+	return err
+}
+
 // ListJobSources returns all enabled job source configurations.
 func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, error) {
 	rows, err := r.q.ListJobSources(ctx)
@@ -555,6 +606,49 @@ func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, err
 			CompanyID:   database.PGToUUID(row.CompanyID),
 			CompanyName: row.CompanyName,
 		})
+	}
+	return configs, nil
+}
+
+// ListDueJobSources returns only enabled sources whose configured polling
+// interval has elapsed. This keeps authoritative direct ATS boards frequent
+// while allowing broad/paid sources to run only a few times per day.
+func (r *Repository) ListDueJobSources(ctx context.Context) ([]JobSourceConfig, error) {
+	if r.pool == nil {
+		return r.ListJobSources(ctx)
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT js.id, js.source_type, js.board_token, js.company_id, c.name
+		FROM job_sources js
+		JOIN companies c ON c.id = js.company_id
+		WHERE js.enabled = true
+		  AND (
+		      js.last_polled_at IS NULL
+		      OR js.last_polled_at <= now() - make_interval(mins => js.poll_interval_minutes)
+		  )
+		ORDER BY js.created_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := []JobSourceConfig{}
+	for rows.Next() {
+		var cfg JobSourceConfig
+		if err := rows.Scan(
+			&cfg.ID,
+			&cfg.SourceType,
+			&cfg.BoardToken,
+			&cfg.CompanyID,
+			&cfg.CompanyName,
+		); err != nil {
+			return nil, err
+		}
+		configs = append(configs, cfg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return configs, nil
 }

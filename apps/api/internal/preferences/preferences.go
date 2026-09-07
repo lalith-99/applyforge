@@ -6,6 +6,7 @@ package preferences
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -159,4 +160,31 @@ func orEmpty(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// RequiresH1BSupport returns true when the user's persisted preferences mean
+// a current role must support an H-1B/change-of-employer path. H-1B status is
+// itself sufficient: users should not need to remember a second checkbox for
+// obvious "will not sponsor" postings to be excluded.
+func RequiresH1BSupport(p Preferences) bool {
+	if p.RequiresH1BTransfer ||
+		p.RequiresNewH1BCapSponsorship ||
+		p.RequiresFutureEmploymentSponsorship {
+		return true
+	}
+	return looksLikeH1BPreference(derefPreference(p.ImmigrationStatus)) ||
+		looksLikeH1BPreference(derefPreference(p.WorkAuthorization))
+}
+
+func looksLikeH1BPreference(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("-", "", " ", "", "_", "").Replace(normalized)
+	return strings.Contains(normalized, "h1b")
+}
+
+func derefPreference(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

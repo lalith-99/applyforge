@@ -14,7 +14,7 @@ export function RecommendedJobCard({ job }: { job: RecommendedJob }) {
           </p>
         </div>
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-          {job.FinalScore}% match
+          {job.FinalScore}% opportunity
         </span>
       </div>
 
@@ -24,8 +24,25 @@ export function RecommendedJobCard({ job }: { job: RecommendedJob }) {
         {job.AIRecommendation && (
           <span className="rounded-full bg-purple-100 px-2 py-0.5 font-medium text-purple-800">{job.AIRecommendation}</span>
         )}
+        {job.ImmigrationStatus === "SUPPORTED" && (
+          <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800">H-1B support mentioned</span>
+        )}
+        {job.ImmigrationStatus === "HISTORICAL_SUPPORT" && (
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-medium text-blue-800">Historical H-1B support</span>
+        )}
+        {job.ImmigrationStatus === "UNKNOWN" && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">Sponsorship unknown</span>
+        )}
       </div>
 
+      <p className="text-xs text-black/50 dark:text-white/50">
+        Technical match {job.DeterministicScore}%{job.AIFitScore != null ? ` · AI fit ${job.AIFitScore}%` : ""}
+      </p>
+      {job.ImmigrationEvidence && job.ImmigrationStatus !== "UNKNOWN" && (
+        <p className="text-xs text-black/60 dark:text-white/60">
+          Visa signal: {job.ImmigrationEvidence}
+        </p>
+      )}
       {job.AIReason && <p className="text-sm text-black/70 dark:text-white/70">{job.AIReason}</p>}
 
       <div className="flex gap-3 text-sm">

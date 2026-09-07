@@ -109,3 +109,48 @@ func TestAssessImmigration_PERMHistoryOnlyCountsWhenRelevant(t *testing.T) {
 		t.Fatalf("PERM history should be relevant to PERM preference: %+v", got)
 	}
 }
+
+func TestAssessImmigration_H1BStatusRequiresTransferSupportWithoutCheckbox(t *testing.T) {
+	in := Input{
+		ImmigrationStatus: "H-1B",
+		JobDescription:    "This position will not sponsor employment visas.",
+	}
+	result := CheckEligibility(in)
+	if result.Eligible {
+		t.Fatalf("H-1B status must make explicit no-sponsorship role ineligible: %+v", result)
+	}
+	if result.Immigration.Status != "NOT_SUPPORTED" {
+		t.Fatalf("expected NOT_SUPPORTED, got %+v", result.Immigration)
+	}
+}
+
+func TestAssessImmigration_H1BStatusKeepsSilentPostingEligible(t *testing.T) {
+	in := Input{
+		WorkAuthorization: "H1B",
+		JobDescription:    "Build Java and Spring Boot services.",
+	}
+	result := CheckEligibility(in)
+	if !result.Eligible {
+		t.Fatalf("unknown sponsorship must remain eligible for deeper evidence: %+v", result)
+	}
+	if result.Immigration.Status != "UNKNOWN" {
+		t.Fatalf("expected UNKNOWN sponsorship status: %+v", result.Immigration)
+	}
+}
+
+func TestAssessImmigration_CommonPositiveH1BSignals(t *testing.T) {
+	for _, description := range []string{
+		"Visa sponsorship provided for qualified candidates.",
+		"We can sponsor H-1B candidates for this position.",
+		"H-1B portability is supported.",
+		"H1B sponsorship support is available.",
+	} {
+		got := AssessImmigration(Input{
+			ImmigrationStatus: "H-1B",
+			JobDescription:    description,
+		})
+		if got.Status != "SUPPORTED" || got.EvidenceSource != "JOB_POSTING" {
+			t.Fatalf("expected explicit support for %q, got %+v", description, got)
+		}
+	}
+}

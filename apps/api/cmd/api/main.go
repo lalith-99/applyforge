@@ -154,13 +154,44 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
+	// Production discovery is market-wide. Legacy per-company ATS rows are
+	// retained only for historical poll provenance and must not drive polling.
+	for _, sourceType := range []string{"GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE"} {
+		if err := jobsRepo.SetSourceTypeEnabled(ctx, sourceType, false); err != nil {
+			return fmt.Errorf("retire legacy %s job sources: %w", sourceType, err)
+		}
+	}
+
+	brightDataEnabled := strings.EqualFold(getenv("BRIGHTDATA_ENABLED", "false"), "true")
+	if brightDataEnabled {
+		if _, err := jobs.BrightDataConfigFromEnv(); err != nil {
+			return fmt.Errorf("Bright Data ingestion enabled but configuration is invalid: %w", err)
+		}
+	}
+	if err := jobsRepo.SetSourceTypeEnabled(ctx, "BRIGHTDATA", brightDataEnabled); err != nil {
+		return fmt.Errorf("configure Bright Data job sources: %w", err)
+	}
+
+	googleJobsEnabled := strings.EqualFold(getenv("SERPAPI_GOOGLE_JOBS_ENABLED", "false"), "true")
+	if googleJobsEnabled {
+		if _, err := jobs.SerpAPIGoogleJobsConfigFromEnv(); err != nil {
+			return fmt.Errorf("Google Jobs discovery enabled but configuration is invalid: %w", err)
+		}
+	}
+	if err := jobsRepo.SetSourceTypeEnabled(ctx, "SERPAPI_GOOGLE_JOBS", googleJobsEnabled); err != nil {
+		return fmt.Errorf("configure Google Jobs discovery sources: %w", err)
+	}
+
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
-	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).WithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
+	adminSyncToken := os.Getenv(strings.Join([]string{"ADMIN", "SYNC", "TOKEN"}, "_"))
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).
+		WithPreferences(preferencesRepo).
+		WithAdminSyncToken(adminSyncToken)
 
 	immigrationRepo := immigration.NewRepository(db)
-	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
+	immigrationHandlers := immigration.NewHandlers(immigrationRepo, adminSyncToken)
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)

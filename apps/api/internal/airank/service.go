@@ -137,6 +137,10 @@ func toRankingInput(c matching.RankedJob) aiclient.JobRankingInput {
 		MissingPreferredSkills: emptyIfNil(c.Result.MissingPreferredSkills),
 		TransferableNotes:      emptyIfNil(notes),
 		DeterministicScore:     c.Result.TotalScore,
+		ImmigrationStatus:      c.Result.Eligibility.Immigration.Status,
+		ImmigrationConfidence:  c.Result.Eligibility.Immigration.Confidence,
+		ImmigrationEvidence:    c.Result.Eligibility.Immigration.Evidence,
+		ImmigrationRelevant:    c.Result.ImmigrationRelevant,
 	}
 }
 

@@ -51,3 +51,36 @@ func TestToRecommendations_KeepsJobsWithNoJudgment(t *testing.T) {
 		t.Fatalf("expected no AI recommendation set when the AI call failed, got %+v", recs[0])
 	}
 }
+
+func TestBlendImmigrationPriority_ExplicitSupportOutranksUnknown(t *testing.T) {
+	explicit := matching.Result{
+		ImmigrationRelevant:      true,
+		ImmigrationPriorityScore: 100,
+	}
+	unknown := matching.Result{
+		ImmigrationRelevant:      true,
+		ImmigrationPriorityScore: 45,
+	}
+
+	explicitScore := blendImmigrationPriority(80, explicit)
+	unknownScore := blendImmigrationPriority(80, unknown)
+	if explicitScore != 84 {
+		t.Fatalf("expected explicit support blend 84, got %d", explicitScore)
+	}
+	if unknownScore != 73 {
+		t.Fatalf("expected unknown blend 73, got %d", unknownScore)
+	}
+	if explicitScore <= unknownScore {
+		t.Fatalf("explicit H-1B support must outrank unknown support: explicit=%d unknown=%d", explicitScore, unknownScore)
+	}
+}
+
+func TestBlendImmigrationPriority_DoesNotAffectUsersWithoutImmigrationConstraint(t *testing.T) {
+	result := matching.Result{
+		ImmigrationRelevant:      false,
+		ImmigrationPriorityScore: 100,
+	}
+	if got := blendImmigrationPriority(81, result); got != 81 {
+		t.Fatalf("expected unchanged technical score for non-immigration user, got %d", got)
+	}
+}
