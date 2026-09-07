@@ -149,6 +149,7 @@ func run() error {
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
+	catalogBackfillWorker := jobs.NewCatalogBackfillWorker(jobsRepo, jobQueue)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
@@ -198,6 +199,7 @@ func run() error {
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
 		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
+		w.Register(jobs.JobTypeCatalogBackfill, catalogBackfillWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
