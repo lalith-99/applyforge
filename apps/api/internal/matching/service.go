@@ -223,9 +223,58 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return nil, err
 	}
 
-	ranked := make([]RankedJob, 0, len(matches))
-	for _, m := range matches {
-		result, err := s.Match(ctx, m.Job.ID, userID)
+	candidateByID := make(map[uuid.UUID]jobs.Job, int(poolSize)+200)
+	candidateOrder := make([]uuid.UUID, 0, int(poolSize)+200)
+	addCandidate := func(job jobs.Job) {
+		if _, exists := candidateByID[job.ID]; exists {
+			return
+		}
+		candidateByID[job.ID] = job
+		candidateOrder = append(candidateOrder, job.ID)
+	}
+	for _, match := range matches {
+		addCandidate(match.Job)
+	}
+
+	// Hybrid retrieval: semantic nearest neighbors are excellent for broad
+	// relevance, but exact target-title/technology roles can otherwise be
+	// crowded out in a large catalog. Union a bounded lexical pool so titles
+	// such as Java Full Stack Developer or Golang Developer always get a
+	// chance to be deterministically scored.
+	candidateProfile, profileErr := s.candidateProfiles.GetLatest(ctx, userID)
+	if profileErr == nil {
+		lexicalFilter := jobs.ListFilter{
+			RemoteType:                 filter.RemoteType,
+			PostedAfter:                filter.PostedAfter,
+			CountryCode:                filter.CountryCode,
+			ExcludeSponsorshipDenied:   filter.ExcludeSponsorshipDenied,
+			Sort:                       "newest",
+			Limit:                      40,
+		}
+		const maxHybridCandidates = 700
+		for _, term := range recommendationLexicalTerms(candidateProfile) {
+			lexicalFilter.Search = term
+			found, _, listErr := s.jobsRepo.List(ctx, lexicalFilter)
+			if listErr != nil {
+				slog.Warn("lexical recommendation retrieval failed", "term", term, "user_id", userID, "error", listErr)
+				continue
+			}
+			for _, job := range found {
+				addCandidate(job)
+				if len(candidateOrder) >= maxHybridCandidates {
+					break
+				}
+			}
+			if len(candidateOrder) >= maxHybridCandidates {
+				break
+			}
+		}
+	}
+
+	ranked := make([]RankedJob, 0, len(candidateOrder))
+	for _, jobID := range candidateOrder {
+		job := candidateByID[jobID]
+		result, err := s.Match(ctx, job.ID, userID)
 		if err != nil {
 			slog.Error("match failed during recommend", "job_id", m.Job.ID, "user_id", userID, "error", err)
 			continue
@@ -233,7 +282,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		if !result.Eligibility.Eligible {
 			continue
 		}
-		ranked = append(ranked, RankedJob{Job: m.Job, Result: result})
+		ranked = append(ranked, RankedJob{Job: job, Result: result})
 	}
 
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].Result.TotalScore > ranked[j].Result.TotalScore })
@@ -241,4 +290,49 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		ranked = ranked[:limit]
 	}
 	return ranked, nil
+}
+
+
+func recommendationLexicalTerms(candidate candidateprofile.Profile) []string {
+	seen := make(map[string]bool)
+	terms := make([]string, 0, 12)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		terms = append(terms, value)
+	}
+
+	for _, role := range candidate.TargetRoles {
+		add(role)
+		if len(terms) >= 8 {
+			break
+		}
+	}
+
+	titleSkill := map[string]string{
+		"java":        "Java",
+		"spring boot": "Spring Boot",
+		"golang":      "Golang",
+		"go":          "Golang",
+		"python":      "Python",
+		".net":        ".NET",
+		"c#":          "C#",
+		"react":       "React",
+		"angular":     "Angular",
+		"kubernetes":  "Kubernetes",
+		"devops":      "DevOps",
+	}
+	for _, skill := range append(append([]string{}, candidate.CoreSkills...), candidate.SecondarySkills...) {
+		if term, ok := titleSkill[strings.ToLower(strings.TrimSpace(skill))]; ok {
+			add(term)
+		}
+		if len(terms) >= 12 {
+			break
+		}
+	}
+	return terms
 }
