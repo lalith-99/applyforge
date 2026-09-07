@@ -42,6 +42,8 @@ type Input struct {
 	GreenCardSupportPreferred           bool
 	GreenCardSupportRequired            bool
 	PermSupportPreferred                bool
+	WorkAuthorization                   string
+	ImmigrationStatus                   string
 
 	// Historical employer evidence. These are secondary signals from DOL
 	// disclosure data and never override explicit role-level job-posting text.
