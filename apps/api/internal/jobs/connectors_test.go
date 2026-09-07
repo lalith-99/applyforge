@@ -102,6 +102,24 @@ func TestAshbySource_Fetch(t *testing.T) {
 	}
 }
 
+func TestSmartRecruitersSource_Fetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"id":"sr-1","name":"Backend Engineer","releasedDate":"2026-09-06T12:00:00Z","location":{"city":"San Francisco","region":"CA","country":"United States"},"typeOfEmployment":{"label":"Full-time"}}]}`))
+	}))
+	defer server.Close()
+
+	source := NewSmartRecruitersSource("acme")
+	source.BaseURL = server.URL
+	raw, _, err := source.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(raw) != 1 || raw[0].Country != "United States" || raw[0].State != "CA" || raw[0].City != "San Francisco" || raw[0].PostedAt == nil {
+		t.Fatalf("unexpected SmartRecruiters job: %+v", raw)
+	}
+}
+
 func TestConnectors_FetchError_OnNon200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

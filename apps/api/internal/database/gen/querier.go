@@ -121,6 +121,7 @@ type Querier interface {
 	UpdateCandidateProfileEmbedding(ctx context.Context, arg UpdateCandidateProfileEmbeddingParams) error
 	UpdateCandidateSkillStatus(ctx context.Context, arg UpdateCandidateSkillStatusParams) (CandidateSkill, error)
 	UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbeddingParams) error
+	UpdateJobRoleClassification(ctx context.Context, arg UpdateJobRoleClassificationParams) error
 	// Advances the run through intermediate stages (WRITING/EVALUATING/
 	// REVISING) for a polling UI - CompleteTailoringRun/FailTailoringRun handle
 	// the two terminal states.
