@@ -263,6 +263,12 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 		return fmt.Errorf("ingestion service has no queue configured")
 	}
 
+	if closed, err := s.repo.CloseRetiredManualSourceJobs(ctx); err != nil {
+		slog.Error("retired manual source cleanup failed", "error", err)
+	} else if closed > 0 {
+		slog.Info("closed stale jobs from retired manual sources", "count", closed)
+	}
+
 	sources, err := s.repo.ListDueJobSources(ctx)
 	if err != nil {
 		return err
