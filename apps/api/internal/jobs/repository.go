@@ -105,8 +105,9 @@ type ListFilter struct {
 	EmploymentType string
 	PostedAfter    *time.Time
 	Location       string // matched against location_text/city/state
-	CountryCode    string // exact ISO 3166-1 alpha-2 match
-	Sort           string // "newest" | "salary" | "" (default: first_seen_at desc)
+	CountryCode                string // exact ISO 3166-1 alpha-2 match
+	ExcludeSponsorshipDenied   bool   // true for candidates who require visa/transfer support
+	Sort                       string // "newest" | "salary" | "" (default: first_seen_at desc)
 	Limit          int32
 	Offset         int32
 }
@@ -420,7 +421,8 @@ type EmbeddingSearchFilter struct {
 	RemoteType     string
 	EmploymentType string
 	PostedAfter    *time.Time
-	CountryCode    string
+	CountryCode              string
+	ExcludeSponsorshipDenied bool
 }
 
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
@@ -434,6 +436,7 @@ func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, li
 		Column4:   filter.EmploymentType,
 		Column5:   database.PGTimestamptz(filter.PostedAfter),
 		Column6:   filter.CountryCode,
+		Column7:   filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, err
@@ -498,9 +501,10 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
 		Column5: filter.Location,
 		Column6: filter.CountryCode,
-		Column7: filter.Sort,
-		Limit:   limit,
-		Offset:  filter.Offset,
+		Column7:  filter.Sort,
+		Limit:    limit,
+		Offset:   filter.Offset,
+		Column10: filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -513,6 +517,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
 		Column5: filter.Location,
 		Column6: filter.CountryCode,
+		Column7: filter.ExcludeSponsorshipDenied,
 	})
 	if err != nil {
 		return nil, 0, err
