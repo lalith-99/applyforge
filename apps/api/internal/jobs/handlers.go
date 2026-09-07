@@ -43,6 +43,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/jobs/{id}", h.handleGet)
 	if h.adminSyncToken != "" {
 		r.Post("/admin/job-sources/sync", h.handleSync)
+		r.Post("/admin/jobs/backfill", h.handleCatalogBackfill)
 		r.Get("/admin/job-sources/health", h.handleSourceHealth)
 	}
 }
@@ -143,6 +144,37 @@ func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
+func (h *Handlers) handleCatalogBackfill(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
+	if h.svc == nil || h.svc.queue == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "catalog backfill queue is unavailable")
+		return
+	}
+
+	batchSize := 250
+	if raw := r.URL.Query().Get("batch_size"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 1000 {
+			batchSize = parsed
+		}
+	}
+	if err := h.svc.queue.Enqueue(
+		r.Context(),
+		JobTypeCatalogBackfill,
+		CatalogBackfillPayload{BatchSize: batchSize},
+		3,
+	); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not queue catalog backfill")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
+		"status":     "queued",
+		"batch_size": batchSize,
+	})
 }
 
 func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {

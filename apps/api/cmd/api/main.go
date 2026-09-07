@@ -59,10 +59,20 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	addr := getenv("API_ADDR", ":8080")
+	addr := strings.TrimSpace(os.Getenv("API_ADDR"))
+	if addr == "" {
+		if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+			addr = ":" + port
+		} else {
+			addr = ":8080"
+		}
+	}
 	dsn := getenv("DATABASE_URL", "postgres://applyforge:applyforge@localhost:5432/applyforge?sslmode=disable")
 	webBaseURL := getenv("WEB_BASE_URL", "http://localhost:3000")
 	environment := getenv("ENVIRONMENT", "development")
+	if err := validateProductionConfig(environment); err != nil {
+		return err
+	}
 
 	db, err := database.New(ctx, dsn)
 	if err != nil {
@@ -77,7 +87,12 @@ func run() error {
 		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 	})
 	authActions := auth.NewActionService(db, auth.NewMailerFromEnv(), webBaseURL)
+	cookieSameSite, err := authCookieSameSite(environment)
+	if err != nil {
+		return err
+	}
 	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production").
+		WithCookieSameSite(cookieSameSite).
 		WithActionService(authActions)
 
 	profileRepo := profile.NewRepository(db)
@@ -149,6 +164,7 @@ func run() error {
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
+	catalogBackfillWorker := jobs.NewCatalogBackfillWorker(jobsRepo, jobQueue)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
@@ -198,6 +214,7 @@ func run() error {
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
 		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
+		w.Register(jobs.JobTypeCatalogBackfill, catalogBackfillWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
@@ -267,11 +284,12 @@ func run() error {
 	}
 
 	router := httpapi.NewRouter(httpapi.Config{
-		DB:          db,
-		WebBaseURL:  webBaseURL,
-		RequireAuth: requireAuthMiddleware,
-		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
+		DB:             db,
+		WebBaseURL:     webBaseURL,
+		RequireAuth:    requireAuthMiddleware,
+		Auth:           authHandlers,
+		Authed:         []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
+		RateLimitStore: httpapi.NewPostgresRateLimitStore(db),
 	})
 
 	server := &http.Server{

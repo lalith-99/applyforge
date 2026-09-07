@@ -1,0 +1,41 @@
+name: Staging E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: "Staging web base URL"
+        required: true
+        type: string
+
+concurrency:
+  group: staging-e2e
+  cancel-in-progress: true
+
+jobs:
+  application-loop:
+    name: Seeded application loop
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      E2E_BASE_URL: ${{ inputs.web_url }}
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+      E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run staging critical-flow test
+        run: pnpm exec playwright test e2e/application-loop.spec.ts --project=chromium

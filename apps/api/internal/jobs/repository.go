@@ -280,6 +280,31 @@ var ErrNoCanonicalMatch = errors.New("no canonical job with this fingerprint")
 // already ingested from a different source, the new posting is linked to
 // that job instead of appearing as a separate result.
 func (r *Repository) FindCanonicalByFingerprint(ctx context.Context, fingerprint string, excludeJobID uuid.UUID) (Job, error) {
+	// Production repositories use a direct active-only lookup so a newly
+	// active posting can never be hidden behind an old CLOSED canonical row.
+	// Query-backed test repositories retain the generated-query path below.
+	if r.pool != nil {
+		var id uuid.UUID
+		err := r.pool.QueryRow(ctx, `
+			SELECT id
+			FROM jobs
+			WHERE fingerprint = $1
+			  AND fingerprint <> ''
+			  AND canonical_job_id IS NULL
+			  AND status = 'ACTIVE'
+			  AND id <> $2
+			ORDER BY first_seen_at ASC
+			LIMIT 1
+		`, fingerprint, excludeJobID).Scan(&id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Job{}, ErrNoCanonicalMatch
+			}
+			return Job{}, err
+		}
+		return r.GetByID(ctx, id)
+	}
+
 	row, err := r.q.FindCanonicalByFingerprint(ctx, db.FindCanonicalByFingerprintParams{
 		Fingerprint: fingerprint,
 		ID:          database.UUIDToPG(excludeJobID),
@@ -290,8 +315,6 @@ func (r *Repository) FindCanonicalByFingerprint(ctx context.Context, fingerprint
 		}
 		return Job{}, err
 	}
-	// FindCanonicalByFingerprintRow and GetJobByIDRow are structurally
-	// identical (same explicit column list) - see jobFromRow's doc comment.
 	return jobFromRow(db.GetJobByIDRow(row)), nil
 }
 

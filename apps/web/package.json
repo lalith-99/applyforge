@@ -8,7 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "e2e": "playwright test",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "check:vinext": "vinext check",
+    "dev:vinext": "vinext dev",
+    "build:vinext": "vinext build",
+    "deploy:cloudflare": "pnpx @vinext/cloudflare deploy",
+    "deploy:cloudflare:staging": "pnpx @vinext/cloudflare deploy --env staging"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -33,6 +38,12 @@
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "vinext": "1.0.0-beta.9",
+    "@cloudflare/vite-plugin": "1.54.3",
+    "@vitejs/plugin-rsc": "0.5.34",
+    "vite": "8.2.2",
+    "wrangler": "4.129.0",
+    "react-server-dom-webpack": "19.2.8"
   }
 }

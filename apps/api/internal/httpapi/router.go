@@ -29,11 +29,12 @@ type Mounter interface {
 // main.go doesn't need to know internal package import paths directly cause
 // cyclic-import risk between httpapi and the domain packages.
 type Config struct {
-	DB          Pinger
-	WebBaseURL  string
-	RequireAuth func(http.Handler) http.Handler
-	Auth        Mounter
-	Authed      []Mounter
+	DB             Pinger
+	WebBaseURL     string
+	RequireAuth    func(http.Handler) http.Handler
+	Auth           Mounter
+	Authed         []Mounter
+	RateLimitStore RateLimitStore
 }
 
 // NewRouter builds the chi router with health/readiness endpoints and the
@@ -58,8 +59,8 @@ func NewRouter(cfg Config) http.Handler {
 	// Rate limiting (see DECISIONS.md, Phase 12): a stricter per-IP limit on
 	// /auth guards against credential-stuffing/brute-force, and a more
 	// generous global limit protects the rest of the API from abuse.
-	authRateLimiter := newRateLimiter(20, time.Minute)
-	apiRateLimiter := newRateLimiter(300, time.Minute)
+	authRateLimiter := newSharedRateLimiter("auth", 20, time.Minute, cfg.RateLimitStore)
+	apiRateLimiter := newSharedRateLimiter("api", 300, time.Minute, cfg.RateLimitStore)
 
 	r.Get("/health", handleHealth)
 	r.Get("/ready", handleReady(cfg.DB))
