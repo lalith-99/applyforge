@@ -91,8 +91,8 @@ func BrightDataConfigFromEnv() (BrightDataConfig, error) {
 		PollInterval:    5 * time.Second,
 		TitleField:      envOr("BRIGHTDATA_JOBS_TITLE_FIELD", "job_title"),
 		PostedDateField: envOr("BRIGHTDATA_JOBS_POSTED_DATE_FIELD", "posted_date"),
-		CountryField:    strings.TrimSpace(os.Getenv("BRIGHTDATA_JOBS_COUNTRY_FIELD")),
-		CountryValue:    envOr("BRIGHTDATA_JOBS_COUNTRY_VALUE", "United States"),
+		CountryField:    envOr("BRIGHTDATA_JOBS_COUNTRY_FIELD", "country_code"),
+		CountryValue:    envOr("BRIGHTDATA_JOBS_COUNTRY_VALUE", "US"),
 	}
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = defaultBrightDataBaseURL
