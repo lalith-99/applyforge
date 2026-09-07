@@ -106,7 +106,27 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			rec.AIReason = r.Judgment.Reason
 			rec.FinalScore = fitScore
 		}
+		rec.FinalScore = int32(blendImmigrationPriority(int(rec.FinalScore), r.Result))
 		recs = append(recs, rec)
 	}
 	return recs
+}
+
+
+func blendImmigrationPriority(baseScore int, result matching.Result) int {
+	if !result.ImmigrationRelevant {
+		return baseScore
+	}
+	// Technical/AI fit remains the majority signal. Immigration compatibility
+	// is large enough to materially reorder otherwise similar opportunities
+	// for candidates who require H-1B support, without allowing a weak
+	// technical match to jump to the top solely because sponsorship is known.
+	score := 0.80*float64(baseScore) + 0.20*float64(result.ImmigrationPriorityScore)
+	if score < 0 {
+		return 0
+	}
+	if score > 100 {
+		return 100
+	}
+	return int(score + 0.5)
 }
