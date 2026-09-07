@@ -1,6 +1,9 @@
 package jobs
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestNormalizeLocation_ClassifiesExplicitUSAndState(t *testing.T) {
 	location := normalizeLocation(RawJob{LocationText: "San Francisco, CA, United States", RemoteType: "hybrid"})
@@ -79,5 +82,63 @@ func TestStripTags_DecodesEscapedHTMLAndPreservesBlocks(t *testing.T) {
 	want := "First paragraph\n\n**Your opportunity**\n\n**Second & final**"
 	if got := stripTags(input); got != want {
 		t.Fatalf("stripTags(%q) = %q, want %q", input, got, want)
+	}
+}
+
+
+func TestNormalizeLocation_DoesNotTreatEnglishWordsAsStateCodes(t *testing.T) {
+	for _, input := range []string{
+		"Remote in Europe",
+		"Portland or Vancouver",
+		"Tell me more",
+		"Say hi remotely",
+	} {
+		location := normalizeLocation(RawJob{LocationText: input, RemoteType: "remote"})
+		if location.CountryCode != "" {
+			t.Fatalf("%q must not be classified as US: %+v", input, location)
+		}
+	}
+}
+
+func TestNormalizeLocation_RecognizesUppercaseUSStateSuffix(t *testing.T) {
+	location := normalizeLocation(RawJob{LocationText: "Austin, TX"})
+	if location.CountryCode != "US" || location.StateCode != "TX" {
+		t.Fatalf("expected Austin, TX to normalize to US/TX: %+v", location)
+	}
+}
+
+func TestNormalizeEmploymentType(t *testing.T) {
+	cases := map[string]string{
+		"Full-time": "FullTime",
+		"full": "FullTime",
+		"Permanent": "FullTime",
+		"Contractor": "Contract",
+		"intern": "Internship",
+		"part_time": "PartTime",
+	}
+	for input, want := range cases {
+		if got := normalizeEmploymentType(input); got != want {
+			t.Errorf("normalizeEmploymentType(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestIsFreshForEagerAI(t *testing.T) {
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-24 * time.Hour)
+	old := now.Add(-31 * 24 * time.Hour)
+	futureBad := now.Add(48 * time.Hour)
+
+	if !isFreshForEagerAI(&recent, now) {
+		t.Fatal("recent job should be eligible for eager AI")
+	}
+	if isFreshForEagerAI(&old, now) {
+		t.Fatal("old job must not be eligible for eager AI")
+	}
+	if isFreshForEagerAI(nil, now) {
+		t.Fatal("unknown posting time must not be eligible for eager AI")
+	}
+	if isFreshForEagerAI(&futureBad, now) {
+		t.Fatal("wildly future timestamp must not be eligible for eager AI")
 	}
 }
