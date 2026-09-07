@@ -22,13 +22,26 @@ type Handlers struct {
 	svc          *Service
 	webBaseURL   string
 	secureCookie bool
+	sameSite     http.SameSite
 	actions      *ActionService
 }
 
 // NewHandlers builds auth Handlers. secureCookie should be true in production
 // (HTTPS) deployments and false for local HTTP development.
 func NewHandlers(svc *Service, webBaseURL string, secureCookie bool) *Handlers {
-	return &Handlers{svc: svc, webBaseURL: webBaseURL, secureCookie: secureCookie}
+	return &Handlers{
+		svc:          svc,
+		webBaseURL:   webBaseURL,
+		secureCookie: secureCookie,
+		sameSite:     http.SameSiteLaxMode,
+	}
+}
+
+func (h *Handlers) WithCookieSameSite(mode http.SameSite) *Handlers {
+	if mode != 0 {
+		h.sameSite = mode
+	}
+	return h
 }
 
 func (h *Handlers) WithActionService(actions *ActionService) *Handlers {
@@ -261,7 +274,7 @@ func (h *Handlers) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   h.secureCookie,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: h.sameSite,
 		MaxAge:   600,
 	})
 	http.Redirect(w, r, authURL, http.StatusFound)
@@ -308,7 +321,7 @@ func (h *Handlers) setSessionCookie(w http.ResponseWriter, token string) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   h.secureCookie,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: h.sameSite,
 		Expires:  time.Now().Add(SessionTTL),
 	})
 }
@@ -327,7 +340,7 @@ func ClearSessionCookie(w http.ResponseWriter, secure bool) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: h.sameSite,
 		MaxAge:   -1,
 	})
 }
