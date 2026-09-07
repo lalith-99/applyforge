@@ -238,6 +238,11 @@ export interface MatchResult {
     Eligible: boolean;
     HardFailures: string[] | null;
     Warnings: string[] | null;
+    Immigration: {
+      Status: "SUPPORTED" | "NOT_SUPPORTED" | "UNKNOWN";
+      Confidence: "HIGH" | "MEDIUM" | "LOW";
+      Evidence: string;
+    };
   };
 }
 
