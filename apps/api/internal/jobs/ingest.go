@@ -178,7 +178,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 	// current listing every poll. Arbeitnow's page cap means "not seen this
 	// poll" doesn't reliably mean "closed" - see CloseStaleJobs's doc
 	// comment - so it's deliberately excluded here.
-	if sourceName != "ARBEITNOW" && sourceName != "BRIGHTDATA" {
+	if sourceName != "ARBEITNOW" && sourceName != "BRIGHTDATA" && sourceName != "SERPAPI_GOOGLE_JOBS" {
 		closed, closeErr := s.repo.CloseStaleJobs(ctx, sourceName, companyID, pollStart)
 		if closeErr != nil {
 			slog.Error("close stale jobs failed", "source", sourceName, "company_id", companyID, "error", closeErr)
@@ -211,6 +211,12 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 			return nil, "", err
 		}
 		return NewBrightDataSource(cfg.BoardToken, config), "BRIGHTDATA", nil
+	case "SERPAPI_GOOGLE_JOBS":
+		config, err := SerpAPIGoogleJobsConfigFromEnv()
+		if err != nil {
+			return nil, "", err
+		}
+		return NewSerpAPIGoogleJobsSource(cfg.BoardToken, config), "SERPAPI_GOOGLE_JOBS", nil
 	default:
 		return nil, "", fmt.Errorf("unknown source type: %s", cfg.SourceType)
 	}
@@ -296,6 +302,8 @@ func sourcePriority(source string) int {
 		return 100
 	case "BRIGHTDATA":
 		return 60
+	case "SERPAPI_GOOGLE_JOBS":
+		return 50
 	case "ARBEITNOW":
 		return 40
 	default:
