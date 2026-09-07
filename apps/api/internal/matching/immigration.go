@@ -1,6 +1,9 @@
 package matching
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func immigrationRequired(in Input) bool {
 	return in.RequiresH1BTransfer ||
@@ -11,15 +14,33 @@ func immigrationRequired(in Input) bool {
 		in.PermSupportPreferred
 }
 
-// AssessImmigration evaluates only role-level posting language. Company
-// history/DOL evidence is intentionally a separate later layer. Explicit
-// negative role language wins; silence remains UNKNOWN rather than being
-// guessed from the employer's reputation.
+func h1bSupportRequired(in Input) bool {
+	return in.RequiresH1BTransfer ||
+		in.RequiresNewH1BCapSponsorship ||
+		in.RequiresFutureEmploymentSponsorship
+}
+
+func permSupportRelevant(in Input) bool {
+	return in.GreenCardSupportPreferred ||
+		in.GreenCardSupportRequired ||
+		in.PermSupportPreferred
+}
+
+// AssessImmigration applies evidence in strict precedence order:
+//  1. explicit negative role text
+//  2. explicit positive role text
+//  3. recent historical DOL employer evidence
+//  4. unknown
+//
+// Historical employer evidence is deliberately not called "SUPPORTED": it
+// proves that the employer has recently used H-1B LCA/PERM pathways, not that
+// this particular role will sponsor.
 func AssessImmigration(in Input) ImmigrationAssessment {
 	text := strings.ToLower(strings.Join([]string{
 		in.WorkAuthorizationRequirements,
 		in.JobDescription,
-	}, "\n"))
+	}, "
+"))
 
 	negative := []string{
 		"will not sponsor",
@@ -43,9 +64,14 @@ func AssessImmigration(in Input) ImmigrationAssessment {
 	for _, phrase := range negative {
 		if strings.Contains(text, phrase) {
 			return ImmigrationAssessment{
-				Status:     "NOT_SUPPORTED",
-				Confidence: "HIGH",
-				Evidence:   phrase,
+				Status:                   "NOT_SUPPORTED",
+				Confidence:               "HIGH",
+				Evidence:                 phrase,
+				EvidenceSource:           "JOB_POSTING",
+				H1BCertifiedCases:        in.CompanyH1BCertifiedCases,
+				PERMCertifiedCases:       in.CompanyPERMCertifiedCases,
+				LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
+				MatchedEmployers:         in.CompanyEvidenceEmployers,
 			}
 		}
 	}
@@ -66,12 +92,63 @@ func AssessImmigration(in Input) ImmigrationAssessment {
 	for _, phrase := range positive {
 		if strings.Contains(text, phrase) {
 			return ImmigrationAssessment{
-				Status:     "SUPPORTED",
-				Confidence: "HIGH",
-				Evidence:   phrase,
+				Status:                   "SUPPORTED",
+				Confidence:               "HIGH",
+				Evidence:                 phrase,
+				EvidenceSource:           "JOB_POSTING",
+				H1BCertifiedCases:        in.CompanyH1BCertifiedCases,
+				PERMCertifiedCases:       in.CompanyPERMCertifiedCases,
+				LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
+				MatchedEmployers:         in.CompanyEvidenceEmployers,
 			}
 		}
 	}
 
-	return ImmigrationAssessment{Status: "UNKNOWN", Confidence: "LOW"}
+	relevantH1B := h1bSupportRequired(in) && in.CompanyH1BCertifiedCases > 0
+	relevantPERM := permSupportRelevant(in) && in.CompanyPERMCertifiedCases > 0
+	if relevantH1B || relevantPERM {
+		var parts []string
+		if relevantH1B {
+			parts = append(parts, fmt.Sprintf("%d certified H-1B LCA case signal(s)", in.CompanyH1BCertifiedCases))
+		}
+		if relevantPERM {
+			parts = append(parts, fmt.Sprintf("%d certified PERM case signal(s)", in.CompanyPERMCertifiedCases))
+		}
+		if in.CompanyEvidenceLatestFY > 0 {
+			parts = append(parts, fmt.Sprintf("latest FY%d", in.CompanyEvidenceLatestFY))
+		}
+
+		confidence := "LOW"
+		relevantCount := 0
+		if relevantH1B {
+			relevantCount += in.CompanyH1BCertifiedCases
+		}
+		if relevantPERM {
+			relevantCount += in.CompanyPERMCertifiedCases
+		}
+		if relevantCount >= 3 {
+			confidence = "MEDIUM"
+		}
+
+		return ImmigrationAssessment{
+			Status:                   "HISTORICAL_SUPPORT",
+			Confidence:               confidence,
+			Evidence:                 strings.Join(parts, "; "),
+			EvidenceSource:           "DOL_HISTORY",
+			H1BCertifiedCases:        in.CompanyH1BCertifiedCases,
+			PERMCertifiedCases:       in.CompanyPERMCertifiedCases,
+			LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
+			MatchedEmployers:         in.CompanyEvidenceEmployers,
+		}
+	}
+
+	return ImmigrationAssessment{
+		Status:                   "UNKNOWN",
+		Confidence:               "LOW",
+		EvidenceSource:           "NONE",
+		H1BCertifiedCases:        in.CompanyH1BCertifiedCases,
+		PERMCertifiedCases:       in.CompanyPERMCertifiedCases,
+		LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
+		MatchedEmployers:         in.CompanyEvidenceEmployers,
+	}
 }
