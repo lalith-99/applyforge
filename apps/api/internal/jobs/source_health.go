@@ -432,3 +432,201 @@ func (r *Repository) GetAIUsageHealth(ctx context.Context) (AIUsageHealth, error
 	}
 	return health, rows.Err()
 }
+
+
+type CoverageBreakdown struct {
+	Key   string `json:"key"`
+	Count int64  `json:"count"`
+}
+
+type MarketCoverageHealth struct {
+	UniqueCompanies24H          int64               `json:"unique_companies_24h"`
+	ExplicitSponsorshipSupport24H int64             `json:"explicit_sponsorship_support_24h"`
+	HistoricalSupport24H        int64               `json:"historical_support_24h"`
+	SponsorshipUnknown24H       int64               `json:"sponsorship_unknown_24h"`
+	BySource24H                 []CoverageBreakdown `json:"by_source_24h"`
+	ByRoleFamily24H             []CoverageBreakdown `json:"by_role_family_24h"`
+	ByLanguageSignal24H         []CoverageBreakdown `json:"by_language_signal_24h"`
+}
+
+func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverageHealth, error) {
+	if r.pool == nil {
+		return MarketCoverageHealth{}, ErrSourceHealthUnavailable
+	}
+
+	const basePredicate = `
+		status = 'ACTIVE'
+		AND canonical_job_id IS NULL
+		AND country_code = 'US'
+		AND role_classification = 'IC_SOFTWARE'
+		AND posted_at IS NOT NULL
+		AND posted_at >= now() - INTERVAL '24 hours'
+	`
+
+	var health MarketCoverageHealth
+	if err := r.pool.QueryRow(ctx, `
+		SELECT count(DISTINCT lower(company_name))::bigint
+		FROM jobs
+		WHERE `+basePredicate).Scan(&health.UniqueCompanies24H); err != nil {
+		return MarketCoverageHealth{}, err
+	}
+
+	// Explicit positive support is intentionally derived from posting text
+	// using the same narrow phrases as matching. Historical employer support
+	// remains separate because it is weaker evidence than the role itself.
+	if err := r.pool.QueryRow(ctx, `
+		WITH fresh AS (
+			SELECT j.id, j.company_id, lower(j.description) AS description
+			FROM jobs j
+			WHERE `+basePredicate+`
+		),
+		dol AS (
+			SELECT DISTINCT company_id
+			FROM employer_immigration_evidence
+			WHERE certified_count > 0
+			  AND program = 'LCA_H1B'
+		)
+		SELECT
+			count(*) FILTER (
+				WHERE description LIKE ANY (ARRAY[
+					'%h-1b sponsorship available%',
+					'%h1b sponsorship available%',
+					'%visa sponsorship available%',
+					'%we sponsor h-1b%',
+					'%we sponsor h1b%',
+					'%h-1b transfer%',
+					'%h1b transfer%',
+					'%support h-1b%',
+					'%support h1b%',
+					'%provide visa sponsorship%',
+					'%provides visa sponsorship%'
+				])
+			)::bigint,
+			count(*) FILTER (
+				WHERE NOT (
+					description LIKE ANY (ARRAY[
+						'%h-1b sponsorship available%',
+						'%h1b sponsorship available%',
+						'%visa sponsorship available%',
+						'%we sponsor h-1b%',
+						'%we sponsor h1b%',
+						'%h-1b transfer%',
+						'%h1b transfer%',
+						'%support h-1b%',
+						'%support h1b%',
+						'%provide visa sponsorship%',
+						'%provides visa sponsorship%'
+					])
+				)
+				AND company_id IN (SELECT company_id FROM dol)
+			)::bigint,
+			count(*) FILTER (
+				WHERE NOT (
+					description LIKE ANY (ARRAY[
+						'%h-1b sponsorship available%',
+						'%h1b sponsorship available%',
+						'%visa sponsorship available%',
+						'%we sponsor h-1b%',
+						'%we sponsor h1b%',
+						'%h-1b transfer%',
+						'%h1b transfer%',
+						'%support h-1b%',
+						'%support h1b%',
+						'%provide visa sponsorship%',
+						'%provides visa sponsorship%'
+					])
+				)
+				AND company_id NOT IN (SELECT company_id FROM dol)
+			)::bigint
+		FROM fresh
+	`).Scan(
+		&health.ExplicitSponsorshipSupport24H,
+		&health.HistoricalSupport24H,
+		&health.SponsorshipUnknown24H,
+	); err != nil {
+		return MarketCoverageHealth{}, err
+	}
+
+	sourceRows, err := r.pool.Query(ctx, `
+		SELECT source, count(*)::bigint
+		FROM jobs
+		WHERE `+basePredicate+`
+		GROUP BY source
+		ORDER BY count(*) DESC, source
+	`)
+	if err != nil {
+		return MarketCoverageHealth{}, err
+	}
+	for sourceRows.Next() {
+		var item CoverageBreakdown
+		if err := sourceRows.Scan(&item.Key, &item.Count); err != nil {
+			sourceRows.Close()
+			return MarketCoverageHealth{}, err
+		}
+		health.BySource24H = append(health.BySource24H, item)
+	}
+	if err := sourceRows.Close(); err != nil {
+		return MarketCoverageHealth{}, err
+	}
+
+	roleRows, err := r.pool.Query(ctx, `
+		SELECT job_family, count(*)::bigint
+		FROM jobs
+		WHERE `+basePredicate+`
+		GROUP BY job_family
+		ORDER BY count(*) DESC, job_family
+	`)
+	if err != nil {
+		return MarketCoverageHealth{}, err
+	}
+	for roleRows.Next() {
+		var item CoverageBreakdown
+		if err := roleRows.Scan(&item.Key, &item.Count); err != nil {
+			roleRows.Close()
+			return MarketCoverageHealth{}, err
+		}
+		health.ByRoleFamily24H = append(health.ByRoleFamily24H, item)
+	}
+	if err := roleRows.Close(); err != nil {
+		return MarketCoverageHealth{}, err
+	}
+
+	languageRows, err := r.pool.Query(ctx, `
+		WITH fresh AS (
+			SELECT lower(title) AS title
+			FROM jobs
+			WHERE `+basePredicate+`
+		),
+		signals(name, pattern) AS (VALUES
+			('JAVA', '(java|spring boot|j2ee)'),
+			('GO', '(golang|(^|[^a-z])go([^a-z]|$))'),
+			('PYTHON', 'python'),
+			('DOTNET', '(\\.net|c#)'),
+			('JAVASCRIPT_TYPESCRIPT', '(javascript|typescript|node\\.js|nodejs|react|angular|vue)'),
+			('DEVOPS_CLOUD', '(devops|devsecops|kubernetes|site reliability|cloud engineer)'),
+			('DATA_AI', '(data engineer|machine learning|mlops|ai engineer|artificial intelligence)')
+		)
+		SELECT signals.name, count(*)::bigint
+		FROM signals
+		CROSS JOIN fresh
+		WHERE fresh.title ~ signals.pattern
+		GROUP BY signals.name
+		ORDER BY count(*) DESC, signals.name
+	`)
+	if err != nil {
+		return MarketCoverageHealth{}, err
+	}
+	for languageRows.Next() {
+		var item CoverageBreakdown
+		if err := languageRows.Scan(&item.Key, &item.Count); err != nil {
+			languageRows.Close()
+			return MarketCoverageHealth{}, err
+		}
+		health.ByLanguageSignal24H = append(health.ByLanguageSignal24H, item)
+	}
+	if err := languageRows.Close(); err != nil {
+		return MarketCoverageHealth{}, err
+	}
+
+	return health, nil
+}
