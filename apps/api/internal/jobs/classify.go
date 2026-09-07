@@ -56,6 +56,12 @@ func classifyTitle(title string) RoleClassification {
 		{[]string{" ios ", " android ", " mobile "}, "MOBILE"},
 		{[]string{" embedded ", " firmware "}, "EMBEDDED"},
 		{[]string{" systems software ", " systems engineer, software ", " distributed systems engineer ", " distributed systems developer "}, "SYSTEMS"},
+		{[]string{
+			" software engineering consultant ", " software development consultant ",
+			" application development consultant ", " java consultant ",
+			" cloud engineering consultant ", " devops consultant ",
+			" data engineering consultant ", " integration consultant ",
+		}, "CONSULTING_ENGINEERING"},
 	}
 	for _, family := range families {
 		for _, term := range family.terms {
@@ -73,6 +79,9 @@ func classifyTitle(title string) RoleClassification {
 		" javascript developer ", " typescript developer ", " ruby developer ", " ruby engineer ",
 		" scala developer ", " scala engineer ", " kotlin developer ", " kotlin engineer ",
 		" salesforce developer ", " servicenow developer ", " integration developer ",
+		" integration engineer ", " middleware developer ", " enterprise application developer ",
+		" enterprise software engineer ", " enterprise software developer ", " technology engineer ",
+		" technology developer ",
 	}
 	for _, term := range softwareSpecific {
 		if strings.Contains(padded, term) {

@@ -27,16 +27,22 @@ var brightDataTitleShards = map[string][]string{
 	},
 	"us-java-24h": {
 		"Java Developer", "Java Engineer", "Java Backend Developer",
-		"Java Full Stack Developer", "Spring Boot Developer", "Spring Boot Engineer",
-		"J2EE Developer",
+		"Java Full Stack Developer", "Java Full Stack Engineer", "Full Stack Java Developer",
+		"Senior Java Full Stack Developer", "Lead Java Full Stack Engineer",
+		"Spring Boot Developer", "Spring Boot Engineer", "Java Microservices Developer",
+		"Java Application Developer", "J2EE Developer", "Java J2EE Developer",
 	},
 	"us-go-24h": {
-		"Golang Developer", "Golang Engineer", "Go Developer", "Go Engineer",
-		"Backend Engineer Golang", "Backend Engineer Go",
+		"Golang Developer", "Golang Engineer", "Golang Software Engineer",
+		"Go Developer", "Go Engineer", "Go Software Engineer",
+		"Backend Engineer Golang", "Backend Engineer Go", "Go Backend Developer",
 	},
 	"us-fullstack-web-24h": {
-		"Full Stack Developer", "Full Stack Engineer", "Frontend Developer",
-		"Frontend Engineer", "React Developer", "Angular Developer",
+		"Full Stack Developer", "Full Stack Engineer", "Full Stack Software Developer",
+		"Full Stack AI Developer", "Frontend Developer",
+		"Frontend Engineer", "Front End Developer", "UI Developer", "Web Developer",
+		"React Developer", "React Engineer", "Angular Developer", "Angular Engineer",
+		"Vue Developer", "Vue.js Developer", "JavaScript Developer",
 		"Node.js Developer", "TypeScript Developer",
 	},
 	"us-backend-platform-24h": {
@@ -45,8 +51,9 @@ var brightDataTitleShards = map[string][]string{
 		"API Engineer", "Microservices Engineer",
 	},
 	"us-devops-cloud-24h": {
-		"DevOps Engineer", "DevSecOps Engineer", "Site Reliability Engineer",
-		"Cloud Engineer", "Kubernetes Engineer", "Build Engineer", "Release Engineer",
+		"DevOps Engineer", "DevSecOps Engineer", "DevOps Developer", "Azure DevOps Developer",
+		"Site Reliability Engineer", "Cloud Engineer", "Kubernetes Engineer",
+		"Build Engineer", "Release Engineer",
 	},
 	"us-data-ai-24h": {
 		"Data Engineer", "Machine Learning Engineer", "AI Engineer",
@@ -54,8 +61,22 @@ var brightDataTitleShards = map[string][]string{
 	},
 	"us-language-developers-24h": {
 		"Python Developer", "Python Engineer", ".NET Developer", ".NET Engineer",
-		"C# Developer", "C# Engineer", "Scala Developer", "Kotlin Developer",
-		"Salesforce Developer", "Integration Developer",
+		".NET Full Stack Developer", "C# Developer", "C# Engineer",
+		"Scala Developer", "Kotlin Developer", "Salesforce Developer",
+		"ServiceNow Developer", "Integration Developer",
+	},
+	"us-enterprise-apps-24h": {
+		"Application Developer", "Application Engineer", "Enterprise Application Developer",
+		"Integration Engineer", "Middleware Developer", "API Developer",
+		"Microservices Developer", "Cloud Application Developer",
+		"Enterprise Software Engineer", "Enterprise Software Developer",
+	},
+	"us-consulting-engineering-24h": {
+		"Software Engineering Consultant", "Software Development Consultant",
+		"Application Development Consultant", "Java Consultant",
+		"Cloud Engineering Consultant", "DevOps Consultant",
+		"Data Engineering Consultant", "Integration Consultant",
+		"Technology Engineer", "Technology Developer",
 	},
 }
 

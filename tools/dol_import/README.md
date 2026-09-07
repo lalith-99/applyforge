@@ -12,6 +12,15 @@ application/certification pathway. It is **not** proof that a particular
 current job will sponsor. ApplyForge's role-level job-description evidence
 always takes precedence.
 
+For users whose preferences indicate H-1B support is required, the default
+catalog/recommendation path is sponsor-first: an employer must have at least
+one certified H-1B LCA signal in the current fiscal-year window or prior two
+fiscal years, and a posting with explicit no-sponsorship language is still
+excluded. Run this importer after a local database reset **before** expecting
+the H-1B-filtered jobs feed to populate. Employer matching supports exact
+normalized names plus conservative brand/legal variants; it does not use
+unbounded fuzzy matching.
+
 ## Usage
 
 ```bash

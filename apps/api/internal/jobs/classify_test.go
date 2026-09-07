@@ -29,6 +29,11 @@ func TestClassifyTitle(t *testing.T) {
 		{"MLOps Engineer", "ML_ENGINEERING", "IC_SOFTWARE"},
 		{"Distributed Systems Engineer", "SYSTEMS", "IC_SOFTWARE"},
 		{"Salesforce Developer", "SOFTWARE_ENGINEERING", "IC_SOFTWARE"},
+		{"Enterprise Application Developer", "SOFTWARE_ENGINEERING", "IC_SOFTWARE"},
+		{"Integration Engineer", "SOFTWARE_ENGINEERING", "IC_SOFTWARE"},
+		{"Software Engineering Consultant", "CONSULTING_ENGINEERING", "IC_SOFTWARE"},
+		{"Java Consultant", "CONSULTING_ENGINEERING", "IC_SOFTWARE"},
+		{"DevOps Consultant", "DEVOPS", "IC_SOFTWARE"},
 		{"Sales Engineer", "EXCLUDED", "NON_SOFTWARE"},
 		{"Network Engineer", "UNKNOWN", "UNKNOWN"},
 	}

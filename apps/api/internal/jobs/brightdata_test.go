@@ -129,3 +129,48 @@ func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
 		t.Fatalf("java shard must not silently use the Go shard: %s", text)
 	}
 }
+
+func TestBrightDataTitleFilters_CoversConsultingMarketTitleVariants(t *testing.T) {
+	javaFilters, err := json.Marshal(brightDataTitleFilters("job_title", "us-java-24h"))
+	if err != nil {
+		t.Fatalf("marshal java filters: %v", err)
+	}
+	javaText := string(javaFilters)
+	for _, title := range []string{"Full Stack Java Developer", "Java Full Stack Engineer", "Java Microservices Developer"} {
+		if !strings.Contains(javaText, title) {
+			t.Fatalf("java shard is missing %q: %s", title, javaText)
+		}
+	}
+
+	devopsFilters, err := json.Marshal(brightDataTitleFilters("job_title", "us-devops-cloud-24h"))
+	if err != nil {
+		t.Fatalf("marshal devops filters: %v", err)
+	}
+	if !strings.Contains(string(devopsFilters), "Azure DevOps Developer") {
+		t.Fatalf("devops shard is missing Azure DevOps Developer: %s", string(devopsFilters))
+	}
+}
+
+func TestBrightDataTitleFilters_CoversEnterpriseAndConsultingRoles(t *testing.T) {
+	enterprise, err := json.Marshal(brightDataTitleFilters("job_title", "us-enterprise-apps-24h"))
+	if err != nil {
+		t.Fatalf("marshal enterprise filters: %v", err)
+	}
+	enterpriseText := string(enterprise)
+	for _, title := range []string{"Application Developer", "Integration Engineer", "Enterprise Software Engineer"} {
+		if !strings.Contains(enterpriseText, title) {
+			t.Fatalf("enterprise shard is missing %q: %s", title, enterpriseText)
+		}
+	}
+
+	consulting, err := json.Marshal(brightDataTitleFilters("job_title", "us-consulting-engineering-24h"))
+	if err != nil {
+		t.Fatalf("marshal consulting filters: %v", err)
+	}
+	consultingText := string(consulting)
+	for _, title := range []string{"Software Engineering Consultant", "Java Consultant", "DevOps Consultant"} {
+		if !strings.Contains(consultingText, title) {
+			t.Fatalf("consulting shard is missing %q: %s", title, consultingText)
+		}
+	}
+}

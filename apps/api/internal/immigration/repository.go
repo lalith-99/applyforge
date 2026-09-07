@@ -227,8 +227,20 @@ func (r *Repository) GetForCompany(ctx context.Context, companyID uuid.UUID, com
 		matched AS (
 			SELECT e.*
 			FROM company_immigration_evidence e
-			WHERE e.employer_normalized_name IN (SELECT employer_key FROM employer_keys)
-			  AND e.fiscal_year >= $3
+			WHERE e.fiscal_year >= $3
+			  AND EXISTS (
+			      SELECT 1
+			      FROM employer_keys k
+			      WHERE e.employer_normalized_name = k.employer_key
+			         OR (
+			             length(k.employer_key) >= 6
+			             AND e.employer_normalized_name LIKE k.employer_key || ' %'
+			         )
+			         OR (
+			             length(e.employer_normalized_name) >= 6
+			             AND k.employer_key LIKE e.employer_normalized_name || ' %'
+			         )
+			  )
 		)
 		SELECT
 			COALESCE(sum(certified_count) FILTER (WHERE program = 'LCA_H1B'), 0)::int,
