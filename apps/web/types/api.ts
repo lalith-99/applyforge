@@ -238,7 +238,7 @@ export interface MatchResult {
     Eligible: boolean;
     HardFailures: string[] | null;
     Warnings: string[] | null;
-    Immigration: {
+    Immigration?: {
       Status: "SUPPORTED" | "NOT_SUPPORTED" | "HISTORICAL_SUPPORT" | "UNKNOWN";
       Confidence: "HIGH" | "MEDIUM" | "LOW";
       Evidence: string;
