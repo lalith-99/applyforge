@@ -147,15 +147,21 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		shouldRefreshAI := upserted.Inserted || upserted.ContentChanged
 		if shouldRefreshAI && s.queue != nil &&
 			location.CountryCode == "US" &&
-			classification.Classification == "IC_SOFTWARE" &&
 			strings.TrimSpace(raw.Description) != "" &&
 			isFreshForEagerAI(raw.PostedAt, pollStart) {
-			payload := EnrichPayload{JobID: upserted.Job.ID.String()}
-			if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
-				slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
-			}
-			if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
-				slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+			switch classification.Classification {
+			case "IC_SOFTWARE":
+				payload := EnrichPayload{JobID: upserted.Job.ID.String()}
+				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
+					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
+				}
+				if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+					slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+				}
+			case "UNKNOWN":
+				if err := s.queue.Enqueue(ctx, JobTypeClassifyRole, ClassifyRolePayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+					slog.Error("enqueue classify_job_role failed", "job_id", upserted.Job.ID, "error", err)
+				}
 			}
 		}
 	}
