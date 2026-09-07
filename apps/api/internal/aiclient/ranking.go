@@ -16,6 +16,10 @@ type JobRankingInput struct {
 	MissingPreferredSkills []string `json:"missing_preferred_skills"`
 	TransferableNotes      []string `json:"transferable_notes"`
 	DeterministicScore     int      `json:"deterministic_score"`
+	ImmigrationStatus      string   `json:"immigration_status"`
+	ImmigrationConfidence  string   `json:"immigration_confidence"`
+	ImmigrationEvidence    string   `json:"immigration_evidence"`
+	ImmigrationRelevant    bool     `json:"immigration_relevant"`
 }
 
 // RankJobsRequest mirrors app/candidates/ranking_models.py's RankJobsRequest.
