@@ -138,7 +138,6 @@ func TestAssessImmigration_H1BStatusKeepsSilentPostingEligible(t *testing.T) {
 	}
 }
 
-
 func TestAssessImmigration_CommonPositiveH1BSignals(t *testing.T) {
 	for _, description := range []string{
 		"Visa sponsorship provided for qualified candidates.",
