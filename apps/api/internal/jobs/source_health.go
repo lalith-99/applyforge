@@ -433,21 +433,20 @@ func (r *Repository) GetAIUsageHealth(ctx context.Context) (AIUsageHealth, error
 	return health, rows.Err()
 }
 
-
 type CoverageBreakdown struct {
 	Key   string `json:"key"`
 	Count int64  `json:"count"`
 }
 
 type MarketCoverageHealth struct {
-	UniqueCompanies24H          int64               `json:"unique_companies_24h"`
-	ExplicitSponsorshipSupport24H int64             `json:"explicit_sponsorship_support_24h"`
-	HistoricalSupport24H          int64             `json:"historical_support_24h"`
-	SponsorshipUnknown24H         int64             `json:"sponsorship_unknown_24h"`
-	ExplicitSponsorshipDenied24H  int64             `json:"explicit_sponsorship_denied_24h"`
-	BySource24H                 []CoverageBreakdown `json:"by_source_24h"`
-	ByRoleFamily24H             []CoverageBreakdown `json:"by_role_family_24h"`
-	ByLanguageSignal24H         []CoverageBreakdown `json:"by_language_signal_24h"`
+	UniqueCompanies24H             int64               `json:"unique_companies_24h"`
+	ExplicitSponsorshipSupport24H int64               `json:"explicit_sponsorship_support_24h"`
+	HistoricalSupport24H          int64               `json:"historical_support_24h"`
+	SponsorshipUnknown24H         int64               `json:"sponsorship_unknown_24h"`
+	ExplicitSponsorshipDenied24H  int64               `json:"explicit_sponsorship_denied_24h"`
+	BySource24H                   []CoverageBreakdown `json:"by_source_24h"`
+	ByRoleFamily24H               []CoverageBreakdown `json:"by_role_family_24h"`
+	ByLanguageSignal24H           []CoverageBreakdown `json:"by_language_signal_24h"`
 }
 
 func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverageHealth, error) {
