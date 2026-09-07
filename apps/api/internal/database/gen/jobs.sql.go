@@ -176,6 +176,24 @@ func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanoni
 	return i, err
 }
 
+const getJobContentHashBySourceExternalID = `-- name: GetJobContentHashBySourceExternalID :one
+SELECT content_hash
+FROM jobs
+WHERE source = $1 AND external_id = $2
+`
+
+type GetJobContentHashBySourceExternalIDParams struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+}
+
+func (q *Queries) GetJobContentHashBySourceExternalID(ctx context.Context, arg GetJobContentHashBySourceExternalIDParams) (string, error) {
+	row := q.db.QueryRow(ctx, getJobContentHashBySourceExternalID, arg.Source, arg.ExternalID)
+	var contentHash string
+	err := row.Scan(&contentHash)
+	return contentHash, err
+}
+
 const getJobByID = `-- name: GetJobByID :one
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
   description, country, state, city, location_text, country_code, state_code, workplace_type,
