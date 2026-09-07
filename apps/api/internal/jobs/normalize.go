@@ -187,16 +187,23 @@ func normalizeUSState(state string) string {
 	return ""
 }
 
+var usStateAbbrevRe = regexp.MustCompile(`(?:^|,\s*|\s)(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)(?:$|,\s*(?:United States|United States of America|US|USA|U\.S\.?))`)
+
 func stateCodeInLocation(location string) string {
+	lower := strings.ToLower(location)
 	for name, code := range usStateCodes {
-		if strings.Contains(strings.ToLower(location), name) {
+		if strings.Contains(lower, name) {
 			return code
 		}
 	}
-	for _, code := range usStateCodes {
-		if regexp.MustCompile(`(?i)(^|[,\s])` + code + `($|[,\s])`).MatchString(location) {
-			return code
-		}
+
+	// State abbreviations are intentionally case-sensitive and must either
+	// terminate the location or be followed by an explicit U.S. country
+	// marker. This avoids false positives from ordinary words such as
+	// "in", "or", "me", and "hi" being interpreted as IN/OR/ME/HI.
+	match := usStateAbbrevRe.FindStringSubmatch(location)
+	if len(match) == 2 {
+		return match[1]
 	}
 	return ""
 }
@@ -207,6 +214,33 @@ func cityInLocation(location string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[0])
+}
+
+// normalizeEmploymentType canonicalizes provider-specific employment labels
+// so catalog filters and matching use one stable vocabulary.
+func normalizeEmploymentType(value string) string {
+	original := strings.TrimSpace(value)
+	if original == "" {
+		return ""
+	}
+
+	key := strings.ToLower(original)
+	key = strings.NewReplacer(" ", "", "-", "", "_", "", "/", "").Replace(key)
+
+	switch key {
+	case "full", "fulltime", "permanent", "regular", "regularfulltime", "employee":
+		return "FullTime"
+	case "contract", "contractor", "freelance", "consultant":
+		return "Contract"
+	case "intern", "internship", "studentintern":
+		return "Internship"
+	case "part", "parttime":
+		return "PartTime"
+	case "temp", "temporary", "seasonal":
+		return "Temporary"
+	default:
+		return original
+	}
 }
 
 // buildFingerprint produces a coarse cross-source dedupe key: the same real
