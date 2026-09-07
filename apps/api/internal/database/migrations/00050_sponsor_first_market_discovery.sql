@@ -14,7 +14,6 @@ WHERE source_type IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKAB
 
 UPDATE jobs
 SET status = 'CLOSED',
-    closed_at = COALESCE(closed_at, now()),
     updated_at = now()
 WHERE status = 'ACTIVE'
   AND source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE');
