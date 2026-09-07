@@ -575,6 +575,49 @@ func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, err
 	return configs, nil
 }
 
+// ListDueJobSources returns only enabled sources whose configured polling
+// interval has elapsed. This keeps authoritative direct ATS boards frequent
+// while allowing broad/paid sources to run only a few times per day.
+func (r *Repository) ListDueJobSources(ctx context.Context) ([]JobSourceConfig, error) {
+	if r.pool == nil {
+		return r.ListJobSources(ctx)
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT js.id, js.source_type, js.board_token, js.company_id, c.name
+		FROM job_sources js
+		JOIN companies c ON c.id = js.company_id
+		WHERE js.enabled = true
+		  AND (
+		      js.last_polled_at IS NULL
+		      OR js.last_polled_at <= now() - make_interval(mins => js.poll_interval_minutes)
+		  )
+		ORDER BY js.created_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := []JobSourceConfig{}
+	for rows.Next() {
+		var cfg JobSourceConfig
+		if err := rows.Scan(
+			&cfg.ID,
+			&cfg.SourceType,
+			&cfg.BoardToken,
+			&cfg.CompanyID,
+			&cfg.CompanyName,
+		); err != nil {
+			return nil, err
+		}
+		configs = append(configs, cfg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return configs, nil
+}
+
 // GetJobSourceByID loads a single job source configuration, regardless of
 // its enabled flag (used by the async sync worker, which is dispatched by
 // job source ID rather than by iterating the enabled list directly).
