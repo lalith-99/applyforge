@@ -9,6 +9,8 @@ unset, rate-limited, or transiently down must never break the product.
 from __future__ import annotations
 
 import os
+import threading
+from dataclasses import dataclass
 
 from openai import OpenAI
 from pydantic import BaseModel
@@ -25,6 +27,86 @@ class AIProviderError(RuntimeError):
 
 def is_configured() -> bool:
     return bool(os.environ.get("OPENAI_API_KEY"))
+
+
+@dataclass
+class AIUsageMetadata:
+    provider: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
+
+
+_usage_state = threading.local()
+
+
+def clear_usage_metadata() -> None:
+    _usage_state.value = None
+
+
+def pop_usage_metadata() -> AIUsageMetadata | None:
+    value = getattr(_usage_state, "value", None)
+    _usage_state.value = None
+    return value
+
+
+def apply_usage_headers(response) -> None:
+    usage = pop_usage_metadata()
+    if usage is None:
+        return
+    response.headers["X-ApplyForge-AI-Provider"] = usage.provider
+    response.headers["X-ApplyForge-AI-Model"] = usage.model
+    response.headers["X-ApplyForge-AI-Prompt-Tokens"] = str(usage.prompt_tokens)
+    response.headers["X-ApplyForge-AI-Completion-Tokens"] = str(usage.completion_tokens)
+    response.headers["X-ApplyForge-AI-Total-Tokens"] = str(usage.total_tokens)
+    if usage.estimated_cost_usd is not None:
+        response.headers["X-ApplyForge-AI-Estimated-Cost-USD"] = f"{usage.estimated_cost_usd:.10f}"
+
+
+def _env_float(name: str) -> float | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def _record_chat_usage(model: str, usage) -> None:
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion = int(getattr(usage, "completion_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", prompt + completion) or 0)
+    input_rate = _env_float("OPENAI_INPUT_USD_PER_1M_TOKENS")
+    output_rate = _env_float("OPENAI_OUTPUT_USD_PER_1M_TOKENS")
+    estimated = None
+    if input_rate is not None and output_rate is not None:
+        estimated = (prompt * input_rate + completion * output_rate) / 1_000_000
+    _usage_state.value = AIUsageMetadata(
+        provider="openai",
+        model=model,
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=total,
+        estimated_cost_usd=estimated,
+    )
+
+
+def _record_embedding_usage(model: str, usage) -> None:
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    total = int(getattr(usage, "total_tokens", prompt) or 0)
+    rate = _env_float("OPENAI_EMBEDDING_USD_PER_1M_TOKENS")
+    estimated = None if rate is None else total * rate / 1_000_000
+    _usage_state.value = AIUsageMetadata(
+        provider="openai",
+        model=model,
+        prompt_tokens=prompt,
+        total_tokens=total,
+        estimated_cost_usd=estimated,
+    )
 
 
 _client: OpenAI | None = None
@@ -59,6 +141,7 @@ def structured_completion[T: BaseModel](
     except Exception as exc:  # openai raises several distinct exception types
         raise AIProviderError(f"OpenAI request failed: {exc}") from exc
 
+    _record_chat_usage(model, getattr(completion, "usage", None))
     parsed = completion.choices[0].message.parsed
     if parsed is None:
         raise AIProviderError("OpenAI returned no parsed structured output")
@@ -77,4 +160,5 @@ def embed_text(text: str) -> list[float]:
 
     if not response.data:
         raise AIProviderError("OpenAI returned no embedding data")
+    _record_embedding_usage(model, getattr(response, "usage", None))
     return response.data[0].embedding
