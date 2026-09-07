@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -43,7 +42,6 @@ func TestValidateProductionConfig_AcceptsSecureConfiguration(t *testing.T) {
 }
 
 func TestValidateProductionConfig_DevelopmentAllowsLocalDefaults(t *testing.T) {
-	os.Clearenv()
 	if err := validateProductionConfig("development"); err != nil {
 		t.Fatalf("development should allow local defaults: %v", err)
 	}
