@@ -43,6 +43,15 @@ type Input struct {
 	GreenCardSupportRequired            bool
 	PermSupportPreferred                bool
 
+	// Historical employer evidence. These are secondary signals from DOL
+	// disclosure data and never override explicit role-level job-posting text.
+	CompanyH1BCertifiedCases int
+	CompanyH1BTotalCases     int
+	CompanyPERMCertifiedCases int
+	CompanyPERMTotalCases     int
+	CompanyEvidenceLatestFY   int
+	CompanyEvidenceEmployers  []string
+
 	// Job
 	CompanyName      string
 	LocationText     string
@@ -109,9 +118,14 @@ type Result struct {
 
 // EligibilityResult is computed before scoring (see MASTER_REQUIREMENTS.md §19).
 type ImmigrationAssessment struct {
-	Status     string // SUPPORTED | NOT_SUPPORTED | UNKNOWN
-	Confidence string // HIGH | MEDIUM | LOW
-	Evidence   string
+	Status                   string // SUPPORTED | NOT_SUPPORTED | HISTORICAL_SUPPORT | UNKNOWN
+	Confidence               string // HIGH | MEDIUM | LOW
+	Evidence                 string
+	EvidenceSource           string // JOB_POSTING | DOL_HISTORY | NONE
+	H1BCertifiedCases        int
+	PERMCertifiedCases       int
+	LatestEvidenceFiscalYear int
+	MatchedEmployers         []string
 }
 
 type EligibilityResult struct {
