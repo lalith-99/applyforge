@@ -130,8 +130,6 @@ func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
 	}
 }
 
-
-
 func TestBrightDataTitleFilters_CoversConsultingMarketTitleVariants(t *testing.T) {
 	javaFilters, err := json.Marshal(brightDataTitleFilters("job_title", "us-java-24h"))
 	if err != nil {
