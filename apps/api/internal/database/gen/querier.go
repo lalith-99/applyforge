@@ -61,6 +61,7 @@ type Querier interface {
 	GetApplicationForUser(ctx context.Context, arg GetApplicationForUserParams) (Application, error)
 	GetCompanyByNormalizedName(ctx context.Context, normalizedName string) (Company, error)
 	GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error)
+	GetJobContentHashBySourceExternalID(ctx context.Context, arg GetJobContentHashBySourceExternalIDParams) (string, error)
 	GetJobMatch(ctx context.Context, arg GetJobMatchParams) (JobMatch, error)
 	GetJobPreferences(ctx context.Context, userID pgtype.UUID) (JobPreference, error)
 	GetJobRequirementsByJobID(ctx context.Context, jobID pgtype.UUID) (JobRequirement, error)

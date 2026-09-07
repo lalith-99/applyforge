@@ -36,3 +36,19 @@ class ParseRequirementsRequest(BaseModel):
 
 class ParseRequirementsResponse(BaseModel):
     requirements: JobRequirements
+
+
+class ClassifyRoleRequest(BaseModel):
+    title: str
+    description: str
+
+
+class JobRoleClassification(BaseModel):
+    family: str
+    classification: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str = ""
+
+
+class ClassifyRoleResponse(BaseModel):
+    result: JobRoleClassification

@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -20,6 +22,7 @@ type Handlers struct {
 	svc          *Service
 	webBaseURL   string
 	secureCookie bool
+	actions      *ActionService
 }
 
 // NewHandlers builds auth Handlers. secureCookie should be true in production
@@ -28,17 +31,26 @@ func NewHandlers(svc *Service, webBaseURL string, secureCookie bool) *Handlers {
 	return &Handlers{svc: svc, webBaseURL: webBaseURL, secureCookie: secureCookie}
 }
 
+func (h *Handlers) WithActionService(actions *ActionService) *Handlers {
+	h.actions = actions
+	return h
+}
+
 // Mount registers auth routes onto r.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/signup", h.handleSignup)
 	r.Post("/login", h.handleLogin)
 	r.Post("/logout", h.handleLogout)
+	r.Post("/password-reset/request", h.handlePasswordResetRequest)
+	r.Post("/password-reset/confirm", h.handlePasswordResetConfirm)
+	r.Post("/email-verification/confirm", h.handleEmailVerificationConfirm)
 	r.Get("/google/start", h.handleGoogleStart)
 	r.Get("/google/callback", h.handleGoogleCallback)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth(h.svc))
 		r.Get("/session", h.handleSession)
+		r.Post("/email-verification/request", h.handleEmailVerificationRequest)
 	})
 }
 
@@ -79,6 +91,13 @@ func (h *Handlers) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setSessionCookie(w, issued.Token)
+	if h.actions != nil && issued.User.EmailVerifiedAt == nil {
+		go func() {
+			if err := h.actions.SendVerification(context.Background(), issued.User.ID, issued.User.Email); err != nil && !errors.Is(err, ErrMailerNotConfigured) {
+				slog.Error("send signup verification email failed", "user_id", issued.User.ID, "error", err)
+			}
+		}()
+	}
 	httpx.WriteJSON(w, http.StatusCreated, userResponse(issued.User))
 }
 
@@ -118,6 +137,105 @@ func (h *Handlers) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, userResponse(u))
+}
+
+type passwordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type passwordResetConfirmRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+type emailVerificationConfirmRequest struct {
+	Token string `json:"token"`
+}
+
+func (h *Handlers) handlePasswordResetRequest(w http.ResponseWriter, r *http.Request) {
+	var req passwordResetRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if h.actions != nil {
+		if err := h.actions.RequestPasswordReset(r.Context(), strings.TrimSpace(req.Email)); err != nil && !errors.Is(err, ErrMailerNotConfigured) {
+			slog.Error("password reset request failed", "error", err)
+		}
+	}
+	// Always identical to prevent account enumeration and mailer-status leaks.
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{
+		"status":  "accepted",
+		"message": "If an account exists, a password reset email will be sent.",
+	})
+}
+
+func (h *Handlers) handlePasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
+	if h.actions == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "password reset is not configured")
+		return
+	}
+	var req passwordResetConfirmRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.actions.ConfirmPasswordReset(r.Context(), req.Token, req.Password); err != nil {
+		if errors.Is(err, ErrInvalidActionToken) {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid or expired reset link")
+			return
+		}
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.clearSessionCookie(w)
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "password_reset"})
+}
+
+func (h *Handlers) handleEmailVerificationRequest(w http.ResponseWriter, r *http.Request) {
+	if h.actions == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "email verification is not configured")
+		return
+	}
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	if u.EmailVerifiedAt != nil {
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "already_verified"})
+		return
+	}
+	if err := h.actions.SendVerification(r.Context(), u.ID, u.Email); err != nil {
+		if errors.Is(err, ErrMailerNotConfigured) {
+			httpx.WriteError(w, http.StatusServiceUnavailable, "email delivery is not configured")
+			return
+		}
+		httpx.WriteError(w, http.StatusBadGateway, "could not send verification email")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "sent"})
+}
+
+func (h *Handlers) handleEmailVerificationConfirm(w http.ResponseWriter, r *http.Request) {
+	if h.actions == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "email verification is not configured")
+		return
+	}
+	var req emailVerificationConfirmRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.actions.ConfirmEmailVerification(r.Context(), req.Token); err != nil {
+		if errors.Is(err, ErrInvalidActionToken) {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid or expired verification link")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "could not verify email")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "verified"})
 }
 
 func (h *Handlers) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +298,7 @@ func (h *Handlers) handleGoogleCallback(w http.ResponseWriter, r *http.Request) 
 		MaxAge:   -1,
 	})
 	h.setSessionCookie(w, issued.Token)
-	http.Redirect(w, r, h.webBaseURL+"/onboarding", http.StatusFound)
+	http.Redirect(w, r, h.webBaseURL+"/auth/continue", http.StatusFound)
 }
 
 func (h *Handlers) setSessionCookie(w http.ResponseWriter, token string) {

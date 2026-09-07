@@ -1,6 +1,10 @@
 package jobs
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestNormalizeLocation_ClassifiesExplicitUSAndState(t *testing.T) {
 	location := normalizeLocation(RawJob{LocationText: "San Francisco, CA, United States", RemoteType: "hybrid"})
@@ -79,5 +83,114 @@ func TestStripTags_DecodesEscapedHTMLAndPreservesBlocks(t *testing.T) {
 	want := "First paragraph\n\n**Your opportunity**\n\n**Second & final**"
 	if got := stripTags(input); got != want {
 		t.Fatalf("stripTags(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestNormalizeLocation_DoesNotTreatEnglishWordsAsStateCodes(t *testing.T) {
+	for _, input := range []string{
+		"Remote in Europe",
+		"Portland or Vancouver",
+		"Tell me more",
+		"Say hi remotely",
+	} {
+		location := normalizeLocation(RawJob{LocationText: input, RemoteType: "remote"})
+		if location.CountryCode != "" {
+			t.Fatalf("%q must not be classified as US: %+v", input, location)
+		}
+	}
+}
+
+func TestNormalizeLocation_RecognizesUppercaseUSStateSuffix(t *testing.T) {
+	location := normalizeLocation(RawJob{LocationText: "Austin, TX"})
+	if location.CountryCode != "US" || location.StateCode != "TX" {
+		t.Fatalf("expected Austin, TX to normalize to US/TX: %+v", location)
+	}
+}
+
+func TestNormalizeEmploymentType(t *testing.T) {
+	cases := map[string]string{
+		"Full-time":  "FullTime",
+		"full":       "FullTime",
+		"Permanent":  "FullTime",
+		"Contractor": "Contract",
+		"intern":     "Internship",
+		"part_time":  "PartTime",
+	}
+	for input, want := range cases {
+		if got := normalizeEmploymentType(input); got != want {
+			t.Errorf("normalizeEmploymentType(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestIsFreshForEagerAI(t *testing.T) {
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-24 * time.Hour)
+	old := now.Add(-31 * 24 * time.Hour)
+	futureBad := now.Add(48 * time.Hour)
+
+	if !isFreshForEagerAI(&recent, now) {
+		t.Fatal("recent job should be eligible for eager AI")
+	}
+	if isFreshForEagerAI(&old, now) {
+		t.Fatal("old job must not be eligible for eager AI")
+	}
+	if isFreshForEagerAI(nil, now) {
+		t.Fatal("unknown posting time must not be eligible for eager AI")
+	}
+	if isFreshForEagerAI(&futureBad, now) {
+		t.Fatal("wildly future timestamp must not be eligible for eager AI")
+	}
+}
+
+func TestBuildFingerprint_PreservesSeniorityAndLocation(t *testing.T) {
+	senior := buildFingerprint("Acme", "Senior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	junior := buildFingerprint("Acme", "Junior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	otherLocation := buildFingerprint("Acme", "Senior Backend Engineer", "Seattle, WA", "Build APIs with Go.")
+	if senior == junior {
+		t.Fatal("senior and junior openings must not share a dedupe fingerprint")
+	}
+	if senior == otherLocation {
+		t.Fatal("same-title openings in different locations must not share a dedupe fingerprint")
+	}
+}
+
+func TestBuildFingerprint_NormalizesDescriptionFormatting(t *testing.T) {
+	a := buildFingerprint("Acme", "Senior Backend Engineer", "Austin, TX", "<p>Build   APIs with Go.</p>")
+	b := buildFingerprint("Acme, Inc.", "Senior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	if a == "" || a != b {
+		t.Fatalf("expected equivalent normalized postings to dedupe: %q vs %q", a, b)
+	}
+}
+
+func TestBuildFingerprint_RequiresDescription(t *testing.T) {
+	if got := buildFingerprint("Acme", "Backend Engineer", "Remote", ""); got != "" {
+		t.Fatalf("description-less jobs are too ambiguous for cross-source dedupe: %q", got)
+	}
+}
+
+func TestStripTags_RemovesUnsafeBlocksAndPreservesLists(t *testing.T) {
+	input := `<section><h2>Responsibilities</h2><ul><li>Build APIs</li><li>Operate Kafka</li></ul><script>alert("x")</script><style>.x{}</style></section>`
+	got := stripTags(input)
+	want := "**Responsibilities**\n\n- Build APIs\n\n- Operate Kafka"
+	if got != want {
+		t.Fatalf("stripTags() = %q, want %q", got, want)
+	}
+}
+
+func TestStripTags_DedupesRepeatedLongATSBlocks(t *testing.T) {
+	block := "This is a sufficiently long company boilerplate paragraph that is duplicated by two responsive ATS containers."
+	input := "<div><p>" + block + "</p></div><div><p>" + block + "</p></div>"
+	got := stripTags(input)
+	if strings.Count(got, block) != 1 {
+		t.Fatalf("expected duplicate long ATS block to be removed: %q", got)
+	}
+}
+
+func TestContentHash_IgnoresEquivalentHTMLWrappers(t *testing.T) {
+	a := contentHash("Acme", "Backend Engineer", "Austin, TX", "<div><p>Build APIs with Go.</p></div>")
+	b := contentHash("Acme", "Backend Engineer", "Austin, TX", "<section class=\"mobile\"><p>Build APIs with Go.</p></section>")
+	if a != b {
+		t.Fatalf("equivalent rendered descriptions should hash identically: %q vs %q", a, b)
 	}
 }

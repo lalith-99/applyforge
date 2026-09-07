@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/aiclient"
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateprofile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
+	immigrationdata "github.com/lalithlochan/applyforge/apps/api/internal/immigration"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
 	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
@@ -28,6 +30,7 @@ type Service struct {
 	preferencesRepo   *preferences.Repository
 	profileRepo       *profile.Repository
 	candidateProfiles *candidateprofile.Repository
+	immigrationRepo   *immigrationdata.Repository
 }
 
 // NewService builds a Service. candidateProfiles may be nil if Recommend
@@ -42,6 +45,13 @@ func NewService(repo *Repository, candidateSkillsRepo *candidateskills.Repositor
 		profileRepo:       profileRepo,
 		candidateProfiles: candidateProfiles,
 	}
+}
+
+// WithImmigrationEvidence adds historical employer-level DOL evidence to
+// role matching without changing the base constructor used by existing tests.
+func (s *Service) WithImmigrationEvidence(repo *immigrationdata.Repository) *Service {
+	s.immigrationRepo = repo
+	return s
 }
 
 // Match computes (and caches) the deterministic match Result for a user against a job.
@@ -89,29 +99,54 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 		return Result{}, err
 	}
 
+	var companyEvidence immigrationdata.CompanyEvidence
+	if s.immigrationRepo != nil {
+		companyEvidence, err = s.immigrationRepo.GetForCompany(ctx, job.CompanyID, job.CompanyName)
+		if err != nil {
+			// Historical evidence is a secondary signal. A temporary evidence
+			// lookup failure must never prevent a candidate from viewing or
+			// matching against an otherwise valid job.
+			slog.Warn("company immigration evidence lookup failed", "company_id", job.CompanyID, "company_name", job.CompanyName, "error", err)
+		}
+	}
+
 	input := Input{
-		CandidateSkills:          candidateSkillSet,
-		CandidateTargetSkills:    candidateTargetSkillSet,
-		TransferableFromSkills:   transferable,
-		CandidateSeniority:       stringOrEmpty(candidateProfile.Seniority),
-		PreferredRemote:          prefs.Remote,
-		PreferredHybrid:          prefs.Hybrid,
-		PreferredOnsite:          prefs.Onsite,
-		PreferredEmploymentTypes: prefs.EmploymentTypes,
-		ExcludedCompanies:        prefs.ExcludedCompanies,
-		ExcludedLocations:        prefs.ExcludedLocations,
-		CompanyName:              job.CompanyName,
-		LocationText:             stringOrEmpty(job.LocationText),
-		RemoteType:               stringOrEmpty(job.RemoteType),
-		EmploymentType:           stringOrEmpty(job.EmploymentType),
-		JobSeniority:             stringOrEmpty(reqs.Seniority),
-		RequiredSkills:           toSkillRequirements(reqs.RequiredSkills),
-		PreferredSkills:          toSkillRequirements(reqs.PreferredSkills),
-		Responsibilities:         reqs.Responsibilities,
-		HasEducationReqs:         len(reqs.EducationRequirements) > 0,
-		HasCertReqs:              len(reqs.Certifications) > 0,
-		PostedAt:                 job.PostedAt,
-		FirstSeenAt:              job.FirstSeenAt,
+		CandidateSkills:                     candidateSkillSet,
+		CandidateTargetSkills:               candidateTargetSkillSet,
+		TransferableFromSkills:              transferable,
+		CandidateSeniority:                  stringOrEmpty(candidateProfile.Seniority),
+		PreferredRemote:                     prefs.Remote,
+		PreferredHybrid:                     prefs.Hybrid,
+		PreferredOnsite:                     prefs.Onsite,
+		PreferredEmploymentTypes:            prefs.EmploymentTypes,
+		ExcludedCompanies:                   prefs.ExcludedCompanies,
+		ExcludedLocations:                   prefs.ExcludedLocations,
+		RequiresH1BTransfer:                 prefs.RequiresH1BTransfer,
+		RequiresNewH1BCapSponsorship:        prefs.RequiresNewH1BCapSponsorship,
+		RequiresFutureEmploymentSponsorship: prefs.RequiresFutureEmploymentSponsorship,
+		GreenCardSupportPreferred:           prefs.GreenCardSupportPreferred,
+		GreenCardSupportRequired:            prefs.GreenCardSupportRequired,
+		PermSupportPreferred:                prefs.PermSupportPreferred,
+		CompanyH1BCertifiedCases:            companyEvidence.H1BCertified,
+		CompanyH1BTotalCases:                companyEvidence.H1BTotal,
+		CompanyPERMCertifiedCases:           companyEvidence.PERMCertified,
+		CompanyPERMTotalCases:               companyEvidence.PERMTotal,
+		CompanyEvidenceLatestFY:             companyEvidence.LatestFiscalYear,
+		CompanyEvidenceEmployers:            companyEvidence.MatchedEmployers,
+		CompanyName:                         job.CompanyName,
+		LocationText:                        stringOrEmpty(job.LocationText),
+		RemoteType:                          stringOrEmpty(job.RemoteType),
+		EmploymentType:                      stringOrEmpty(job.EmploymentType),
+		JobSeniority:                        stringOrEmpty(reqs.Seniority),
+		RequiredSkills:                      toSkillRequirements(reqs.RequiredSkills),
+		PreferredSkills:                     toSkillRequirements(reqs.PreferredSkills),
+		Responsibilities:                    reqs.Responsibilities,
+		HasEducationReqs:                    len(reqs.EducationRequirements) > 0,
+		HasCertReqs:                         len(reqs.Certifications) > 0,
+		PostedAt:                            job.PostedAt,
+		FirstSeenAt:                         job.FirstSeenAt,
+		JobDescription:                      job.Description,
+		WorkAuthorizationRequirements:       stringOrEmpty(reqs.WorkAuthorizationRequirements),
 	}
 
 	result := Score(input)
@@ -162,7 +197,12 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return nil, err
 	}
 
-	filter := jobs.EmbeddingSearchFilter{CountryCode: "US"}
+	const recommendedJobMaxAge = 7 * 24 * time.Hour
+	postedAfter := time.Now().UTC().Add(-recommendedJobMaxAge)
+	filter := jobs.EmbeddingSearchFilter{
+		CountryCode: "US",
+		PostedAfter: &postedAfter,
+	}
 	if prefs.Remote && !prefs.Hybrid && !prefs.Onsite {
 		filter.RemoteType = "remote"
 	}

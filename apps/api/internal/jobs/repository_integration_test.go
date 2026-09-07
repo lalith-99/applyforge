@@ -117,7 +117,7 @@ func TestRepository_CrossSourceDedupe_LinksAndExcludesFromListing(t *testing.T) 
 		t.Fatalf("UpsertCompany: %v", err)
 	}
 
-	fp := buildFingerprint("Acme Dedupe Co", "Senior Backend Engineer", "remote")
+	fp := buildFingerprint("Acme Dedupe Co", "Senior Backend Engineer", "Remote - US", "Build things")
 
 	first, err := repo.UpsertJob(ctx, Job{
 		Source:          "GREENHOUSE",
@@ -127,8 +127,9 @@ func TestRepository_CrossSourceDedupe_LinksAndExcludesFromListing(t *testing.T) 
 		Title:           "Senior Backend Engineer",
 		NormalizedTitle: normalizeTitle("Senior Backend Engineer"),
 		RemoteType:      strPtrTest("remote"),
+		LocationText:    strPtrTest("Remote - US"),
 		Description:     "Build things",
-		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "", "Build things"),
+		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "Remote - US", "Build things"),
 		Fingerprint:     fp,
 	})
 	if err != nil {
@@ -143,8 +144,9 @@ func TestRepository_CrossSourceDedupe_LinksAndExcludesFromListing(t *testing.T) 
 		Title:           "Senior Backend Engineer",
 		NormalizedTitle: normalizeTitle("Senior Backend Engineer"),
 		RemoteType:      strPtrTest("remote"),
-		Description:     "Build things (aggregator copy)",
-		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "", "Build things (aggregator copy)"),
+		LocationText:    strPtrTest("Remote - US"),
+		Description:     "Build things",
+		ContentHash:     contentHash("Acme Dedupe Co", "Senior Backend Engineer", "Remote - US", "Build things"),
 		Fingerprint:     fp,
 	})
 	if err != nil {
@@ -284,7 +286,7 @@ func TestRepository_List_UsesExactCountryAndStrictPostedAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertCompany: %v", err)
 	}
-	title := "Location Filter Engineer " + testID
+	title := "Location Filter Backend Engineer " + testID
 	now := time.Now().UTC()
 	us := "US"
 	australia := "AU"

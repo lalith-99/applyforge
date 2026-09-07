@@ -7,6 +7,7 @@ import "strings"
 // MASTER_REQUIREMENTS.md §19).
 func CheckEligibility(in Input) EligibilityResult {
 	result := EligibilityResult{Eligible: true}
+	result.Immigration = AssessImmigration(in)
 
 	for _, company := range in.ExcludedCompanies {
 		if strings.EqualFold(strings.TrimSpace(company), strings.TrimSpace(in.CompanyName)) {
@@ -54,6 +55,16 @@ func CheckEligibility(in Input) EligibilityResult {
 			}
 		default:
 			result.Warnings = append(result.Warnings, "work arrangement (remote/hybrid/onsite) is unclear from the posting")
+		}
+	}
+
+	if immigrationRequired(in) {
+		switch result.Immigration.Status {
+		case "NOT_SUPPORTED":
+			result.Eligible = false
+			result.HardFailures = append(result.HardFailures, "IMMIGRATION_INCOMPATIBLE: job posting explicitly states sponsorship is unavailable")
+		case "UNKNOWN":
+			result.Warnings = append(result.Warnings, "H-1B/immigration support is not explicit in this posting")
 		}
 	}
 

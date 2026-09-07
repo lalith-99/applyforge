@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from app.core.skills_dictionary import canonical_skills
-from app.jobs.models import JobRequirements, SkillRequirement
+from app.jobs.models import JobRequirements, JobRoleClassification, SkillRequirement
 
 _PREFERRED_MARKERS = re.compile(
     r"(nice.to.have|preferred|bonus|a plus|good to have)", re.IGNORECASE
@@ -168,7 +168,152 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "include generic role descriptors, competency areas, or soft skills as a skill — phrases like "
         "'backend engineering', 'software engineering', 'system architecture', 'API design', "
         "'problem solving', 'ownership', or years-of-experience statements are NOT skills; capture "
-        "that kind of language in responsibilities or seniority/required_experience_years instead."
+        "that kind of language in responsibilities or seniority/required_experience_years instead. "
+        "For work_authorization_requirements, preserve explicit visa/sponsorship constraints with high fidelity. "
+        "In particular, never omit language saying the employer will not sponsor, cannot sponsor, requires "
+        "authorization without sponsorship, or asks whether sponsorship is needed now or in the future."
     )
     user = f"Job title: {title}\n\nJob description:\n{description}"
     return structured_completion(system, user, JobRequirements)
+
+
+_ALLOWED_SOFTWARE_FAMILIES = {
+    "SOFTWARE_ENGINEERING",
+    "BACKEND",
+    "FRONTEND",
+    "FULLSTACK",
+    "PLATFORM",
+    "INFRASTRUCTURE",
+    "SRE",
+    "DEVOPS",
+    "CLOUD",
+    "DATA_ENGINEERING",
+    "ML_ENGINEERING",
+    "AI_ENGINEERING",
+    "SECURITY_ENGINEERING",
+    "MOBILE",
+    "EMBEDDED",
+    "SYSTEMS",
+}
+
+
+def classify_job_role(title: str, description: str) -> JobRoleClassification:
+    """Conservative heuristic fallback for ambiguous titles.
+
+    The Go service calls this endpoint only after its title taxonomy returned
+    UNKNOWN. This fallback therefore uses description signals but refuses to
+    guess when evidence is weak.
+    """
+    text = f"{title}\n{description[:4000]}".lower()
+
+    excluded = (
+        "mechanical engineering",
+        "civil engineering",
+        "electrical engineering",
+        "manufacturing engineering",
+        "industrial engineering",
+        "quality assurance",
+        "software quality assurance",
+        "manual testing",
+        "business analyst",
+        "product manager",
+        "program manager",
+        "project manager",
+        "sales engineer",
+        "solutions engineer",
+        "customer support",
+    )
+    if any(term in text for term in excluded):
+        return JobRoleClassification(
+            family="EXCLUDED",
+            classification="NON_SOFTWARE",
+            confidence=0.88,
+            reason="Description contains strong non-software role signals.",
+        )
+
+    families = (
+        (("backend", "microservices", "distributed systems"), "BACKEND"),
+        (("frontend", "react", "angular", "vue"), "FRONTEND"),
+        (("full stack", "full-stack"), "FULLSTACK"),
+        (("site reliability", "sre", "reliability engineering"), "SRE"),
+        (("devops", "ci/cd", "terraform"), "DEVOPS"),
+        (("platform engineering", "developer platform"), "PLATFORM"),
+        (("infrastructure", "kubernetes", "cloud infrastructure"), "INFRASTRUCTURE"),
+        (("data pipeline", "data engineering", "etl"), "DATA_ENGINEERING"),
+        (("machine learning", "ml platform", "model training"), "ML_ENGINEERING"),
+        (("generative ai", "artificial intelligence", "llm"), "AI_ENGINEERING"),
+        (("application security", "security engineering"), "SECURITY_ENGINEERING"),
+        (("ios", "android", "mobile application"), "MOBILE"),
+        (("embedded software", "firmware"), "EMBEDDED"),
+        (("systems software", "kernel", "operating system"), "SYSTEMS"),
+    )
+    for terms, family in families:
+        if any(term in text for term in terms):
+            return JobRoleClassification(
+                family=family,
+                classification="IC_SOFTWARE",
+                confidence=0.78,
+                reason=f"Description contains software-engineering signals for {family}.",
+            )
+
+    if any(
+        term in text
+        for term in (
+            "software development",
+            "software engineering",
+            "design and develop software",
+            "build software",
+            "write code",
+            "production code",
+            "programming language",
+            "api development",
+        )
+    ):
+        return JobRoleClassification(
+            family="SOFTWARE_ENGINEERING",
+            classification="IC_SOFTWARE",
+            confidence=0.72,
+            reason="Description contains general software-development signals.",
+        )
+
+    return JobRoleClassification(
+        family="UNKNOWN",
+        classification="UNKNOWN",
+        confidence=0.30,
+        reason="Insufficient evidence to classify this ambiguous title safely.",
+    )
+
+
+def classify_job_role_ai(title: str, description: str) -> JobRoleClassification:
+    from app.providers.openai_provider import structured_completion
+
+    system = (
+        "Classify whether this job is an individual-contributor software-engineering role. "
+        "Return exactly one family and classification. Allowed software families: "
+        + ", ".join(sorted(_ALLOWED_SOFTWARE_FAMILIES))
+        + ". classification must be IC_SOFTWARE, NON_SOFTWARE, or UNKNOWN. "
+        "Use NON_SOFTWARE for engineering management, QA/test/SDET, analysts, product/program/project "
+        "management, customer/support/sales/solutions engineering, and mechanical/civil/electrical/"
+        "manufacturing/industrial/process/field/hardware engineering. "
+        "Lead/principal/staff titles can still be IC_SOFTWARE when the work is hands-on software. "
+        "Use UNKNOWN when the evidence is genuinely ambiguous. Never classify a role as software merely "
+        "because its title contains the word engineer."
+    )
+    user = f"Job title: {title}\n\nJob description:\n{description[:6000]}"
+    result = structured_completion(system, user, JobRoleClassification)
+
+    if result.classification == "IC_SOFTWARE" and result.family not in _ALLOWED_SOFTWARE_FAMILIES:
+        return JobRoleClassification(
+            family="UNKNOWN",
+            classification="UNKNOWN",
+            confidence=0.25,
+            reason="Model returned an unsupported software family.",
+        )
+    if result.classification not in {"IC_SOFTWARE", "NON_SOFTWARE", "UNKNOWN"}:
+        return JobRoleClassification(
+            family="UNKNOWN",
+            classification="UNKNOWN",
+            confidence=0.25,
+            reason="Model returned an unsupported classification.",
+        )
+    return result

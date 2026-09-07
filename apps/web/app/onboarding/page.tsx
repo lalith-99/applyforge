@@ -1,9 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { api, ApiError } from "@/lib/api";
 import {
@@ -14,6 +14,7 @@ import {
   type PersonalCareerInput,
   type PersonalCareerOutput,
 } from "@/lib/schemas/onboarding";
+import type { JobPreferences, Profile } from "@/types/api";
 
 const EMPLOYMENT_TYPES = [
   { value: "full_time", label: "Full-time" },
@@ -48,14 +49,98 @@ export default function OnboardingPage() {
     },
   });
 
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => api.get<Profile>("/profile"),
+  });
+
+  const preferencesQuery = useQuery({
+    queryKey: ["preferences"],
+    queryFn: () => api.get<JobPreferences>("/preferences"),
+  });
+
+  useEffect(() => {
+    const profile = profileQuery.data;
+    if (!profile) return;
+    if (profile.onboarding_completed_at) {
+      router.replace("/dashboard");
+      return;
+    }
+    profileForm.reset({
+      first_name: profile.first_name ?? "",
+      last_name: profile.last_name ?? "",
+      city: profile.city ?? "",
+      state: profile.state ?? "",
+      country: profile.country ?? "",
+      primary_target_titles: profile.primary_target_titles.join(", "),
+      alternative_target_titles: profile.alternative_target_titles.join(", "),
+      seniority: profile.seniority ?? "",
+      years_experience: profile.years_experience ?? undefined,
+      preferred_industries: profile.preferred_industries.join(", "),
+      preferred_technologies: profile.preferred_technologies.join(", "),
+      desired_compensation_min: profile.desired_compensation_min ?? undefined,
+      desired_compensation_max: profile.desired_compensation_max ?? undefined,
+      desired_compensation_currency: profile.desired_compensation_currency || "USD",
+    });
+  }, [profileQuery.data, profileForm, router]);
+
+  useEffect(() => {
+    const preferences = preferencesQuery.data;
+    if (!preferences) return;
+    preferencesForm.reset({
+      remote: preferences.remote,
+      hybrid: preferences.hybrid,
+      onsite: preferences.onsite,
+      preferred_locations: preferences.preferred_locations.join(", "),
+      willingness_to_relocate: preferences.willingness_to_relocate,
+      employment_types: preferences.employment_types,
+      minimum_salary: preferences.minimum_salary ?? undefined,
+      excluded_companies: preferences.excluded_companies.join(", "),
+      excluded_locations: preferences.excluded_locations.join(", "),
+      excluded_industries: preferences.excluded_industries.join(", "),
+      clearance_constraints: preferences.clearance_constraints ?? "",
+      work_authorization: preferences.work_authorization ?? "",
+      immigration_status: preferences.immigration_status ?? "",
+      requires_h1b_transfer: preferences.requires_h1b_transfer,
+      requires_new_h1b_cap_sponsorship: preferences.requires_new_h1b_cap_sponsorship,
+      requires_future_employment_sponsorship: preferences.requires_future_employment_sponsorship,
+      green_card_support_preferred: preferences.green_card_support_preferred,
+      green_card_support_required: preferences.green_card_support_required,
+      perm_support_preferred: preferences.perm_support_preferred,
+      immigration_support_min_confidence: preferences.immigration_support_min_confidence ?? undefined,
+    });
+  }, [preferencesQuery.data, preferencesForm]);
+
+  const saveProfileMutation = useMutation({
+    mutationFn: (profile: PersonalCareerOutput) =>
+      api.patch<Profile>("/profile", { ...profile, complete_onboarding: false }),
+    onSuccess: (_saved, profile) => {
+      setProfileData(profile);
+      setStep(1);
+    },
+  });
+
   const submitMutation = useMutation({
     mutationFn: async (preferences: JobPreferencesOutput) => {
       if (!profileData) throw new Error("missing profile data");
-      await api.patch("/profile", { ...profileData, complete_onboarding: true });
+      // Persist preferences before flipping the completion marker. If this
+      // request fails the user remains safely incomplete and can retry.
       await api.patch("/preferences", preferences);
+      await api.patch("/profile", { ...profileData, complete_onboarding: true });
     },
     onSuccess: () => router.push("/dashboard"),
   });
+
+  const isHydrating = profileQuery.isLoading || preferencesQuery.isLoading;
+  const hydrationFailed = profileQuery.isError || preferencesQuery.isError;
+
+  if (isHydrating) {
+    return <main className="flex flex-1 items-center justify-center p-8">Loading your saved job-search profile…</main>;
+  }
+
+  if (hydrationFailed) {
+    return <main className="flex flex-1 items-center justify-center p-8 text-red-600">Could not load your saved onboarding data. Please refresh and try again.</main>;
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-8">
@@ -68,10 +153,7 @@ export default function OnboardingPage() {
 
       {step === 0 && (
         <form
-          onSubmit={profileForm.handleSubmit((data) => {
-            setProfileData(data);
-            setStep(1);
-          })}
+          onSubmit={profileForm.handleSubmit((data) => saveProfileMutation.mutate(data))}
           className="flex flex-col gap-4"
         >
           <div className="grid grid-cols-2 gap-4">
@@ -121,8 +203,15 @@ export default function OnboardingPage() {
             </Field>
           </div>
 
-          <button type="submit" className={buttonClass}>
-            Continue
+          {saveProfileMutation.isError && (
+            <p className="text-sm text-red-600">
+              {saveProfileMutation.error instanceof ApiError
+                ? saveProfileMutation.error.message
+                : "Could not save your profile. Please try again."}
+            </p>
+          )}
+          <button type="submit" disabled={saveProfileMutation.isPending} className={buttonClass}>
+            {saveProfileMutation.isPending ? "Saving…" : "Continue"}
           </button>
         </form>
       )}

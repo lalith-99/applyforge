@@ -113,12 +113,13 @@ type ListFilter struct {
 
 // Repository provides access to company/job-source/job records.
 type Repository struct {
-	q *db.Queries
+	q    *db.Queries
+	pool *database.Pool
 }
 
 // NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries()}
+	return &Repository{q: pool.Queries(), pool: pool}
 }
 
 // NewRepositoryFromQueries builds a Repository from an existing sqlc Queries
@@ -142,12 +143,24 @@ func (r *Repository) UpsertCompany(ctx context.Context, name, normalizedName str
 
 // UpsertJobResult reports whether the upsert inserted a brand new row.
 type UpsertJobResult struct {
-	Job      Job
-	Inserted bool
+	Job            Job
+	Inserted       bool
+	ContentChanged bool
 }
 
 // UpsertJob idempotently inserts or updates a canonical job by (source, external_id).
 func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, error) {
+	previousHash, previousErr := r.q.GetJobContentHashBySourceExternalID(ctx, db.GetJobContentHashBySourceExternalIDParams{
+		Source:     in.Source,
+		ExternalID: in.ExternalID,
+	})
+	existed := true
+	if errors.Is(previousErr, pgx.ErrNoRows) {
+		existed = false
+	} else if previousErr != nil {
+		return UpsertJobResult{}, previousErr
+	}
+
 	classification := classifyTitle(in.Title)
 	eligibleCountryCodes := in.EligibleCountryCodes
 	if eligibleCountryCodes == nil {
@@ -201,7 +214,11 @@ func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, er
 	if err != nil {
 		return UpsertJobResult{}, err
 	}
-	return UpsertJobResult{Job: jobFromUpsertRow(row), Inserted: row.Inserted}, nil
+	return UpsertJobResult{
+		Job:            jobFromUpsertRow(row),
+		Inserted:       row.Inserted,
+		ContentChanged: existed && previousHash != in.ContentHash,
+	}, nil
 }
 
 func jobFromUpsertRow(row db.UpsertJobRow) Job {
@@ -286,6 +303,41 @@ func (r *Repository) SetCanonicalJobID(ctx context.Context, jobID, canonicalJobI
 		ID:             database.UUIDToPG(jobID),
 		CanonicalJobID: database.PGUUID(&canonicalJobID),
 	})
+}
+
+// PromoteCanonicalJob makes betterJobID the canonical row for a duplicate
+// cluster whose previous canonical was oldCanonicalID. Existing duplicate
+// pointers are repointed atomically so there is never a chain of canonical
+// references.
+func (r *Repository) PromoteCanonicalJob(ctx context.Context, betterJobID, oldCanonicalID uuid.UUID) error {
+	if r.pool == nil {
+		return errors.New("canonical promotion requires a repository backed by a database pool")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = $1, updated_at = now() WHERE canonical_job_id = $2",
+		betterJobID, oldCanonicalID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = $1, updated_at = now() WHERE id = $2",
+		betterJobID, oldCanonicalID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = NULL, updated_at = now() WHERE id = $1",
+		betterJobID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UUID, classification RoleClassification) error {

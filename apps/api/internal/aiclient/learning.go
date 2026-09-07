@@ -90,7 +90,12 @@ func (c *Client) GenerateLearningPlan(ctx context.Context, jobTitle string, miss
 // postJSON is a small shared helper for simple JSON-in/JSON-out AI-worker
 // endpoints; operation is recorded via the usage recorder (see usage.go).
 func (c *Client) postJSON(ctx context.Context, operation, path string, body any, out any) (err error) {
-	defer c.track(ctx, operation)(&err)
+	var responseHeaders http.Header
+	if c.detailedUsageRecorder != nil {
+		defer c.trackDetailed(ctx, operation, &responseHeaders)(&err)
+	} else {
+		defer c.track(ctx, operation)(&err)
+	}
 
 	reqBody, err := json.Marshal(body)
 	if err != nil {
@@ -108,6 +113,7 @@ func (c *Client) postJSON(ctx context.Context, operation, path string, body any,
 		return fmt.Errorf("call ai-worker %s: %w", path, err)
 	}
 	defer resp.Body.Close()
+	responseHeaders = resp.Header.Clone()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ai-worker %s failed: %s: %s", path, resp.Status, readBody(resp.Body))

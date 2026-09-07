@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -103,9 +104,16 @@ func TestAshbySource_Fetch(t *testing.T) {
 }
 
 func TestSmartRecruitersSource_Fetch(t *testing.T) {
+	var listCalls, detailCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"content":[{"id":"sr-1","name":"Backend Engineer","releasedDate":"2026-09-06T12:00:00Z","location":{"city":"San Francisco","region":"CA","country":"United States"},"typeOfEmployment":{"label":"Full-time"}}]}`))
+		if strings.Contains(r.URL.Path, "/postings/sr-1") {
+			detailCalls++
+			_, _ = w.Write([]byte(`{"id":"sr-1","name":"Backend Engineer","releasedDate":"2026-09-06T12:00:00Z","postingUrl":"https://jobs.smartrecruiters.com/acme/sr-1","applyUrl":"https://jobs.smartrecruiters.com/acme/sr-1/apply","location":{"city":"San Francisco","region":"CA","country":"us","remote":true},"typeOfEmployment":{"label":"Permanent"},"jobAd":{"sections":{"jobDescription":{"title":"Job Description","text":"<p>Build APIs</p>"},"qualifications":{"title":"Qualifications","text":"<ul><li>Go</li></ul>"}}}}`))
+			return
+		}
+		listCalls++
+		_, _ = w.Write([]byte(`{"limit":100,"offset":0,"totalFound":1,"content":[{"id":"sr-1","name":"Backend Engineer","releasedDate":"2026-09-06T12:00:00Z","location":{"city":"San Francisco","region":"CA","country":"us","remote":true},"typeOfEmployment":{"label":"Permanent"}}]}`))
 	}))
 	defer server.Close()
 
@@ -115,8 +123,43 @@ func TestSmartRecruitersSource_Fetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if len(raw) != 1 || raw[0].Country != "United States" || raw[0].State != "CA" || raw[0].City != "San Francisco" || raw[0].PostedAt == nil {
+	if listCalls != 1 || detailCalls != 1 {
+		t.Fatalf("expected one list and one detail request, got list=%d detail=%d", listCalls, detailCalls)
+	}
+	if len(raw) != 1 || raw[0].Country != "us" || raw[0].State != "CA" || raw[0].City != "San Francisco" || raw[0].PostedAt == nil {
 		t.Fatalf("unexpected SmartRecruiters job: %+v", raw)
+	}
+	if raw[0].CompanyName != "" || raw[0].Description == "" || raw[0].ApplyURL == "" || raw[0].RemoteType != "remote" {
+		t.Fatalf("expected configured company ownership plus detail fields: %+v", raw[0])
+	}
+}
+
+func TestSmartRecruitersSource_Fetch_PaginatesAndSkipsDetailsForIrrelevantJobs(t *testing.T) {
+	var listCalls, detailCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/postings/") {
+			detailCalls++
+			t.Fatalf("non-US/non-software rows must not trigger detail fetches")
+		}
+		listCalls++
+		offset := r.URL.Query().Get("offset")
+		if offset == "0" {
+			_, _ = w.Write([]byte(`{"limit":100,"offset":0,"totalFound":101,"content":[{"id":"1","name":"Accountant","location":{"city":"London","country":"gb"}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"limit":100,"offset":100,"totalFound":101,"content":[]}`))
+	}))
+	defer server.Close()
+
+	source := NewSmartRecruitersSource("acme")
+	source.BaseURL = server.URL
+	raw, _, err := source.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if listCalls != 2 || detailCalls != 0 || len(raw) != 1 {
+		t.Fatalf("unexpected calls/results list=%d detail=%d jobs=%d", listCalls, detailCalls, len(raw))
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/immigration"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrecommendations"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
@@ -74,7 +76,9 @@ func run() error {
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 	})
-	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production")
+	authActions := auth.NewActionService(db, auth.NewMailerFromEnv(), webBaseURL)
+	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production").
+		WithActionService(authActions)
 
 	profileRepo := profile.NewRepository(db)
 	profileHandlers := profile.NewHandlers(profileRepo)
@@ -97,6 +101,20 @@ func run() error {
 	aiUsageRepo := aiusage.NewRepository(db)
 	aiWorkerClient.SetUsageRecorder(func(ctx context.Context, operation string, latencyMS int64, status string, errMsg *string) {
 		aiUsageRepo.RecordAsync(ctx, aiusage.Entry{Operation: operation, Status: status, LatencyMS: latencyMS, ErrorMessage: errMsg})
+	})
+	aiWorkerClient.SetDetailedUsageRecorder(func(ctx context.Context, usage aiclient.DetailedUsage) {
+		aiUsageRepo.RecordAsync(ctx, aiusage.Entry{
+			Operation:        usage.Operation,
+			Status:           usage.Status,
+			LatencyMS:        usage.LatencyMS,
+			ErrorMessage:     usage.ErrorMessage,
+			Provider:         usage.Provider,
+			Model:            usage.Model,
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			TotalTokens:      usage.TotalTokens,
+			EstimatedCostUSD: usage.EstimatedCostUSD,
+		})
 	})
 
 	skillsNormalizer, err := skills.NewNormalizer(ctx, db)
@@ -124,14 +142,19 @@ func run() error {
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
-	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService)
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).WithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
+
+	immigrationRepo := immigration.NewRepository(db)
+	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
+	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
 	matchingRepo := matching.NewRepository(db)
-	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo)
+	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo).
+		WithImmigrationEvidence(immigrationRepo)
 	matchingHandlers := matching.NewHandlers(matchingService)
 
 	airankService := airank.NewService(aiWorkerClient)
@@ -174,6 +197,7 @@ func run() error {
 		w := background.NewWorker(jobQueue, fmt.Sprintf("api-inprocess-worker-%d", i))
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
+		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
@@ -234,12 +258,20 @@ func run() error {
 	accountService := account.NewService(userRepo, resumeRepo, resumeVersionRepo, storageClient)
 	accountHandlers := account.NewHandlers(accountService, environment == "production")
 
+	requireAuthMiddleware := auth.RequireAuth(authService)
+	if strings.EqualFold(getenv("REQUIRE_EMAIL_VERIFICATION", "false"), "true") {
+		baseRequireAuth := requireAuthMiddleware
+		requireAuthMiddleware = func(next http.Handler) http.Handler {
+			return baseRequireAuth(auth.RequireVerifiedEmail(next))
+		}
+	}
+
 	router := httpapi.NewRouter(httpapi.Config{
 		DB:          db,
 		WebBaseURL:  webBaseURL,
-		RequireAuth: auth.RequireAuth(authService),
+		RequireAuth: requireAuthMiddleware,
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
 	})
 
 	server := &http.Server{

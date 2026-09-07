@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.candidates.models import CandidateProfileRequest, CandidateProfileResponse
 from app.candidates.ranking import rank_jobs_ai, rank_jobs_heuristic
 from app.candidates.ranking_models import RankJobsRequest, RankJobsResponse
 from app.candidates.synthesis import synthesize_profile_ai, synthesize_profile_heuristic
-from app.providers.openai_provider import AIProviderError, is_configured
+from app.providers.openai_provider import (
+    AIProviderError,
+    apply_usage_headers,
+    clear_usage_metadata,
+    is_configured,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +23,12 @@ router = APIRouter(prefix="/v1/candidates", tags=["candidates"])
 
 
 @router.post("/profile", response_model=CandidateProfileResponse)
-def build_profile(request: CandidateProfileRequest) -> CandidateProfileResponse:
+def build_profile(request: CandidateProfileRequest, response: Response) -> CandidateProfileResponse:
     if is_configured():
+        clear_usage_metadata()
         try:
             profile = synthesize_profile_ai(request)
+            apply_usage_headers(response)
             return CandidateProfileResponse(profile=profile)
         except AIProviderError:
             logger.warning(
@@ -33,13 +40,15 @@ def build_profile(request: CandidateProfileRequest) -> CandidateProfileResponse:
 
 
 @router.post("/rank-jobs", response_model=RankJobsResponse)
-def rank_jobs(request: RankJobsRequest) -> RankJobsResponse:
+def rank_jobs(request: RankJobsRequest, response: Response) -> RankJobsResponse:
     if not request.jobs:
         return RankJobsResponse(result=rank_jobs_heuristic(request))
 
     if is_configured():
+        clear_usage_metadata()
         try:
             result = rank_jobs_ai(request)
+            apply_usage_headers(response)
             return RankJobsResponse(result=result)
         except AIProviderError:
             logger.warning("AI job ranking failed, falling back to heuristic", exc_info=True)

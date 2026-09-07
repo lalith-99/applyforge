@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -96,12 +97,12 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			EligibleCountryCodes: location.EligibleCountryCodes,
 			LocationConfidence:   location.LocationConfidence,
 			RemoteType:           strOrNil(raw.RemoteType),
-			EmploymentType:       strOrNil(raw.EmploymentType),
+			EmploymentType:       strOrNil(normalizeEmploymentType(raw.EmploymentType)),
 			ApplyURL:             strOrNil(raw.ApplyURL),
 			SourceURL:            strOrNil(raw.SourceURL),
 			PostedAt:             raw.PostedAt,
 			ContentHash:          contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
-			Fingerprint:          buildFingerprint(jobCompanyName, raw.Title, raw.RemoteType),
+			Fingerprint:          buildFingerprint(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
 		}
 
 		upserted, err := s.repo.UpsertJob(ctx, job)
@@ -117,7 +118,13 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		if upserted.Inserted && job.Fingerprint != "" {
 			canonical, findErr := s.repo.FindCanonicalByFingerprint(ctx, job.Fingerprint, upserted.Job.ID)
 			if findErr == nil {
-				if setErr := s.repo.SetCanonicalJobID(ctx, upserted.Job.ID, canonical.ID); setErr != nil {
+				var setErr error
+				if sourcePriority(upserted.Job.Source) > sourcePriority(canonical.Source) {
+					setErr = s.repo.PromoteCanonicalJob(ctx, upserted.Job.ID, canonical.ID)
+				} else {
+					setErr = s.repo.SetCanonicalJobID(ctx, upserted.Job.ID, canonical.ID)
+				}
+				if setErr != nil {
 					slog.Error("set canonical job id failed", "job_id", upserted.Job.ID, "canonical_job_id", canonical.ID, "error", setErr)
 				} else {
 					result.Deduped++
@@ -127,19 +134,23 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			}
 		}
 
-		// Enrich eagerly only for fresh U.S. IC-software jobs. Re-touching
-		// an already-seen job on every poll (the common case once a source
-		// is caught up) would otherwise re-enqueue enrichment for its whole
-		// backlog every cycle; GetOrParse's content_hash cache means that's
-		// merely wasteful for jobs that already have a cached parse, but for
-		// a source's FIRST poll after enabling eager enrichment it means one
-		// real (paid) AI call per already-ingested job, all at once. A JD
-		// that's edited after first ingestion is still picked up lazily via
-		// GetOrParse's content_hash check on next view, same as before this
-		// change - just not proactively.
 		if upserted.Inserted {
 			result.Inserted++
-			if s.queue != nil && location.CountryCode == "US" && classification.Classification == "IC_SOFTWARE" {
+		} else {
+			result.Updated++
+		}
+
+		// Eager AI runs only for a genuinely new posting or a posting whose
+		// content hash changed. Hourly re-touches of unchanged jobs therefore
+		// remain free, while edited descriptions get fresh requirements and
+		// embeddings without waiting for a user to open the job.
+		shouldRefreshAI := upserted.Inserted || upserted.ContentChanged
+		if shouldRefreshAI && s.queue != nil &&
+			location.CountryCode == "US" &&
+			strings.TrimSpace(raw.Description) != "" &&
+			isFreshForEagerAI(raw.PostedAt, pollStart) {
+			switch classification.Classification {
+			case "IC_SOFTWARE":
 				payload := EnrichPayload{JobID: upserted.Job.ID.String()}
 				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
 					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
@@ -147,9 +158,11 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 				if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
 					slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
 				}
+			case "UNKNOWN":
+				if err := s.queue.Enqueue(ctx, JobTypeClassifyRole, ClassifyRolePayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+					slog.Error("enqueue classify_job_role failed", "job_id", upserted.Job.ID, "error", err)
+				}
 			}
-		} else {
-			result.Updated++
 		}
 	}
 
@@ -157,7 +170,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 	// current listing every poll. Arbeitnow's page cap means "not seen this
 	// poll" doesn't reliably mean "closed" - see CloseStaleJobs's doc
 	// comment - so it's deliberately excluded here.
-	if sourceName != "ARBEITNOW" {
+	if sourceName != "ARBEITNOW" && sourceName != "BRIGHTDATA" {
 		closed, closeErr := s.repo.CloseStaleJobs(ctx, sourceName, companyID, pollStart)
 		if closeErr != nil {
 			slog.Error("close stale jobs failed", "source", sourceName, "company_id", companyID, "error", closeErr)
@@ -184,6 +197,12 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 		return NewWorkableSource(cfg.BoardToken), "WORKABLE", nil
 	case "ARBEITNOW":
 		return NewArbeitnowSource(), "ARBEITNOW", nil
+	case "BRIGHTDATA":
+		config, err := BrightDataConfigFromEnv()
+		if err != nil {
+			return nil, "", err
+		}
+		return NewBrightDataSource(cfg.BoardToken, config), "BRIGHTDATA", nil
 	default:
 		return nil, "", fmt.Errorf("unknown source type: %s", cfg.SourceType)
 	}
@@ -244,9 +263,34 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 	return nil
 }
 
+const eagerAIMaxJobAge = 30 * 24 * time.Hour
+
+func isFreshForEagerAI(postedAt *time.Time, now time.Time) bool {
+	if postedAt == nil {
+		return false
+	}
+	age := now.Sub(*postedAt)
+	// Future timestamps within a small provider-clock skew are still fresh;
+	// wildly future timestamps should not consume AI budget.
+	return age >= -24*time.Hour && age <= eagerAIMaxJobAge
+}
+
 func strOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
+}
+
+func sourcePriority(source string) int {
+	switch source {
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE":
+		return 100
+	case "BRIGHTDATA":
+		return 60
+	case "ARBEITNOW":
+		return 40
+	default:
+		return 20
+	}
 }

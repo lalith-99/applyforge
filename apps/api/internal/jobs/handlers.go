@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,9 +16,10 @@ import (
 
 // Handlers wires the jobs Repository/IngestionService to HTTP routes.
 type Handlers struct {
-	repo         *Repository
-	svc          *IngestionService
-	requirements *jobrequirements.Service
+	repo           *Repository
+	svc            *IngestionService
+	requirements   *jobrequirements.Service
+	adminSyncToken string
 }
 
 // NewHandlers builds jobs Handlers. requirements may be nil if JD parsing
@@ -26,12 +28,23 @@ func NewHandlers(repo *Repository, svc *IngestionService, requirements *jobrequi
 	return &Handlers{repo: repo, svc: svc, requirements: requirements}
 }
 
+// WithAdminSyncToken enables the manual global source-sync endpoint. When the
+// token is empty the route is not mounted at all; normal scheduled ingestion
+// is unaffected.
+func (h *Handlers) WithAdminSyncToken(token string) *Handlers {
+	h.adminSyncToken = strings.TrimSpace(token)
+	return h
+}
+
 // Mount registers job routes onto r. Callers must apply auth.RequireAuth
 // before mounting.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/jobs", h.handleList)
 	r.Get("/jobs/{id}", h.handleGet)
-	r.Post("/admin/job-sources/sync", h.handleSync)
+	if h.adminSyncToken != "" {
+		r.Post("/admin/job-sources/sync", h.handleSync)
+		r.Get("/admin/job-sources/health", h.handleSourceHealth)
+	}
 }
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +78,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	jobsList, total, err := h.repo.List(r.Context(), ListFilter{
 		Search:         q.Get("search"),
 		RemoteType:     q.Get("remote_type"),
-		EmploymentType: q.Get("employment_type"),
+		EmploymentType: normalizeEmploymentType(q.Get("employment_type")),
 		PostedAfter:    postedAfter,
 		Location:       location,
 		CountryCode:    countryCode,
@@ -115,12 +128,63 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, detail)
 }
 
+func (h *Handlers) adminAuthorized(r *http.Request) bool {
+	provided := r.Header.Get("X-ApplyForge-Admin-Token")
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.adminSyncToken)) == 1
+}
+
 func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
 	if err := h.svc.EnqueueSyncTasks(r.Context()); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "sync failed")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
+func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
+
+	limit := 200
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	sources, err := h.repo.ListSourceHealth(r.Context(), limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load source health")
+		return
+	}
+	catalog, err := h.repo.GetCatalogHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load catalog health")
+		return
+	}
+	queue, err := h.repo.GetQueueHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load queue health")
+		return
+	}
+	ai, err := h.repo.GetAIUsageHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load AI usage health")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"catalog": catalog,
+		"queue":   queue,
+		"ai":      ai,
+		"sources": sources,
+	})
 }
 
 func toSummary(j Job) map[string]any {

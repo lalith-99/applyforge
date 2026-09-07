@@ -26,30 +26,47 @@ type TransferableSkill struct {
 // the scorer has no database/HTTP dependencies and is fully unit-testable.
 type Input struct {
 	// Candidate
-	CandidateSkills          map[string]bool // normalized skill name -> present on resume/profile
-	CandidateTargetSkills    map[string]bool // normalized skill name -> user-approved target skill
-	TransferableFromSkills   []TransferableSkill
-	CandidateSeniority       string
-	PreferredRemote          bool
-	PreferredHybrid          bool
-	PreferredOnsite          bool
-	PreferredEmploymentTypes []string
-	ExcludedCompanies        []string
-	ExcludedLocations        []string
+	CandidateSkills                     map[string]bool // normalized skill name -> present on resume/profile
+	CandidateTargetSkills               map[string]bool // normalized skill name -> user-approved target skill
+	TransferableFromSkills              []TransferableSkill
+	CandidateSeniority                  string
+	PreferredRemote                     bool
+	PreferredHybrid                     bool
+	PreferredOnsite                     bool
+	PreferredEmploymentTypes            []string
+	ExcludedCompanies                   []string
+	ExcludedLocations                   []string
+	RequiresH1BTransfer                 bool
+	RequiresNewH1BCapSponsorship        bool
+	RequiresFutureEmploymentSponsorship bool
+	GreenCardSupportPreferred           bool
+	GreenCardSupportRequired            bool
+	PermSupportPreferred                bool
+
+	// Historical employer evidence. These are secondary signals from DOL
+	// disclosure data and never override explicit role-level job-posting text.
+	CompanyH1BCertifiedCases  int
+	CompanyH1BTotalCases      int
+	CompanyPERMCertifiedCases int
+	CompanyPERMTotalCases     int
+	CompanyEvidenceLatestFY   int
+	CompanyEvidenceEmployers  []string
 
 	// Job
-	CompanyName      string
-	LocationText     string
-	RemoteType       string
-	EmploymentType   string
-	JobSeniority     string
-	RequiredSkills   []SkillRequirement
-	PreferredSkills  []SkillRequirement
-	Responsibilities []string
-	HasEducationReqs bool
-	HasCertReqs      bool
-	PostedAt         *time.Time
-	FirstSeenAt      time.Time
+	CompanyName                   string
+	LocationText                  string
+	RemoteType                    string
+	EmploymentType                string
+	JobSeniority                  string
+	RequiredSkills                []SkillRequirement
+	PreferredSkills               []SkillRequirement
+	Responsibilities              []string
+	HasEducationReqs              bool
+	HasCertReqs                   bool
+	PostedAt                      *time.Time
+	FirstSeenAt                   time.Time
+	JobDescription                string
+	WorkAuthorizationRequirements string
 }
 
 // ComponentScores breaks total_score down per MASTER_REQUIREMENTS.md §20.
@@ -100,10 +117,22 @@ type Result struct {
 }
 
 // EligibilityResult is computed before scoring (see MASTER_REQUIREMENTS.md §19).
+type ImmigrationAssessment struct {
+	Status                   string // SUPPORTED | NOT_SUPPORTED | HISTORICAL_SUPPORT | UNKNOWN
+	Confidence               string // HIGH | MEDIUM | LOW
+	Evidence                 string
+	EvidenceSource           string // JOB_POSTING | DOL_HISTORY | NONE
+	H1BCertifiedCases        int
+	PERMCertifiedCases       int
+	LatestEvidenceFiscalYear int
+	MatchedEmployers         []string
+}
+
 type EligibilityResult struct {
 	Eligible     bool
 	HardFailures []string
 	Warnings     []string
+	Immigration  ImmigrationAssessment
 }
 
 // Grade thresholds (configurable — see MASTER_REQUIREMENTS.md §20).

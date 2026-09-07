@@ -107,6 +107,40 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </div>
             )}
 
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              <span className="font-medium">Immigration support:</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  match.Eligibility.Immigration.Status === "SUPPORTED"
+                    ? "bg-green-100 text-green-800"
+                    : match.Eligibility.Immigration.Status === "HISTORICAL_SUPPORT"
+                      ? "bg-blue-100 text-blue-800"
+                      : match.Eligibility.Immigration.Status === "NOT_SUPPORTED"
+                        ? "bg-red-100 text-red-800"
+                        : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {match.Eligibility.Immigration.Status === "SUPPORTED"
+                  ? "Supported"
+                  : match.Eligibility.Immigration.Status === "HISTORICAL_SUPPORT"
+                    ? "Historical support"
+                    : match.Eligibility.Immigration.Status === "NOT_SUPPORTED"
+                      ? "Not supported"
+                      : "Unknown"}
+              </span>
+              {match.Eligibility.Immigration.Evidence && (
+                <span className="text-xs text-black/60 dark:text-white/60">
+                  {match.Eligibility.Immigration.EvidenceSource === "DOL_HISTORY" ? "Historical DOL signal" : "Posting signal"}: “{match.Eligibility.Immigration.Evidence}”
+                </span>
+              )}
+            </div>
+
+            {match.Eligibility.Immigration.Status === "HISTORICAL_SUPPORT" && (
+              <p className="mt-2 text-xs text-black/60 dark:text-white/60">
+                Historical DOL evidence shows employer activity, not a guarantee that this specific role will sponsor. Verify the current role policy before relying on it.
+              </p>
+            )}
+
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="font-medium">Current Profile Match</p>

@@ -1,8 +1,5 @@
-// Package aiusage records AI operation outcomes (latency, status, cache
-// hits) so cost/reliability questions ("how many real calls did this
-// operation make today", "what's our error rate") can be answered from the
-// database instead of scraping logs. See docs/DECISIONS.md "Phase L" and the
-// Phase A enrichment cost incident that motivated pulling this forward.
+// Package aiusage records AI operation outcomes and economics so reliability
+// and cost can be measured from the database instead of inferred from logs.
 package aiusage
 
 import (
@@ -10,43 +7,71 @@ import (
 	"log/slog"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
-	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
 )
 
-// Entry is one recorded AI operation outcome.
 type Entry struct {
-	Operation    string
-	Status       string // "SUCCESS" | "ERROR"
-	LatencyMS    int64
-	CacheHit     bool
-	ErrorMessage *string
+	Operation        string
+	Status           string // SUCCESS | ERROR
+	LatencyMS        int64
+	CacheHit         bool
+	ErrorMessage     *string
+	Provider         string
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	EstimatedCostUSD *float64
 }
 
-// Repository persists Entry rows to ai_usage.
 type Repository struct {
-	q *db.Queries
+	pool *database.Pool
 }
 
-// NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries()}
+	return &Repository{pool: pool}
 }
 
-// Record inserts one ai_usage row.
 func (r *Repository) Record(ctx context.Context, e Entry) error {
-	return r.q.RecordAIUsage(ctx, db.RecordAIUsageParams{
-		Operation:    e.Operation,
-		Status:       e.Status,
-		LatencyMs:    int32(e.LatencyMS),
-		CacheHit:     e.CacheHit,
-		ErrorMessage: database.PGText(e.ErrorMessage),
-	})
+	var provider any
+	if e.Provider != "" {
+		provider = e.Provider
+	}
+	var model any
+	if e.Model != "" {
+		model = e.Model
+	}
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO ai_usage (
+			operation,
+			status,
+			latency_ms,
+			cache_hit,
+			error_message,
+			provider,
+			model,
+			prompt_tokens,
+			completion_tokens,
+			total_tokens,
+			estimated_cost_usd
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	`,
+		e.Operation,
+		e.Status,
+		e.LatencyMS,
+		e.CacheHit,
+		e.ErrorMessage,
+		provider,
+		model,
+		e.PromptTokens,
+		e.CompletionTokens,
+		e.TotalTokens,
+		e.EstimatedCostUSD,
+	)
+	return err
 }
 
-// RecordAsync fires Record in a goroutine so instrumentation never adds
-// latency to (or can fail) the real request path; failures are only logged.
 func (r *Repository) RecordAsync(ctx context.Context, e Entry) {
-	if r == nil {
+	if r == nil || r.pool == nil {
 		return
 	}
 	go func() {
