@@ -237,6 +237,40 @@ func TestGolden_SmallWordingChanges_DoNotCauseUnstableScoreSwings(t *testing.T) 
 	}
 }
 
+func TestGolden_FullRequiredSkillCoverage_ScoresStrong_NotWeak(t *testing.T) {
+	// Regression for a real user report: 4/4 required skills covered
+	// (directly), reasonable seniority and location fit, still scored only
+	// 69 ("Weak") because the fixed no-signal DomainAlignment stub and an
+	// overweighted, noisy ResponsibilityAlignment heuristic dragged an
+	// otherwise well-matched candidate's score down.
+	input := Input{
+		CompanyName:  "Acme",
+		RemoteType:   "onsite",
+		JobSeniority: "senior",
+		RequiredSkills: []SkillRequirement{
+			{NormalizedName: "go", Importance: "required"},
+			{NormalizedName: "kubernetes", Importance: "required"},
+			{NormalizedName: "postgresql", Importance: "required"},
+			{NormalizedName: "python", Importance: "required"},
+		},
+		Responsibilities: []string{
+			"Architect scalable systems and design latency sensitive applications.",
+			"Collaborate cross functionally to design complex systems with simple backend APIs.",
+		},
+		CandidateSkills:    skillSet("Go", "Kubernetes", "PostgreSQL", "Python"),
+		CandidateSeniority: "senior",
+		FirstSeenAt:        time.Now(),
+	}
+
+	result := Score(input)
+	if len(result.MissingRequiredSkills) != 0 {
+		t.Fatalf("expected all required skills matched, got missing=%v", result.MissingRequiredSkills)
+	}
+	if result.TotalScore < 80 {
+		t.Fatalf("expected a strong score (>=80) for full required-skill coverage, got %d: %+v", result.TotalScore, result.Components)
+	}
+}
+
 func TestEligibility_ExcludedCompany_IsHardFailure(t *testing.T) {
 	skills, seniority := candidateGoBackend()
 	input := withCandidate(jobGoKafkaAWS(), skills, seniority)

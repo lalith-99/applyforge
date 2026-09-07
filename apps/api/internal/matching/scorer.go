@@ -26,14 +26,14 @@ func Score(in Input) Result {
 	preferencesScore := preferencesAlignment(eligibility)
 
 	components := ComponentScores{
-		MustHaveSkillCoverage:   30 * mustHaveCoverage,
-		ResponsibilityAlignment: 20 * responsibilityRatio,
+		MustHaveSkillCoverage:   40 * mustHaveCoverage,
+		ResponsibilityAlignment: 10 * responsibilityRatio,
 		RoleSeniority:           15 * seniorityScore,
-		PreferredSkills:         10 * preferredCoverage,
-		DomainAlignment:         10 * 0.7, // no reliable domain signal from the heuristic JD parser yet
-		LocationWorkArrangement: 5 * locationScore,
+		PreferredSkills:         15 * preferredCoverage,
+		DomainAlignment:         0, // no reliable domain signal from the JD parser yet; not weighted until it exists
+		LocationWorkArrangement: 8 * locationScore,
 		EducationCertifications: 5 * educationScore,
-		CandidatePreferences:    5 * preferencesScore,
+		CandidatePreferences:    7 * preferencesScore,
 	}
 
 	total := int(components.Total() + 0.5)
