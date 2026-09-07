@@ -154,6 +154,15 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
+	brightDataEnabled := strings.EqualFold(getenv("BRIGHTDATA_ENABLED", "false"), "true")
+	if brightDataEnabled {
+		if _, err := jobs.BrightDataConfigFromEnv(); err != nil {
+			return fmt.Errorf("Bright Data ingestion enabled but configuration is invalid: %w", err)
+		}
+	}
+	if err := jobsRepo.SetSourceTypeEnabled(ctx, "BRIGHTDATA", brightDataEnabled); err != nil {
+		return fmt.Errorf("configure Bright Data job sources: %w", err)
+	}
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
