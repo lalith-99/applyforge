@@ -110,6 +110,14 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			slog.Error("upsert job failed", "source", sourceName, "external_id", raw.ExternalID, "error", err)
 			continue
 		}
+
+		if err := s.repo.UpdateExplicitSponsorshipDenied(
+			ctx,
+			upserted.Job.ID,
+			explicitSponsorshipDenied(raw.Description),
+		); err != nil {
+			slog.Error("update sponsorship prefilter failed", "job_id", upserted.Job.ID, "error", err)
+		}
 		// Cross-source dedupe: a brand new posting whose fingerprint matches
 		// one already canonical from a DIFFERENT (source, external_id) is
 		// linked to it instead of surfacing as a separate result. Only
