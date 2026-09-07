@@ -148,6 +148,27 @@ export interface JobsListResponse {
   offset: number;
 }
 
+export interface RecommendedJob {
+  JobID: string;
+  DeterministicScore: number;
+  AIFitScore: number | null;
+  AIRecommendation: string | null;
+  AIReason: string;
+  FinalScore: number;
+  CandidateProfileVersion: number | null;
+  Title: string;
+  CompanyName: string;
+  LocationText: string | null;
+  RemoteType: string | null;
+  EmploymentType: string | null;
+  ApplyURL: string | null;
+  ComputedAt: string;
+}
+
+export interface RecommendationsResponse {
+  recommendations: RecommendedJob[] | null;
+}
+
 export interface TailoringSuggestion {
   ID: string;
   TailoringRunID: string;
