@@ -14,9 +14,10 @@ import (
 const insertJobRecommendation = `-- name: InsertJobRecommendation :exec
 INSERT INTO job_recommendations (
     user_id, job_id, deterministic_score, ai_fit_score, ai_recommendation, ai_reason,
-    final_score, candidate_profile_version
+    final_score, candidate_profile_version, immigration_status, immigration_confidence,
+    immigration_evidence, immigration_priority_score
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 `
 
@@ -29,6 +30,10 @@ type InsertJobRecommendationParams struct {
 	AiReason                string      `json:"ai_reason"`
 	FinalScore              int32       `json:"final_score"`
 	CandidateProfileVersion pgtype.Int4 `json:"candidate_profile_version"`
+	ImmigrationStatus       string      `json:"immigration_status"`
+	ImmigrationConfidence   string      `json:"immigration_confidence"`
+	ImmigrationEvidence     string      `json:"immigration_evidence"`
+	ImmigrationPriorityScore int32      `json:"immigration_priority_score"`
 }
 
 func (q *Queries) InsertJobRecommendation(ctx context.Context, arg InsertJobRecommendationParams) error {
@@ -41,13 +46,18 @@ func (q *Queries) InsertJobRecommendation(ctx context.Context, arg InsertJobReco
 		arg.AiReason,
 		arg.FinalScore,
 		arg.CandidateProfileVersion,
+		arg.ImmigrationStatus,
+		arg.ImmigrationConfidence,
+		arg.ImmigrationEvidence,
+		arg.ImmigrationPriorityScore,
 	)
 	return err
 }
 
 const listJobRecommendations = `-- name: ListJobRecommendations :many
 SELECT r.id, r.user_id, r.job_id, r.deterministic_score, r.ai_fit_score, r.ai_recommendation,
-    r.ai_reason, r.final_score, r.candidate_profile_version, r.computed_at,
+    r.ai_reason, r.final_score, r.candidate_profile_version, r.immigration_status,
+    r.immigration_confidence, r.immigration_evidence, r.immigration_priority_score, r.computed_at,
     j.title, j.company_name, j.location_text, j.remote_type, j.employment_type, j.apply_url
 FROM job_recommendations r
 JOIN jobs j ON j.id = r.job_id
@@ -85,6 +95,10 @@ type ListJobRecommendationsRow struct {
 	AiReason                string             `json:"ai_reason"`
 	FinalScore              int32              `json:"final_score"`
 	CandidateProfileVersion pgtype.Int4        `json:"candidate_profile_version"`
+	ImmigrationStatus       string             `json:"immigration_status"`
+	ImmigrationConfidence   string             `json:"immigration_confidence"`
+	ImmigrationEvidence     string             `json:"immigration_evidence"`
+	ImmigrationPriorityScore int32             `json:"immigration_priority_score"`
 	ComputedAt              pgtype.Timestamptz `json:"computed_at"`
 	Title                   string             `json:"title"`
 	CompanyName             string             `json:"company_name"`
@@ -117,6 +131,10 @@ func (q *Queries) ListJobRecommendations(ctx context.Context, arg ListJobRecomme
 			&i.AiReason,
 			&i.FinalScore,
 			&i.CandidateProfileVersion,
+			&i.ImmigrationStatus,
+			&i.ImmigrationConfidence,
+			&i.ImmigrationEvidence,
+			&i.ImmigrationPriorityScore,
 			&i.ComputedAt,
 			&i.Title,
 			&i.CompanyName,
