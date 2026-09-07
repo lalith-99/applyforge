@@ -22,6 +22,7 @@ DELETE FROM companies c
 WHERE NOT EXISTS (SELECT 1 FROM jobs j WHERE j.company_id = c.id)
   AND NOT EXISTS (SELECT 1 FROM job_sources js WHERE js.company_id = c.id);
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION company_has_recent_h1b_history(target_company_id UUID)
 RETURNS BOOLEAN
 LANGUAGE SQL
@@ -65,7 +66,8 @@ AS $$
                  )
           )
     );
-$$;
+$;
+-- +goose StatementEnd
 
 -- Add the newer role-family shards when upgrading an already-created local DB.
 INSERT INTO job_sources (
