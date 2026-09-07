@@ -107,6 +107,7 @@ type ListFilter struct {
 	Location                 string // matched against location_text/city/state
 	CountryCode              string // exact ISO 3166-1 alpha-2 match
 	ExcludeSponsorshipDenied bool   // true for candidates who require visa/transfer support
+	RequireRecentH1BHistory   bool   // require recent certified DOL LCA evidence for H-1B candidates
 	Sort                     string // "newest" | "salary" | "" (default: first_seen_at desc)
 	Limit                    int32
 	Offset                   int32
@@ -423,6 +424,7 @@ type EmbeddingSearchFilter struct {
 	PostedAfter              *time.Time
 	CountryCode              string
 	ExcludeSponsorshipDenied bool
+	RequireRecentH1BHistory   bool
 }
 
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
@@ -437,6 +439,7 @@ func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, li
 		Column5:   database.PGTimestamptz(filter.PostedAfter),
 		Column6:   filter.CountryCode,
 		Column7:   filter.ExcludeSponsorshipDenied,
+		Column8:   filter.RequireRecentH1BHistory,
 	})
 	if err != nil {
 		return nil, err
@@ -505,6 +508,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Limit:    limit,
 		Offset:   filter.Offset,
 		Column10: filter.ExcludeSponsorshipDenied,
+		Column11: filter.RequireRecentH1BHistory,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -518,6 +522,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column5: filter.Location,
 		Column6: filter.CountryCode,
 		Column7: filter.ExcludeSponsorshipDenied,
+		Column8: filter.RequireRecentH1BHistory,
 	})
 	if err != nil {
 		return nil, 0, err
