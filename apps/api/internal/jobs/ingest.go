@@ -257,7 +257,7 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 		return fmt.Errorf("ingestion service has no queue configured")
 	}
 
-	sources, err := s.repo.ListJobSources(ctx)
+	sources, err := s.repo.ListDueJobSources(ctx)
 	if err != nil {
 		return err
 	}
