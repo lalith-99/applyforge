@@ -559,6 +559,27 @@ func (r *Repository) CreateJobSource(ctx context.Context, sourceType string, com
 // SetSourceTypeEnabled toggles all configured shards/connectors for a source
 // type. Optional paid providers use this at startup so secrets + an explicit
 // environment flag are enough to activate their pre-seeded shards.
+// CloseRetiredManualSourceJobs prevents historical company-seeded ATS
+// records from remaining ACTIVE forever after scheduled polling is retired.
+// A 48-hour grace period avoids immediately hiding a recently-seen posting
+// while the market-wide providers populate their canonical replacement.
+func (r *Repository) CloseRetiredManualSourceJobs(ctx context.Context) (int64, error) {
+	if r.pool == nil {
+		return 0, errors.New("retired source cleanup requires a repository backed by a database pool")
+	}
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE jobs
+		SET status = 'CLOSED', closed_at = now(), updated_at = now()
+		WHERE status = 'ACTIVE'
+		  AND source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
+		  AND last_seen_at < now() - INTERVAL '48 hours'
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string, enabled bool) error {
 	if r.pool == nil {
 		return errors.New("source enablement requires a repository backed by a database pool")
