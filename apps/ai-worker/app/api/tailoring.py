@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
-from app.providers.openai_provider import AIProviderError, is_configured
+from app.providers.openai_provider import (
+    AIProviderError,
+    apply_usage_headers,
+    clear_usage_metadata,
+    is_configured,
+)
 from app.tailoring.critic import critique_ai, critique_heuristic
 from app.tailoring.critic_models import CritiqueRequest, CritiqueResponse
 from app.tailoring.heuristics import generate_tailoring, generate_tailoring_ai
@@ -23,13 +28,16 @@ router = APIRouter(prefix="/v1/tailoring", tags=["tailoring"])
 
 
 @router.post("/suggest", response_model=TailoringResponse)
-def suggest(request: TailoringRequest) -> TailoringResponse:
+def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
     if request.mode not in TAILORING_MODES:
         raise HTTPException(status_code=422, detail=f"invalid mode: {request.mode}")
 
     if is_configured():
+        clear_usage_metadata()
         try:
-            return generate_tailoring_ai(request)
+            result = generate_tailoring_ai(request)
+            apply_usage_headers(response)
+            return result
         except AIProviderError:
             logger.warning(
                 "AI tailoring generation failed, falling back to heuristic", exc_info=True
@@ -39,10 +47,13 @@ def suggest(request: TailoringRequest) -> TailoringResponse:
 
 
 @router.post("/critique", response_model=CritiqueResponse)
-def critique(request: CritiqueRequest) -> CritiqueResponse:
+def critique(request: CritiqueRequest, response: Response) -> CritiqueResponse:
     if is_configured():
+        clear_usage_metadata()
         try:
-            return CritiqueResponse(result=critique_ai(request))
+            result = CritiqueResponse(result=critique_ai(request))
+            apply_usage_headers(response)
+            return result
         except AIProviderError:
             logger.warning("AI tailoring critique failed, falling back to heuristic", exc_info=True)
 
