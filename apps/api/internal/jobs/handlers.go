@@ -63,11 +63,13 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	excludeSponsorshipDenied := false
+	requireRecentH1BHistory := false
 	if h.preferences != nil {
 		if user, ok := auth.UserFromContext(r.Context()); ok {
 			prefs, err := h.preferences.Get(r.Context(), user.ID)
 			if err == nil {
 				excludeSponsorshipDenied = preferences.RequiresH1BSupport(prefs)
+				requireRecentH1BHistory = excludeSponsorshipDenied
 			} else if !errors.Is(err, preferences.ErrNotFound) {
 				httpx.WriteError(w, http.StatusInternalServerError, "could not load job preferences")
 				return
@@ -108,6 +110,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		Location:                 location,
 		CountryCode:              countryCode,
 		ExcludeSponsorshipDenied: excludeSponsorshipDenied,
+		RequireRecentH1BHistory:   requireRecentH1BHistory,
 		Sort:                     q.Get("sort"),
 		Limit:                    limit,
 		Offset:                   offset,
