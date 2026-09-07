@@ -25,5 +25,6 @@ JOIN jobs j ON j.id = r.job_id
 WHERE r.user_id = $1
   AND j.status = 'ACTIVE' AND j.canonical_job_id IS NULL
   AND j.country_code = 'US' AND j.role_classification = 'IC_SOFTWARE'
+  AND j.posted_at IS NOT NULL AND j.posted_at >= now() - INTERVAL '7 days'
 ORDER BY r.final_score DESC
 LIMIT $2;
