@@ -3,8 +3,10 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -50,8 +52,11 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 		return fmt.Errorf("load job source: %w", err)
 	}
 
+	startedAt := time.Now().UTC()
 	source, sourceName, err := BuildSource(cfg)
 	if err != nil {
+		_ = w.repo.TouchJobSource(ctx, cfg.ID, err)
+		w.recordPoll(ctx, cfg, startedAt, IngestResult{}, err)
 		return fmt.Errorf("build source: %w", err)
 	}
 
@@ -59,6 +64,7 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	if touchErr := w.repo.TouchJobSource(ctx, cfg.ID, ingestErr); touchErr != nil {
 		slog.Error("touch job source failed", "job_source_id", cfg.ID, "error", touchErr)
 	}
+	w.recordPoll(ctx, cfg, startedAt, result, ingestErr)
 	if ingestErr != nil {
 		return fmt.Errorf("ingest %s (%s): %w", sourceName, cfg.BoardToken, ingestErr)
 	}
@@ -66,4 +72,21 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	slog.Info("job source ingestion completed", "source", sourceName, "board_token", cfg.BoardToken,
 		"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "deduped", result.Deduped, "closed", result.Closed)
 	return nil
+}
+
+
+func (w *SyncSourceWorker) recordPoll(ctx context.Context, cfg JobSourceConfig, startedAt time.Time, result IngestResult, pollErr error) {
+	outcome := SourcePollOutcome{
+		JobSourceID: cfg.ID,
+		SourceType:  cfg.SourceType,
+		BoardToken:  cfg.BoardToken,
+		CompanyName: cfg.CompanyName,
+		StartedAt:   startedAt,
+		CompletedAt: time.Now().UTC(),
+		Result:      result,
+		Err:         pollErr,
+	}
+	if err := w.repo.RecordSourcePoll(ctx, outcome); err != nil && !errors.Is(err, ErrSourceHealthUnavailable) {
+		slog.Error("record job source poll failed", "job_source_id", cfg.ID, "error", err)
+	}
 }
