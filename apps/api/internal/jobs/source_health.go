@@ -481,10 +481,15 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 			WHERE `+basePredicate+`
 		),
 		dol AS (
-			SELECT DISTINCT company_id
-			FROM employer_immigration_evidence
-			WHERE certified_count > 0
-			  AND program = 'LCA_H1B'
+			SELECT DISTINCT a.company_id
+			FROM company_immigration_aliases a
+			JOIN company_immigration_evidence e
+			  ON e.employer_normalized_name = a.evidence_employer_normalized_name
+			WHERE e.certified_count > 0
+			  AND e.program = 'LCA_H1B'
+			  AND e.fiscal_year >= (
+			      EXTRACT(YEAR FROM (current_date + INTERVAL '3 months'))::int - 2
+			  )
 		)
 		SELECT
 			count(*) FILTER (
