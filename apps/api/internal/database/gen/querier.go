@@ -89,6 +89,10 @@ type Querier interface {
 	ListApplicationsWithJobForUser(ctx context.Context, userID pgtype.UUID) ([]ListApplicationsWithJobForUserRow, error)
 	ListCandidateSkillsForUser(ctx context.Context, userID pgtype.UUID) ([]CandidateSkill, error)
 	ListJobMatchesForUser(ctx context.Context, userID pgtype.UUID) ([]JobMatch, error)
+	// Re-enforces country/software/status hard filters at read time (not just
+	// at compute time) so a stale precomputed row - e.g. from before country_code
+	// or role_classification existed - never leaks a non-US or non-software job
+	// into a user's list while waiting for their next recompute cycle.
 	ListJobRecommendations(ctx context.Context, arg ListJobRecommendationsParams) ([]ListJobRecommendationsRow, error)
 	ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error)
 	ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error)

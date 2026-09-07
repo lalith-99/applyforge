@@ -52,6 +52,8 @@ SELECT r.id, r.user_id, r.job_id, r.deterministic_score, r.ai_fit_score, r.ai_re
 FROM job_recommendations r
 JOIN jobs j ON j.id = r.job_id
 WHERE r.user_id = $1
+  AND j.status = 'ACTIVE' AND j.canonical_job_id IS NULL
+  AND j.country_code = 'US' AND j.role_classification = 'IC_SOFTWARE'
 ORDER BY r.final_score DESC
 LIMIT $2
 `
@@ -80,6 +82,10 @@ type ListJobRecommendationsRow struct {
 	ApplyUrl                pgtype.Text        `json:"apply_url"`
 }
 
+// Re-enforces country/software/status hard filters at read time (not just
+// at compute time) so a stale precomputed row - e.g. from before country_code
+// or role_classification existed - never leaks a non-US or non-software job
+// into a user's list while waiting for their next recompute cycle.
 func (q *Queries) ListJobRecommendations(ctx context.Context, arg ListJobRecommendationsParams) ([]ListJobRecommendationsRow, error) {
 	rows, err := q.db.Query(ctx, listJobRecommendations, arg.UserID, arg.Limit)
 	if err != nil {
