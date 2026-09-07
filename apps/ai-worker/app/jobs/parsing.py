@@ -161,7 +161,14 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "post (e.g. 'must have'/'required' vs 'nice to have'/'preferred'/'bonus'). Only include skills "
         "or requirements explicitly stated or clearly implied by the text — never invent requirements "
         "not present in the posting. normalized_name should be the common/canonical form of the skill "
-        "name (e.g. 'JS' -> 'JavaScript')."
+        "name (e.g. 'JS' -> 'JavaScript'). required_skills/preferred_skills must be discrete, "
+        "nameable things a candidate can concretely have or not have: programming languages, "
+        "frameworks, libraries, databases, cloud/infra platforms, tools, protocols, certifications, or "
+        "specifically-named methodologies (e.g. 'TDD', 'gRPC', 'Kubernetes', 'PostgreSQL'). Never "
+        "include generic role descriptors, competency areas, or soft skills as a skill — phrases like "
+        "'backend engineering', 'software engineering', 'system architecture', 'API design', "
+        "'problem solving', 'ownership', or years-of-experience statements are NOT skills; capture "
+        "that kind of language in responsibilities or seniority/required_experience_years instead."
     )
     user = f"Job title: {title}\n\nJob description:\n{description}"
     return structured_completion(system, user, JobRequirements)

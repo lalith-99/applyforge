@@ -78,8 +78,20 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 	}
 
 	version := prof.Version
+	recs := toRecommendations(ranked, version)
+	return w.repo.ReplaceForUser(ctx, userID, recs)
+}
+
+// toRecommendations converts ranked candidates into persisted
+// Recommendations, dropping any job the AI explicitly judged SKIP - fit_score
+// alone doesn't capture that judgment, only the recommendation label does,
+// so "Recommended" must never surface a job the AI itself said to skip.
+func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendation {
 	recs := make([]Recommendation, 0, len(ranked))
 	for _, r := range ranked {
+		if r.HasJudgment && r.Judgment.Recommendation == "SKIP" {
+			continue
+		}
 		rec := Recommendation{
 			JobID:                   r.Job.ID,
 			DeterministicScore:      int32(r.Result.TotalScore),
@@ -96,6 +108,5 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 		}
 		recs = append(recs, rec)
 	}
-
-	return w.repo.ReplaceForUser(ctx, userID, recs)
+	return recs
 }
