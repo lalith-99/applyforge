@@ -1,10 +1,12 @@
 package profile
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
@@ -12,12 +14,21 @@ import (
 
 // Handlers wires the profile Repository to HTTP routes.
 type Handlers struct {
-	repo *Repository
+	repo      *Repository
+	onChanged func(ctx context.Context, userID uuid.UUID)
 }
 
 // NewHandlers builds profile Handlers.
 func NewHandlers(repo *Repository) *Handlers {
 	return &Handlers{repo: repo}
+}
+
+// SetOnChanged registers a callback fired after the profile is updated
+// (e.g. to recompute precomputed job recommendations). Returns the same
+// Handlers for chaining.
+func (h *Handlers) SetOnChanged(fn func(ctx context.Context, userID uuid.UUID)) *Handlers {
+	h.onChanged = fn
+	return h
 }
 
 // Mount registers profile routes onto r. Callers must apply auth.RequireAuth
@@ -120,6 +131,9 @@ func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not update profile")
 		return
+	}
+	if h.onChanged != nil {
+		h.onChanged(r.Context(), u.ID)
 	}
 	httpx.WriteJSON(w, http.StatusOK, toResponse(p))
 }

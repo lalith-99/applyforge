@@ -28,3 +28,8 @@ SELECT embedding FROM candidate_profile_versions
 WHERE user_id = $1 AND embedding IS NOT NULL
 ORDER BY version DESC
 LIMIT 1;
+
+-- name: ListActiveCandidateProfileUserIDs :many
+-- Distinct users who have generated at least one candidate profile - the
+-- "active user" set for hourly recommendation refresh.
+SELECT DISTINCT user_id FROM candidate_profile_versions;

@@ -180,6 +180,8 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 		return NewAshbySource(cfg.BoardToken), "ASHBY", nil
 	case "SMARTRECRUITERS":
 		return NewSmartRecruitersSource(cfg.BoardToken), "SMARTRECRUITERS", nil
+	case "WORKABLE":
+		return NewWorkableSource(cfg.BoardToken), "WORKABLE", nil
 	case "ARBEITNOW":
 		return NewArbeitnowSource(), "ARBEITNOW", nil
 	default:

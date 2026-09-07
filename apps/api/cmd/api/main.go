@@ -143,6 +143,16 @@ func run() error {
 			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
 		}
 	})
+	preferencesHandlers.SetOnChanged(func(ctx context.Context, userID uuid.UUID) {
+		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
+			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
+		}
+	})
+	profileHandlers.SetOnChanged(func(ctx context.Context, userID uuid.UUID) {
+		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
+			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
+		}
+	})
 
 	tailoringRepo := tailoring.NewRepository(db)
 	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
@@ -181,6 +191,29 @@ func run() error {
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	defer stopScheduler()
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
+
+	recommendationRefreshMinutes := 60
+	if v := os.Getenv("RECOMMENDATION_REFRESH_INTERVAL_MINUTES"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			recommendationRefreshMinutes = parsed
+		}
+	}
+	recommendationRefreshCtx, stopRecommendationRefresh := context.WithCancel(context.Background())
+	defer stopRecommendationRefresh()
+	go func() {
+		ticker := time.NewTicker(time.Duration(recommendationRefreshMinutes) * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-recommendationRefreshCtx.Done():
+				return
+			case <-ticker.C:
+				if err := jobrecommendations.EnqueueForActiveUsers(recommendationRefreshCtx, jobQueue, candidateProfileRepo); err != nil {
+					slog.Error("periodic recommendation refresh failed", "error", err)
+				}
+			}
+		}
+	}()
 
 	learningRepo := learning.NewRepository(db)
 	learningService := learning.NewService(learningRepo, aiWorkerClient, candidateSkillsRepo, matchingRepo, matchingService)

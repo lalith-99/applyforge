@@ -81,6 +81,9 @@ type Querier interface {
 	GetUserProfile(ctx context.Context, userID pgtype.UUID) (UserProfile, error)
 	InsertJobRecommendation(ctx context.Context, arg InsertJobRecommendationParams) error
 	LinkGoogleAccount(ctx context.Context, arg LinkGoogleAccountParams) (User, error)
+	// Distinct users who have generated at least one candidate profile - the
+	// "active user" set for hourly recommendation refresh.
+	ListActiveCandidateProfileUserIDs(ctx context.Context) ([]pgtype.UUID, error)
 	ListApplicationEvents(ctx context.Context, applicationID pgtype.UUID) ([]ApplicationEvent, error)
 	ListApplicationsForUser(ctx context.Context, userID pgtype.UUID) ([]Application, error)
 	ListApplicationsWithJobForUser(ctx context.Context, userID pgtype.UUID) ([]ListApplicationsWithJobForUserRow, error)

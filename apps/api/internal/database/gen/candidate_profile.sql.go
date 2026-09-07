@@ -167,6 +167,32 @@ func (q *Queries) GetLatestCandidateProfileVersion(ctx context.Context, userID p
 	return i, err
 }
 
+const listActiveCandidateProfileUserIDs = `-- name: ListActiveCandidateProfileUserIDs :many
+SELECT DISTINCT user_id FROM candidate_profile_versions
+`
+
+// Distinct users who have generated at least one candidate profile - the
+// "active user" set for hourly recommendation refresh.
+func (q *Queries) ListActiveCandidateProfileUserIDs(ctx context.Context) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listActiveCandidateProfileUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var user_id pgtype.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateCandidateProfileEmbedding = `-- name: UpdateCandidateProfileEmbedding :exec
 UPDATE candidate_profile_versions SET embedding = $2, embedding_model = $3, embedded_at = now()
 WHERE id = $1

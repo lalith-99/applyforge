@@ -120,6 +120,24 @@ func TestSmartRecruitersSource_Fetch(t *testing.T) {
 	}
 }
 
+func TestWorkableSource_Fetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jobs":[{"shortcode":"WK1","title":"Backend Engineer","url":"https://apply.workable.com/acme/j/WK1","published_on":"2026-09-01","employment_type":"full","telecommuting":true,"description":"<p>Build things</p>","location":{"city":"San Francisco","region":"CA","country":"United States","country_code":"US"}}]}`))
+	}))
+	defer server.Close()
+
+	source := NewWorkableSource("acme")
+	source.BaseURL = server.URL
+	raw, _, err := source.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(raw) != 1 || raw[0].Country != "United States" || raw[0].State != "CA" || raw[0].City != "San Francisco" || raw[0].RemoteType != "remote" || raw[0].PostedAt == nil {
+		t.Fatalf("unexpected workable job: %+v", raw)
+	}
+}
+
 func TestConnectors_FetchError_OnNon200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

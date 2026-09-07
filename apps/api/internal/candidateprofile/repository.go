@@ -94,6 +94,21 @@ func (r *Repository) GetLatestEmbedding(ctx context.Context, userID uuid.UUID) (
 	return vec.Slice(), nil
 }
 
+// ListActiveUserIDs returns every user who has generated at least one
+// candidate profile - used to drive periodic recommendation refresh instead
+// of only recomputing reactively on profile/resume changes.
+func (r *Repository) ListActiveUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := r.q.ListActiveCandidateProfileUserIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, database.PGToUUID(row))
+	}
+	return ids, nil
+}
+
 // Create inserts the next version of a user's profile (version = 1 + the
 // current latest, or 1 if none exists yet).
 func (r *Repository) Create(ctx context.Context, userID uuid.UUID, p Profile) (Profile, error) {
