@@ -127,29 +127,28 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			}
 		}
 
-		// Enrich eagerly only for fresh U.S. IC-software jobs. Re-touching
-		// an already-seen job on every poll (the common case once a source
-		// is caught up) would otherwise re-enqueue enrichment for its whole
-		// backlog every cycle; GetOrParse's content_hash cache means that's
-		// merely wasteful for jobs that already have a cached parse, but for
-		// a source's FIRST poll after enabling eager enrichment it means one
-		// real (paid) AI call per already-ingested job, all at once. A JD
-		// that's edited after first ingestion is still picked up lazily via
-		// GetOrParse's content_hash check on next view, same as before this
-		// change - just not proactively.
 		if upserted.Inserted {
 			result.Inserted++
-			if s.queue != nil && location.CountryCode == "US" && classification.Classification == "IC_SOFTWARE" && isFreshForEagerAI(raw.PostedAt, pollStart) {
-				payload := EnrichPayload{JobID: upserted.Job.ID.String()}
-				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
-					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
-				}
-				if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
-					slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
-				}
-			}
 		} else {
 			result.Updated++
+		}
+
+		// Eager AI runs only for a genuinely new posting or a posting whose
+		// content hash changed. Hourly re-touches of unchanged jobs therefore
+		// remain free, while edited descriptions get fresh requirements and
+		// embeddings without waiting for a user to open the job.
+		shouldRefreshAI := upserted.Inserted || upserted.ContentChanged
+		if shouldRefreshAI && s.queue != nil &&
+			location.CountryCode == "US" &&
+			classification.Classification == "IC_SOFTWARE" &&
+			isFreshForEagerAI(raw.PostedAt, pollStart) {
+			payload := EnrichPayload{JobID: upserted.Job.ID.String()}
+			if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
+				slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
+			}
+			if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+				slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+			}
 		}
 	}
 
