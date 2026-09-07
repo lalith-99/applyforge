@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,5 +112,21 @@ func TestBrightDataRawJob_DerivesStableIDAndRemote(t *testing.T) {
 	}
 	if first.RemoteType != "remote" {
 		t.Fatalf("expected remote classification: %+v", first)
+	}
+}
+
+
+func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
+	filters := brightDataTitleFilters("job_title", "us-java-24h")
+	encoded, err := json.Marshal(filters)
+	if err != nil {
+		t.Fatalf("marshal filters: %v", err)
+	}
+	text := string(encoded)
+	if !strings.Contains(text, "Java Developer") || !strings.Contains(text, "Spring Boot Developer") {
+		t.Fatalf("java shard is missing Java/Spring titles: %s", text)
+	}
+	if strings.Contains(text, "Golang Developer") {
+		t.Fatalf("java shard must not silently use the Go shard: %s", text)
 	}
 }
