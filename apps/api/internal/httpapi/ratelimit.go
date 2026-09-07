@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -16,6 +17,8 @@ type rateLimiter struct {
 	visitors map[string]*visitorState
 	limit    int
 	window   time.Duration
+	scope    string
+	store    RateLimitStore
 }
 
 type visitorState struct {
@@ -24,10 +27,16 @@ type visitorState struct {
 }
 
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
+	return newSharedRateLimiter("", limit, window, nil)
+}
+
+func newSharedRateLimiter(scope string, limit int, window time.Duration, store RateLimitStore) *rateLimiter {
 	return &rateLimiter{
 		visitors: make(map[string]*visitorState),
 		limit:    limit,
 		window:   window,
+		scope:    scope,
+		store:    store,
 	}
 }
 
@@ -68,7 +77,21 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 			key = host
 		}
-		if !rl.allow(key) {
+		allowed := true
+		if rl.store != nil {
+			var err error
+			allowed, err = rl.store.Increment(r.Context(), rl.scope, key, rl.limit, rl.window)
+			if err != nil {
+				// Degrade to the local limiter rather than disabling protection
+				// or failing every API request during a transient DB problem.
+				slog.Error("shared rate limiter failed; using local fallback", "scope", rl.scope, "error", err)
+				allowed = rl.allow(key)
+			}
+		} else {
+			allowed = rl.allow(key)
+		}
+		if !allowed {
+			w.Header().Set("Retry-After", "60")
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many requests"})
 			return
 		}
