@@ -93,13 +93,13 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			continue
 		}
 		rec := Recommendation{
-			JobID:                   r.Job.ID,
-			DeterministicScore:      int32(r.Result.TotalScore),
-			FinalScore:              int32(r.Result.TotalScore),
-			CandidateProfileVersion: &version,
-			ImmigrationStatus:       r.Result.Eligibility.Immigration.Status,
-			ImmigrationConfidence:   r.Result.Eligibility.Immigration.Confidence,
-			ImmigrationEvidence:     r.Result.Eligibility.Immigration.Evidence,
+			JobID:                    r.Job.ID,
+			DeterministicScore:       int32(r.Result.TotalScore),
+			FinalScore:               int32(r.Result.TotalScore),
+			CandidateProfileVersion:  &version,
+			ImmigrationStatus:        r.Result.Eligibility.Immigration.Status,
+			ImmigrationConfidence:    r.Result.Eligibility.Immigration.Confidence,
+			ImmigrationEvidence:      r.Result.Eligibility.Immigration.Evidence,
 			ImmigrationPriorityScore: int32(r.Result.ImmigrationPriorityScore),
 		}
 		if r.HasJudgment {
@@ -115,7 +115,6 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 	}
 	return recs
 }
-
 
 func blendImmigrationPriority(baseScore int, result matching.Result) int {
 	if !result.ImmigrationRelevant {

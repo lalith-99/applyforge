@@ -22,18 +22,18 @@ INSERT INTO job_recommendations (
 `
 
 type InsertJobRecommendationParams struct {
-	UserID                  pgtype.UUID `json:"user_id"`
-	JobID                   pgtype.UUID `json:"job_id"`
-	DeterministicScore      int32       `json:"deterministic_score"`
-	AiFitScore              pgtype.Int4 `json:"ai_fit_score"`
-	AiRecommendation        pgtype.Text `json:"ai_recommendation"`
-	AiReason                string      `json:"ai_reason"`
-	FinalScore              int32       `json:"final_score"`
-	CandidateProfileVersion pgtype.Int4 `json:"candidate_profile_version"`
-	ImmigrationStatus       string      `json:"immigration_status"`
-	ImmigrationConfidence   string      `json:"immigration_confidence"`
-	ImmigrationEvidence     string      `json:"immigration_evidence"`
-	ImmigrationPriorityScore int32      `json:"immigration_priority_score"`
+	UserID                   pgtype.UUID `json:"user_id"`
+	JobID                    pgtype.UUID `json:"job_id"`
+	DeterministicScore       int32       `json:"deterministic_score"`
+	AiFitScore               pgtype.Int4 `json:"ai_fit_score"`
+	AiRecommendation         pgtype.Text `json:"ai_recommendation"`
+	AiReason                 string      `json:"ai_reason"`
+	FinalScore               int32       `json:"final_score"`
+	CandidateProfileVersion  pgtype.Int4 `json:"candidate_profile_version"`
+	ImmigrationStatus        string      `json:"immigration_status"`
+	ImmigrationConfidence    string      `json:"immigration_confidence"`
+	ImmigrationEvidence      string      `json:"immigration_evidence"`
+	ImmigrationPriorityScore int32       `json:"immigration_priority_score"`
 }
 
 func (q *Queries) InsertJobRecommendation(ctx context.Context, arg InsertJobRecommendationParams) error {
@@ -86,26 +86,26 @@ type ListJobRecommendationsParams struct {
 }
 
 type ListJobRecommendationsRow struct {
-	ID                      pgtype.UUID        `json:"id"`
-	UserID                  pgtype.UUID        `json:"user_id"`
-	JobID                   pgtype.UUID        `json:"job_id"`
-	DeterministicScore      int32              `json:"deterministic_score"`
-	AiFitScore              pgtype.Int4        `json:"ai_fit_score"`
-	AiRecommendation        pgtype.Text        `json:"ai_recommendation"`
-	AiReason                string             `json:"ai_reason"`
-	FinalScore              int32              `json:"final_score"`
-	CandidateProfileVersion pgtype.Int4        `json:"candidate_profile_version"`
-	ImmigrationStatus       string             `json:"immigration_status"`
-	ImmigrationConfidence   string             `json:"immigration_confidence"`
-	ImmigrationEvidence     string             `json:"immigration_evidence"`
-	ImmigrationPriorityScore int32             `json:"immigration_priority_score"`
-	ComputedAt              pgtype.Timestamptz `json:"computed_at"`
-	Title                   string             `json:"title"`
-	CompanyName             string             `json:"company_name"`
-	LocationText            pgtype.Text        `json:"location_text"`
-	RemoteType              pgtype.Text        `json:"remote_type"`
-	EmploymentType          pgtype.Text        `json:"employment_type"`
-	ApplyUrl                pgtype.Text        `json:"apply_url"`
+	ID                       pgtype.UUID        `json:"id"`
+	UserID                   pgtype.UUID        `json:"user_id"`
+	JobID                    pgtype.UUID        `json:"job_id"`
+	DeterministicScore       int32              `json:"deterministic_score"`
+	AiFitScore               pgtype.Int4        `json:"ai_fit_score"`
+	AiRecommendation         pgtype.Text        `json:"ai_recommendation"`
+	AiReason                 string             `json:"ai_reason"`
+	FinalScore               int32              `json:"final_score"`
+	CandidateProfileVersion  pgtype.Int4        `json:"candidate_profile_version"`
+	ImmigrationStatus        string             `json:"immigration_status"`
+	ImmigrationConfidence    string             `json:"immigration_confidence"`
+	ImmigrationEvidence      string             `json:"immigration_evidence"`
+	ImmigrationPriorityScore int32              `json:"immigration_priority_score"`
+	ComputedAt               pgtype.Timestamptz `json:"computed_at"`
+	Title                    string             `json:"title"`
+	CompanyName              string             `json:"company_name"`
+	LocationText             pgtype.Text        `json:"location_text"`
+	RemoteType               pgtype.Text        `json:"remote_type"`
+	EmploymentType           pgtype.Text        `json:"employment_type"`
+	ApplyUrl                 pgtype.Text        `json:"apply_url"`
 }
 
 // Re-enforces country/software/status hard filters at read time (not just

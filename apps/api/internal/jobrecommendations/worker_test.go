@@ -52,7 +52,6 @@ func TestToRecommendations_KeepsJobsWithNoJudgment(t *testing.T) {
 	}
 }
 
-
 func TestBlendImmigrationPriority_ExplicitSupportOutranksUnknown(t *testing.T) {
 	explicit := matching.Result{
 		ImmigrationRelevant:      true,

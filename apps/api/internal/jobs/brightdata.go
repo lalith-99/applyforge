@@ -68,6 +68,7 @@ var brightDataLegacySoftwareTitles = []string{
 	"AI Engineer", "Security Engineer", "Mobile Engineer", "Embedded Software Engineer",
 	"Systems Software Engineer",
 }
+
 type BrightDataConfig struct {
 	APIKey          string
 	DatasetID       string

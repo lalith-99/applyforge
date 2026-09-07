@@ -162,7 +162,6 @@ func orEmpty(s []string) []string {
 	return s
 }
 
-
 // RequiresH1BSupport returns true when the user's persisted preferences mean
 // a current role must support an H-1B/change-of-employer path. H-1B status is
 // itself sufficient: users should not need to remember a second checkbox for

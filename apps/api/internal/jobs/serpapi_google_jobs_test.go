@@ -62,8 +62,8 @@ func TestSerpAPIGoogleJobsSource_FetchesBoundedPagesAndMapsJobs(t *testing.T) {
 				"description":  "Backend engineering.",
 				"job_id":       "job-2",
 				"detected_extensions": map[string]any{
-					"posted_at":     "20 hours ago",
-					"schedule_type": "Full-time",
+					"posted_at":      "20 hours ago",
+					"schedule_type":  "Full-time",
 					"work_from_home": true,
 				},
 				"apply_options": []map[string]any{{"title": "Indeed", "link": "https://indeed.example/job-2"}},
@@ -74,8 +74,8 @@ func TestSerpAPIGoogleJobsSource_FetchesBoundedPagesAndMapsJobs(t *testing.T) {
 
 	now := time.Date(2026, 9, 7, 18, 0, 0, 0, time.UTC)
 	source := NewSerpAPIGoogleJobsSource("us-java-24h", SerpAPIGoogleJobsConfig{
-		APIKey: "test-key",
-		BaseURL: server.URL + "/search.json",
+		APIKey:   "test-key",
+		BaseURL:  server.URL + "/search.json",
 		MaxPages: 5,
 	})
 	source.now = func() time.Time { return now }

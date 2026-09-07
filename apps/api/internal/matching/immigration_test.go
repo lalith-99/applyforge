@@ -110,7 +110,6 @@ func TestAssessImmigration_PERMHistoryOnlyCountsWhenRelevant(t *testing.T) {
 	}
 }
 
-
 func TestAssessImmigration_H1BStatusRequiresTransferSupportWithoutCheckbox(t *testing.T) {
 	in := Input{
 		ImmigrationStatus: "H-1B",

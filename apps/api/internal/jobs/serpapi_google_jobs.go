@@ -61,13 +61,13 @@ func (s *SerpAPIGoogleJobsSource) Name() string { return "SERPAPI_GOOGLE_JOBS:" 
 
 type serpAPIGoogleJobsResponse struct {
 	JobsResults []struct {
-		Title       string `json:"title"`
-		CompanyName string `json:"company_name"`
-		Location    string `json:"location"`
-		Via         string `json:"via"`
-		Description string `json:"description"`
-		ShareLink   string `json:"share_link"`
-		JobID       string `json:"job_id"`
+		Title              string `json:"title"`
+		CompanyName        string `json:"company_name"`
+		Location           string `json:"location"`
+		Via                string `json:"via"`
+		Description        string `json:"description"`
+		ShareLink          string `json:"share_link"`
+		JobID              string `json:"job_id"`
 		DetectedExtensions struct {
 			PostedAt     string `json:"posted_at"`
 			ScheduleType string `json:"schedule_type"`
@@ -158,13 +158,13 @@ func googleJobsQueryForShard(shard string) string {
 }
 
 func (s *SerpAPIGoogleJobsSource) mapJob(record struct {
-	Title       string `json:"title"`
-	CompanyName string `json:"company_name"`
-	Location    string `json:"location"`
-	Via         string `json:"via"`
-	Description string `json:"description"`
-	ShareLink   string `json:"share_link"`
-	JobID       string `json:"job_id"`
+	Title              string `json:"title"`
+	CompanyName        string `json:"company_name"`
+	Location           string `json:"location"`
+	Via                string `json:"via"`
+	Description        string `json:"description"`
+	ShareLink          string `json:"share_link"`
+	JobID              string `json:"job_id"`
 	DetectedExtensions struct {
 		PostedAt     string `json:"posted_at"`
 		ScheduleType string `json:"schedule_type"`

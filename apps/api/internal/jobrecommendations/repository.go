@@ -16,17 +16,17 @@ import (
 
 // Recommendation is one precomputed ranked job for a user.
 type Recommendation struct {
-	JobID                   uuid.UUID
-	DeterministicScore      int32
-	AIFitScore              *int32
-	AIRecommendation        *string
-	AIReason                string
-	FinalScore              int32
-	CandidateProfileVersion   *int32
-	ImmigrationStatus         string
-	ImmigrationConfidence     string
-	ImmigrationEvidence       string
-	ImmigrationPriorityScore  int32
+	JobID                    uuid.UUID
+	DeterministicScore       int32
+	AIFitScore               *int32
+	AIRecommendation         *string
+	AIReason                 string
+	FinalScore               int32
+	CandidateProfileVersion  *int32
+	ImmigrationStatus        string
+	ImmigrationConfidence    string
+	ImmigrationEvidence      string
+	ImmigrationPriorityScore int32
 }
 
 // RecommendationWithJob is a Recommendation joined with the job summary
@@ -61,17 +61,17 @@ func (r *Repository) ReplaceForUser(ctx context.Context, userID uuid.UUID, recs 
 	}
 	for _, rec := range recs {
 		if err := r.q.InsertJobRecommendation(ctx, db.InsertJobRecommendationParams{
-			UserID:                  database.UUIDToPG(userID),
-			JobID:                   database.UUIDToPG(rec.JobID),
-			DeterministicScore:      rec.DeterministicScore,
-			AiFitScore:              database.PGInt4(rec.AIFitScore),
-			AiRecommendation:        database.PGText(rec.AIRecommendation),
-			AiReason:                rec.AIReason,
-			FinalScore:              rec.FinalScore,
-			CandidateProfileVersion: database.PGInt4(rec.CandidateProfileVersion),
-			ImmigrationStatus:       rec.ImmigrationStatus,
-			ImmigrationConfidence:   rec.ImmigrationConfidence,
-			ImmigrationEvidence:     rec.ImmigrationEvidence,
+			UserID:                   database.UUIDToPG(userID),
+			JobID:                    database.UUIDToPG(rec.JobID),
+			DeterministicScore:       rec.DeterministicScore,
+			AiFitScore:               database.PGInt4(rec.AIFitScore),
+			AiRecommendation:         database.PGText(rec.AIRecommendation),
+			AiReason:                 rec.AIReason,
+			FinalScore:               rec.FinalScore,
+			CandidateProfileVersion:  database.PGInt4(rec.CandidateProfileVersion),
+			ImmigrationStatus:        rec.ImmigrationStatus,
+			ImmigrationConfidence:    rec.ImmigrationConfidence,
+			ImmigrationEvidence:      rec.ImmigrationEvidence,
 			ImmigrationPriorityScore: rec.ImmigrationPriorityScore,
 		}); err != nil {
 			return err
@@ -94,16 +94,16 @@ func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID, limit in
 	for _, row := range rows {
 		out = append(out, RecommendationWithJob{
 			Recommendation: Recommendation{
-				JobID:                   database.PGToUUID(row.JobID),
-				DeterministicScore:      row.DeterministicScore,
-				AIFitScore:              database.Int4OrNil(row.AiFitScore),
-				AIRecommendation:        database.TextOrNil(row.AiRecommendation),
-				AIReason:                row.AiReason,
-				FinalScore:              row.FinalScore,
-				CandidateProfileVersion: database.Int4OrNil(row.CandidateProfileVersion),
-				ImmigrationStatus:       row.ImmigrationStatus,
-				ImmigrationConfidence:   row.ImmigrationConfidence,
-				ImmigrationEvidence:     row.ImmigrationEvidence,
+				JobID:                    database.PGToUUID(row.JobID),
+				DeterministicScore:       row.DeterministicScore,
+				AIFitScore:               database.Int4OrNil(row.AiFitScore),
+				AIRecommendation:         database.TextOrNil(row.AiRecommendation),
+				AIReason:                 row.AiReason,
+				FinalScore:               row.FinalScore,
+				CandidateProfileVersion:  database.Int4OrNil(row.CandidateProfileVersion),
+				ImmigrationStatus:        row.ImmigrationStatus,
+				ImmigrationConfidence:    row.ImmigrationConfidence,
+				ImmigrationEvidence:      row.ImmigrationEvidence,
 				ImmigrationPriorityScore: row.ImmigrationPriorityScore,
 			},
 			Title:          row.Title,

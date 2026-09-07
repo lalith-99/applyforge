@@ -244,12 +244,12 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	candidateProfile, profileErr := s.candidateProfiles.GetLatest(ctx, userID)
 	if profileErr == nil {
 		lexicalFilter := jobs.ListFilter{
-			RemoteType:                 filter.RemoteType,
-			PostedAfter:                filter.PostedAfter,
-			CountryCode:                filter.CountryCode,
-			ExcludeSponsorshipDenied:   filter.ExcludeSponsorshipDenied,
-			Sort:                       "newest",
-			Limit:                      40,
+			RemoteType:               filter.RemoteType,
+			PostedAfter:              filter.PostedAfter,
+			CountryCode:              filter.CountryCode,
+			ExcludeSponsorshipDenied: filter.ExcludeSponsorshipDenied,
+			Sort:                     "newest",
+			Limit:                    40,
 		}
 		const maxHybridCandidates = 700
 		for _, term := range recommendationLexicalTerms(candidateProfile) {
@@ -291,7 +291,6 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	}
 	return ranked, nil
 }
-
 
 func recommendationLexicalTerms(candidate candidateprofile.Profile) []string {
 	seen := make(map[string]bool)

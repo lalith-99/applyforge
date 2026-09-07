@@ -100,16 +100,16 @@ func jobFromRow(row db.GetJobByIDRow) Job {
 
 // ListFilter narrows a job listing query. Zero values mean "no filter".
 type ListFilter struct {
-	Search         string
-	RemoteType     string
-	EmploymentType string
-	PostedAfter    *time.Time
-	Location       string // matched against location_text/city/state
-	CountryCode                string // exact ISO 3166-1 alpha-2 match
-	ExcludeSponsorshipDenied   bool   // true for candidates who require visa/transfer support
-	Sort                       string // "newest" | "salary" | "" (default: first_seen_at desc)
-	Limit          int32
-	Offset         int32
+	Search                   string
+	RemoteType               string
+	EmploymentType           string
+	PostedAfter              *time.Time
+	Location                 string // matched against location_text/city/state
+	CountryCode              string // exact ISO 3166-1 alpha-2 match
+	ExcludeSponsorshipDenied bool   // true for candidates who require visa/transfer support
+	Sort                     string // "newest" | "salary" | "" (default: first_seen_at desc)
+	Limit                    int32
+	Offset                   int32
 }
 
 // Repository provides access to company/job-source/job records.
@@ -418,9 +418,9 @@ type JobMatch struct {
 // in the same query as the cosine-distance ranking so the ANN index only
 // has to rank whatever survives them.
 type EmbeddingSearchFilter struct {
-	RemoteType     string
-	EmploymentType string
-	PostedAfter    *time.Time
+	RemoteType               string
+	EmploymentType           string
+	PostedAfter              *time.Time
 	CountryCode              string
 	ExcludeSponsorshipDenied bool
 }
@@ -495,12 +495,12 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 	}
 
 	rows, err := r.q.ListJobs(ctx, db.ListJobsParams{
-		Column1: filter.Search,
-		Column2: filter.RemoteType,
-		Column3: filter.EmploymentType,
-		Column4: database.PGTimestamptz(filter.PostedAfter),
-		Column5: filter.Location,
-		Column6: filter.CountryCode,
+		Column1:  filter.Search,
+		Column2:  filter.RemoteType,
+		Column3:  filter.EmploymentType,
+		Column4:  database.PGTimestamptz(filter.PostedAfter),
+		Column5:  filter.Location,
+		Column6:  filter.CountryCode,
 		Column7:  filter.Sort,
 		Limit:    limit,
 		Offset:   filter.Offset,

@@ -1,8 +1,8 @@
 package jobs
 
 import (
-	"errors"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -101,16 +101,16 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobsList, total, err := h.repo.List(r.Context(), ListFilter{
-		Search:         q.Get("search"),
-		RemoteType:     q.Get("remote_type"),
-		EmploymentType: normalizeEmploymentType(q.Get("employment_type")),
-		PostedAfter:    postedAfter,
-		Location:       location,
+		Search:                   q.Get("search"),
+		RemoteType:               q.Get("remote_type"),
+		EmploymentType:           normalizeEmploymentType(q.Get("employment_type")),
+		PostedAfter:              postedAfter,
+		Location:                 location,
 		CountryCode:              countryCode,
 		ExcludeSponsorshipDenied: excludeSponsorshipDenied,
 		Sort:                     q.Get("sort"),
-		Limit:          limit,
-		Offset:         offset,
+		Limit:                    limit,
+		Offset:                   offset,
 	})
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not list jobs")

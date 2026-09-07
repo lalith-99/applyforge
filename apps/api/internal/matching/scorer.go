@@ -396,7 +396,6 @@ func describeRatio(ratio float64) string {
 	}
 }
 
-
 func immigrationPriorityScore(assessment ImmigrationAssessment, relevant bool) int {
 	if !relevant {
 		return 50

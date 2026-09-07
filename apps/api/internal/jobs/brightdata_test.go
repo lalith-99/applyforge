@@ -115,7 +115,6 @@ func TestBrightDataRawJob_DerivesStableIDAndRemote(t *testing.T) {
 	}
 }
 
-
 func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
 	filters := brightDataTitleFilters("job_title", "us-java-24h")
 	encoded, err := json.Marshal(filters)

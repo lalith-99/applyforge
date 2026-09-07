@@ -315,12 +315,12 @@ LIMIT $8 OFFSET $9
 `
 
 type ListJobsParams struct {
-	Column1 string             `json:"column_1"`
-	Column2 string             `json:"column_2"`
-	Column3 string             `json:"column_3"`
-	Column4 pgtype.Timestamptz `json:"column_4"`
-	Column5 string             `json:"column_5"`
-	Column6 string             `json:"column_6"`
+	Column1  string             `json:"column_1"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  pgtype.Timestamptz `json:"column_4"`
+	Column5  string             `json:"column_5"`
+	Column6  string             `json:"column_6"`
 	Column7  string             `json:"column_7"`
 	Limit    int32              `json:"limit"`
 	Offset   int32              `json:"offset"`

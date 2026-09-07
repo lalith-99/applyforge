@@ -51,7 +51,6 @@ func TestValidateProductionConfig_DevelopmentAllowsLocalDefaults(t *testing.T) {
 	}
 }
 
-
 func TestValidateProductionConfig_RejectsProductionWithoutMarketWideJobs(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("WEB_BASE_URL", "https://app.example.com")
