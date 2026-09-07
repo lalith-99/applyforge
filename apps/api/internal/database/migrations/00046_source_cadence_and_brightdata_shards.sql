@@ -30,7 +30,9 @@ CROSS JOIN (VALUES
     ('us-backend-platform-24h'),
     ('us-devops-cloud-24h'),
     ('us-data-ai-24h'),
-    ('us-language-developers-24h')
+    ('us-language-developers-24h'),
+    ('us-enterprise-apps-24h'),
+    ('us-consulting-engineering-24h')
 ) AS shards(shard)
 WHERE normalized_name = 'bright data jobs'
 ON CONFLICT (source_type, board_token) DO UPDATE
@@ -47,7 +49,9 @@ WHERE source_type = 'BRIGHTDATA'
       'us-backend-platform-24h',
       'us-devops-cloud-24h',
       'us-data-ai-24h',
-      'us-language-developers-24h'
+      'us-language-developers-24h',
+      'us-enterprise-apps-24h',
+      'us-consulting-engineering-24h'
   );
 
 UPDATE job_sources
