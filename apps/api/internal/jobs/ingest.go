@@ -101,7 +101,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			SourceURL:            strOrNil(raw.SourceURL),
 			PostedAt:             raw.PostedAt,
 			ContentHash:          contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
-			Fingerprint:          buildFingerprint(jobCompanyName, raw.Title, raw.RemoteType),
+			Fingerprint:          buildFingerprint(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
 		}
 
 		upserted, err := s.repo.UpsertJob(ctx, job)
