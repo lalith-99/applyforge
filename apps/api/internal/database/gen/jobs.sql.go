@@ -51,6 +51,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
   )
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $7::bool OR explicit_sponsorship_denied = false)
+  AND (NOT $8::bool OR company_has_recent_h1b_history(company_id))
 `
 
 type CountJobsParams struct {
@@ -61,6 +62,7 @@ type CountJobsParams struct {
 	Column5 string             `json:"column_5"`
 	Column6 string             `json:"column_6"`
 	Column7 bool               `json:"column_7"`
+	Column8 bool               `json:"column_8"`
 }
 
 func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, error) {
@@ -72,6 +74,7 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 		arg.Column5,
 		arg.Column6,
 		arg.Column7,
+		arg.Column8,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -307,6 +310,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
   )
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $10::bool OR explicit_sponsorship_denied = false)
+  AND (NOT $11::bool OR company_has_recent_h1b_history(company_id))
 ORDER BY
   CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
   CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
@@ -325,6 +329,7 @@ type ListJobsParams struct {
 	Limit    int32              `json:"limit"`
 	Offset   int32              `json:"offset"`
 	Column10 bool               `json:"column_10"`
+	Column11 bool               `json:"column_11"`
 }
 
 type ListJobsRow struct {
@@ -377,6 +382,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 		arg.Limit,
 		arg.Offset,
 		arg.Column10,
+		arg.Column11,
 	)
 	if err != nil {
 		return nil, err
@@ -447,6 +453,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND ($5::timestamptz IS NULL OR posted_at >= $5)
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $7::bool OR explicit_sponsorship_denied = false)
+  AND (NOT $8::bool OR company_has_recent_h1b_history(company_id))
 ORDER BY embedding <=> $1
 LIMIT $2
 `
@@ -459,6 +466,7 @@ type SearchJobsByEmbeddingParams struct {
 	Column5   pgtype.Timestamptz `json:"column_5"`
 	Column6   string             `json:"column_6"`
 	Column7   bool               `json:"column_7"`
+	Column8   bool               `json:"column_8"`
 }
 
 type SearchJobsByEmbeddingRow struct {
@@ -515,6 +523,7 @@ func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmb
 		arg.Column5,
 		arg.Column6,
 		arg.Column7,
+		arg.Column8,
 	)
 	if err != nil {
 		return nil, err
