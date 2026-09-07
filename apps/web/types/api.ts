@@ -156,6 +156,10 @@ export interface RecommendedJob {
   AIReason: string;
   FinalScore: number;
   CandidateProfileVersion: number | null;
+  ImmigrationStatus: "SUPPORTED" | "HISTORICAL_SUPPORT" | "UNKNOWN" | "NOT_SUPPORTED";
+  ImmigrationConfidence: "HIGH" | "MEDIUM" | "LOW";
+  ImmigrationEvidence: string;
+  ImmigrationPriorityScore: number;
   Title: string;
   CompanyName: string;
   LocationText: string | null;
