@@ -7,10 +7,16 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from app.providers.openai_provider import AIProviderError, embed_text, is_configured
+from app.providers.openai_provider import (
+    AIProviderError,
+    apply_usage_headers,
+    clear_usage_metadata,
+    embed_text,
+    is_configured,
+)
 
 router = APIRouter(prefix="/v1/embeddings", tags=["embeddings"])
 
@@ -26,7 +32,7 @@ class EmbedResponse(BaseModel):
 
 
 @router.post("", response_model=EmbedResponse)
-def embed(request: EmbedRequest) -> EmbedResponse:
+def embed(request: EmbedRequest, response: Response) -> EmbedResponse:
     if not is_configured():
         raise HTTPException(
             status_code=503, detail="embeddings require OPENAI_API_KEY to be configured"
@@ -34,10 +40,12 @@ def embed(request: EmbedRequest) -> EmbedResponse:
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="text must not be empty")
 
+    clear_usage_metadata()
     try:
         vector = embed_text(request.text)
     except AIProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    apply_usage_headers(response)
     model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     return EmbedResponse(embedding=vector, model=model, dimensions=len(vector))
