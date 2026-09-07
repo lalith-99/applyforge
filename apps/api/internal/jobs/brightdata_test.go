@@ -131,6 +131,28 @@ func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
 }
 
 
+
+func TestBrightDataTitleFilters_CoversConsultingMarketTitleVariants(t *testing.T) {
+	javaFilters, err := json.Marshal(brightDataTitleFilters("job_title", "us-java-24h"))
+	if err != nil {
+		t.Fatalf("marshal java filters: %v", err)
+	}
+	javaText := string(javaFilters)
+	for _, title := range []string{"Full Stack Java Developer", "Java Full Stack Engineer", "Java Microservices Developer"} {
+		if !strings.Contains(javaText, title) {
+			t.Fatalf("java shard is missing %q: %s", title, javaText)
+		}
+	}
+
+	devopsFilters, err := json.Marshal(brightDataTitleFilters("job_title", "us-devops-cloud-24h"))
+	if err != nil {
+		t.Fatalf("marshal devops filters: %v", err)
+	}
+	if !strings.Contains(string(devopsFilters), "Azure DevOps Developer") {
+		t.Fatalf("devops shard is missing Azure DevOps Developer: %s", string(devopsFilters))
+	}
+}
+
 func TestBrightDataTitleFilters_CoversEnterpriseAndConsultingRoles(t *testing.T) {
 	enterprise, err := json.Marshal(brightDataTitleFilters("job_title", "us-enterprise-apps-24h"))
 	if err != nil {
