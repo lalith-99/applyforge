@@ -127,6 +127,8 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 		GreenCardSupportPreferred:           prefs.GreenCardSupportPreferred,
 		GreenCardSupportRequired:            prefs.GreenCardSupportRequired,
 		PermSupportPreferred:                prefs.PermSupportPreferred,
+		WorkAuthorization:                   stringOrEmpty(prefs.WorkAuthorization),
+		ImmigrationStatus:                   stringOrEmpty(prefs.ImmigrationStatus),
 		CompanyH1BCertifiedCases:            companyEvidence.H1BCertified,
 		CompanyH1BTotalCases:                companyEvidence.H1BTotal,
 		CompanyPERMCertifiedCases:           companyEvidence.PERMCertified,
