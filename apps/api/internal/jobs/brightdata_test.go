@@ -129,3 +129,28 @@ func TestBrightDataTitleFilters_UsesConfiguredShard(t *testing.T) {
 		t.Fatalf("java shard must not silently use the Go shard: %s", text)
 	}
 }
+
+
+func TestBrightDataTitleFilters_CoversEnterpriseAndConsultingRoles(t *testing.T) {
+	enterprise, err := json.Marshal(brightDataTitleFilters("job_title", "us-enterprise-apps-24h"))
+	if err != nil {
+		t.Fatalf("marshal enterprise filters: %v", err)
+	}
+	enterpriseText := string(enterprise)
+	for _, title := range []string{"Application Developer", "Integration Engineer", "Enterprise Software Engineer"} {
+		if !strings.Contains(enterpriseText, title) {
+			t.Fatalf("enterprise shard is missing %q: %s", title, enterpriseText)
+		}
+	}
+
+	consulting, err := json.Marshal(brightDataTitleFilters("job_title", "us-consulting-engineering-24h"))
+	if err != nil {
+		t.Fatalf("marshal consulting filters: %v", err)
+	}
+	consultingText := string(consulting)
+	for _, title := range []string{"Software Engineering Consultant", "Java Consultant", "DevOps Consultant"} {
+		if !strings.Contains(consultingText, title) {
+			t.Fatalf("consulting shard is missing %q: %s", title, consultingText)
+		}
+	}
+}
