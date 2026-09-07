@@ -82,7 +82,7 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
-WHERE fingerprint = $1 AND fingerprint != '' AND canonical_job_id IS NULL AND id != $2
+WHERE fingerprint = $1 AND fingerprint != '' AND canonical_job_id IS NULL AND status = 'ACTIVE' AND id != $2
 ORDER BY first_seen_at ASC
 LIMIT 1
 `
