@@ -162,7 +162,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return nil, err
 	}
 
-	filter := jobs.EmbeddingSearchFilter{}
+	filter := jobs.EmbeddingSearchFilter{CountryCode: "US"}
 	if prefs.Remote && !prefs.Hybrid && !prefs.Onsite {
 		filter.RemoteType = "remote"
 	}

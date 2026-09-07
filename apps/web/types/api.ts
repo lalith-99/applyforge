@@ -104,7 +104,15 @@ export interface JobSummary {
   company_name: string;
   title: string;
   normalized_title: string;
+  country: string | null;
+  state: string | null;
+  city: string | null;
   location_text: string | null;
+  country_code: string | null;
+  state_code: string | null;
+  workplace_type: "REMOTE" | "HYBRID" | "ONSITE";
+  remote_scope: "US" | "WORLDWIDE" | "STATE_RESTRICTED" | "UNKNOWN";
+  location_confidence: "HIGH" | "MEDIUM" | "LOW";
   remote_type: string | null;
   employment_type: string | null;
   salary_min: number | null;

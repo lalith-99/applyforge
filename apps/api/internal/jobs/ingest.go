@@ -70,22 +70,37 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			jobCompanyName = raw.CompanyName
 		}
 
+		location := normalizeLocation(raw)
+		country := raw.Country
+		if country == "" && location.CountryCode == "US" {
+			country = "United States"
+		}
+		state := firstNonEmpty(raw.State, location.StateCode)
 		job := Job{
-			Source:          sourceName,
-			ExternalID:      raw.ExternalID,
-			CompanyID:       jobCompanyID,
-			CompanyName:     jobCompanyName,
-			Title:           raw.Title,
-			NormalizedTitle: normalizeTitle(raw.Title),
-			Description:     raw.Description,
-			LocationText:    strOrNil(raw.LocationText),
-			RemoteType:      strOrNil(raw.RemoteType),
-			EmploymentType:  strOrNil(raw.EmploymentType),
-			ApplyURL:        strOrNil(raw.ApplyURL),
-			SourceURL:       strOrNil(raw.SourceURL),
-			PostedAt:        raw.PostedAt,
-			ContentHash:     contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
-			Fingerprint:     buildFingerprint(jobCompanyName, raw.Title, raw.RemoteType),
+			Source:               sourceName,
+			ExternalID:           raw.ExternalID,
+			CompanyID:            jobCompanyID,
+			CompanyName:          jobCompanyName,
+			Title:                raw.Title,
+			NormalizedTitle:      normalizeTitle(raw.Title),
+			Description:          raw.Description,
+			Country:              strOrNil(country),
+			State:                strOrNil(state),
+			City:                 strOrNil(firstNonEmpty(raw.City, location.City)),
+			LocationText:         strOrNil(raw.LocationText),
+			CountryCode:          strOrNil(location.CountryCode),
+			StateCode:            strOrNil(location.StateCode),
+			WorkplaceType:        location.WorkplaceType,
+			RemoteScope:          location.RemoteScope,
+			EligibleCountryCodes: location.EligibleCountryCodes,
+			LocationConfidence:   location.LocationConfidence,
+			RemoteType:           strOrNil(raw.RemoteType),
+			EmploymentType:       strOrNil(raw.EmploymentType),
+			ApplyURL:             strOrNil(raw.ApplyURL),
+			SourceURL:            strOrNil(raw.SourceURL),
+			PostedAt:             raw.PostedAt,
+			ContentHash:          contentHash(jobCompanyName, raw.Title, raw.LocationText, raw.Description),
+			Fingerprint:          buildFingerprint(jobCompanyName, raw.Title, raw.RemoteType),
 		}
 
 		upserted, err := s.repo.UpsertJob(ctx, job)

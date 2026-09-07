@@ -15,32 +15,41 @@ import (
 
 // Job is the domain representation of a canonical job posting.
 type Job struct {
-	ID              uuid.UUID
-	Source          string
-	ExternalID      string
-	CompanyID       uuid.UUID
-	CompanyName     string
-	Title           string
-	NormalizedTitle string
-	Seniority       *string
-	Description     string
-	LocationText    *string
-	RemoteType      *string
-	EmploymentType  *string
-	SalaryMin       *int32
-	SalaryMax       *int32
-	SalaryCurrency  *string
-	ApplyURL        *string
-	SourceURL       *string
-	PostedAt        *time.Time
-	FirstSeenAt     time.Time
-	UpdatedAt       time.Time
-	LastSeenAt      time.Time
-	ContentHash     string
-	Fingerprint     string
-	CanonicalJobID  *uuid.UUID // set when this row is a cross-source duplicate of another job
-	Status          string
-	CreatedAt       time.Time
+	ID                   uuid.UUID
+	Source               string
+	ExternalID           string
+	CompanyID            uuid.UUID
+	CompanyName          string
+	Title                string
+	NormalizedTitle      string
+	Seniority            *string
+	Description          string
+	Country              *string
+	State                *string
+	City                 *string
+	LocationText         *string
+	CountryCode          *string
+	StateCode            *string
+	WorkplaceType        string
+	RemoteScope          string
+	EligibleCountryCodes []string
+	LocationConfidence   string
+	RemoteType           *string
+	EmploymentType       *string
+	SalaryMin            *int32
+	SalaryMax            *int32
+	SalaryCurrency       *string
+	ApplyURL             *string
+	SourceURL            *string
+	PostedAt             *time.Time
+	FirstSeenAt          time.Time
+	UpdatedAt            time.Time
+	LastSeenAt           time.Time
+	ContentHash          string
+	Fingerprint          string
+	CanonicalJobID       *uuid.UUID // set when this row is a cross-source duplicate of another job
+	Status               string
+	CreatedAt            time.Time
 }
 
 // jobFromRow converts a job row into the domain Job type. Takes
@@ -51,32 +60,41 @@ type Job struct {
 // generated Row types are structurally identical and freely convertible.
 func jobFromRow(row db.GetJobByIDRow) Job {
 	return Job{
-		ID:              database.PGToUUID(row.ID),
-		Source:          row.Source,
-		ExternalID:      row.ExternalID,
-		CompanyID:       database.PGToUUID(row.CompanyID),
-		CompanyName:     row.CompanyName,
-		Title:           row.Title,
-		NormalizedTitle: row.NormalizedTitle,
-		Seniority:       database.TextOrNil(row.Seniority),
-		Description:     row.Description,
-		LocationText:    database.TextOrNil(row.LocationText),
-		RemoteType:      database.TextOrNil(row.RemoteType),
-		EmploymentType:  database.TextOrNil(row.EmploymentType),
-		SalaryMin:       database.Int4OrNil(row.SalaryMin),
-		SalaryMax:       database.Int4OrNil(row.SalaryMax),
-		SalaryCurrency:  database.TextOrNil(row.SalaryCurrency),
-		ApplyURL:        database.TextOrNil(row.ApplyUrl),
-		SourceURL:       database.TextOrNil(row.SourceUrl),
-		PostedAt:        database.TimeOrNil(row.PostedAt),
-		FirstSeenAt:     row.FirstSeenAt.Time,
-		UpdatedAt:       row.UpdatedAt.Time,
-		LastSeenAt:      row.LastSeenAt.Time,
-		ContentHash:     row.ContentHash,
-		Fingerprint:     row.Fingerprint,
-		CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
-		Status:          row.Status,
-		CreatedAt:       row.CreatedAt.Time,
+		ID:                   database.PGToUUID(row.ID),
+		Source:               row.Source,
+		ExternalID:           row.ExternalID,
+		CompanyID:            database.PGToUUID(row.CompanyID),
+		CompanyName:          row.CompanyName,
+		Title:                row.Title,
+		NormalizedTitle:      row.NormalizedTitle,
+		Seniority:            database.TextOrNil(row.Seniority),
+		Description:          row.Description,
+		Country:              database.TextOrNil(row.Country),
+		State:                database.TextOrNil(row.State),
+		City:                 database.TextOrNil(row.City),
+		LocationText:         database.TextOrNil(row.LocationText),
+		CountryCode:          database.TextOrNil(row.CountryCode),
+		StateCode:            database.TextOrNil(row.StateCode),
+		WorkplaceType:        row.WorkplaceType,
+		RemoteScope:          row.RemoteScope,
+		EligibleCountryCodes: row.EligibleCountryCodes,
+		LocationConfidence:   row.LocationConfidence,
+		RemoteType:           database.TextOrNil(row.RemoteType),
+		EmploymentType:       database.TextOrNil(row.EmploymentType),
+		SalaryMin:            database.Int4OrNil(row.SalaryMin),
+		SalaryMax:            database.Int4OrNil(row.SalaryMax),
+		SalaryCurrency:       database.TextOrNil(row.SalaryCurrency),
+		ApplyURL:             database.TextOrNil(row.ApplyUrl),
+		SourceURL:            database.TextOrNil(row.SourceUrl),
+		PostedAt:             database.TimeOrNil(row.PostedAt),
+		FirstSeenAt:          row.FirstSeenAt.Time,
+		UpdatedAt:            row.UpdatedAt.Time,
+		LastSeenAt:           row.LastSeenAt.Time,
+		ContentHash:          row.ContentHash,
+		Fingerprint:          row.Fingerprint,
+		CanonicalJobID:       database.UUIDPtrOrNil(row.CanonicalJobID),
+		Status:               row.Status,
+		CreatedAt:            row.CreatedAt.Time,
 	}
 }
 
@@ -86,7 +104,8 @@ type ListFilter struct {
 	RemoteType     string
 	EmploymentType string
 	PostedAfter    *time.Time
-	Location       string // matched against location_text/city/state/country
+	Location       string // matched against location_text/city/state
+	CountryCode    string // exact ISO 3166-1 alpha-2 match
 	Sort           string // "newest" | "salary" | "" (default: first_seen_at desc)
 	Limit          int32
 	Offset         int32
@@ -129,26 +148,51 @@ type UpsertJobResult struct {
 
 // UpsertJob idempotently inserts or updates a canonical job by (source, external_id).
 func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, error) {
+	eligibleCountryCodes := in.EligibleCountryCodes
+	if eligibleCountryCodes == nil {
+		eligibleCountryCodes = []string{}
+	}
+	workplaceType := in.WorkplaceType
+	if workplaceType == "" {
+		workplaceType = "ONSITE"
+	}
+	remoteScope := in.RemoteScope
+	if remoteScope == "" {
+		remoteScope = "UNKNOWN"
+	}
+	locationConfidence := in.LocationConfidence
+	if locationConfidence == "" {
+		locationConfidence = "LOW"
+	}
 	row, err := r.q.UpsertJob(ctx, db.UpsertJobParams{
-		Source:          in.Source,
-		ExternalID:      in.ExternalID,
-		CompanyID:       database.UUIDToPG(in.CompanyID),
-		CompanyName:     in.CompanyName,
-		Title:           in.Title,
-		NormalizedTitle: in.NormalizedTitle,
-		Seniority:       database.PGText(in.Seniority),
-		Description:     in.Description,
-		LocationText:    database.PGText(in.LocationText),
-		RemoteType:      database.PGText(in.RemoteType),
-		EmploymentType:  database.PGText(in.EmploymentType),
-		SalaryMin:       database.PGInt4(in.SalaryMin),
-		SalaryMax:       database.PGInt4(in.SalaryMax),
-		SalaryCurrency:  database.PGText(in.SalaryCurrency),
-		ApplyUrl:        database.PGText(in.ApplyURL),
-		SourceUrl:       database.PGText(in.SourceURL),
-		PostedAt:        database.PGTimestamptz(in.PostedAt),
-		ContentHash:     in.ContentHash,
-		Fingerprint:     in.Fingerprint,
+		Source:               in.Source,
+		ExternalID:           in.ExternalID,
+		CompanyID:            database.UUIDToPG(in.CompanyID),
+		CompanyName:          in.CompanyName,
+		Title:                in.Title,
+		NormalizedTitle:      in.NormalizedTitle,
+		Seniority:            database.PGText(in.Seniority),
+		Description:          in.Description,
+		Country:              database.PGText(in.Country),
+		State:                database.PGText(in.State),
+		City:                 database.PGText(in.City),
+		LocationText:         database.PGText(in.LocationText),
+		CountryCode:          database.PGText(in.CountryCode),
+		StateCode:            database.PGText(in.StateCode),
+		WorkplaceType:        workplaceType,
+		RemoteScope:          remoteScope,
+		EligibleCountryCodes: eligibleCountryCodes,
+		LocationConfidence:   locationConfidence,
+		RemoteType:           database.PGText(in.RemoteType),
+		EmploymentType:       database.PGText(in.EmploymentType),
+		SalaryMin:            database.PGInt4(in.SalaryMin),
+		SalaryMax:            database.PGInt4(in.SalaryMax),
+		SalaryCurrency:       database.PGText(in.SalaryCurrency),
+		ApplyUrl:             database.PGText(in.ApplyURL),
+		SourceUrl:            database.PGText(in.SourceURL),
+		PostedAt:             database.PGTimestamptz(in.PostedAt),
+		ContentHash:          in.ContentHash,
+		Fingerprint:          in.Fingerprint,
 	})
 	if err != nil {
 		return UpsertJobResult{}, err
@@ -158,32 +202,41 @@ func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, er
 
 func jobFromUpsertRow(row db.UpsertJobRow) Job {
 	return Job{
-		ID:              database.PGToUUID(row.ID),
-		Source:          row.Source,
-		ExternalID:      row.ExternalID,
-		CompanyID:       database.PGToUUID(row.CompanyID),
-		CompanyName:     row.CompanyName,
-		Title:           row.Title,
-		NormalizedTitle: row.NormalizedTitle,
-		Seniority:       database.TextOrNil(row.Seniority),
-		Description:     row.Description,
-		LocationText:    database.TextOrNil(row.LocationText),
-		RemoteType:      database.TextOrNil(row.RemoteType),
-		EmploymentType:  database.TextOrNil(row.EmploymentType),
-		SalaryMin:       database.Int4OrNil(row.SalaryMin),
-		SalaryMax:       database.Int4OrNil(row.SalaryMax),
-		SalaryCurrency:  database.TextOrNil(row.SalaryCurrency),
-		ApplyURL:        database.TextOrNil(row.ApplyUrl),
-		SourceURL:       database.TextOrNil(row.SourceUrl),
-		PostedAt:        database.TimeOrNil(row.PostedAt),
-		FirstSeenAt:     row.FirstSeenAt.Time,
-		UpdatedAt:       row.UpdatedAt.Time,
-		LastSeenAt:      row.LastSeenAt.Time,
-		ContentHash:     row.ContentHash,
-		Fingerprint:     row.Fingerprint,
-		CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
-		Status:          row.Status,
-		CreatedAt:       row.CreatedAt.Time,
+		ID:                   database.PGToUUID(row.ID),
+		Source:               row.Source,
+		ExternalID:           row.ExternalID,
+		CompanyID:            database.PGToUUID(row.CompanyID),
+		CompanyName:          row.CompanyName,
+		Title:                row.Title,
+		NormalizedTitle:      row.NormalizedTitle,
+		Seniority:            database.TextOrNil(row.Seniority),
+		Description:          row.Description,
+		Country:              database.TextOrNil(row.Country),
+		State:                database.TextOrNil(row.State),
+		City:                 database.TextOrNil(row.City),
+		LocationText:         database.TextOrNil(row.LocationText),
+		CountryCode:          database.TextOrNil(row.CountryCode),
+		StateCode:            database.TextOrNil(row.StateCode),
+		WorkplaceType:        row.WorkplaceType,
+		RemoteScope:          row.RemoteScope,
+		EligibleCountryCodes: row.EligibleCountryCodes,
+		LocationConfidence:   row.LocationConfidence,
+		RemoteType:           database.TextOrNil(row.RemoteType),
+		EmploymentType:       database.TextOrNil(row.EmploymentType),
+		SalaryMin:            database.Int4OrNil(row.SalaryMin),
+		SalaryMax:            database.Int4OrNil(row.SalaryMax),
+		SalaryCurrency:       database.TextOrNil(row.SalaryCurrency),
+		ApplyURL:             database.TextOrNil(row.ApplyUrl),
+		SourceURL:            database.TextOrNil(row.SourceUrl),
+		PostedAt:             database.TimeOrNil(row.PostedAt),
+		FirstSeenAt:          row.FirstSeenAt.Time,
+		UpdatedAt:            row.UpdatedAt.Time,
+		LastSeenAt:           row.LastSeenAt.Time,
+		ContentHash:          row.ContentHash,
+		Fingerprint:          row.Fingerprint,
+		CanonicalJobID:       database.UUIDPtrOrNil(row.CanonicalJobID),
+		Status:               row.Status,
+		CreatedAt:            row.CreatedAt.Time,
 	}
 }
 
@@ -268,6 +321,7 @@ type EmbeddingSearchFilter struct {
 	RemoteType     string
 	EmploymentType string
 	PostedAfter    *time.Time
+	CountryCode    string
 }
 
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded
@@ -280,6 +334,7 @@ func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, li
 		Column3:   filter.RemoteType,
 		Column4:   filter.EmploymentType,
 		Column5:   database.PGTimestamptz(filter.PostedAfter),
+		Column6:   filter.CountryCode,
 	})
 	if err != nil {
 		return nil, err
@@ -288,32 +343,41 @@ func (r *Repository) SearchByEmbedding(ctx context.Context, vector []float32, li
 	for _, row := range rows {
 		matches = append(matches, JobMatch{
 			Job: Job{
-				ID:              database.PGToUUID(row.ID),
-				Source:          row.Source,
-				ExternalID:      row.ExternalID,
-				CompanyID:       database.PGToUUID(row.CompanyID),
-				CompanyName:     row.CompanyName,
-				Title:           row.Title,
-				NormalizedTitle: row.NormalizedTitle,
-				Seniority:       database.TextOrNil(row.Seniority),
-				Description:     row.Description,
-				LocationText:    database.TextOrNil(row.LocationText),
-				RemoteType:      database.TextOrNil(row.RemoteType),
-				EmploymentType:  database.TextOrNil(row.EmploymentType),
-				SalaryMin:       database.Int4OrNil(row.SalaryMin),
-				SalaryMax:       database.Int4OrNil(row.SalaryMax),
-				SalaryCurrency:  database.TextOrNil(row.SalaryCurrency),
-				ApplyURL:        database.TextOrNil(row.ApplyUrl),
-				SourceURL:       database.TextOrNil(row.SourceUrl),
-				PostedAt:        database.TimeOrNil(row.PostedAt),
-				FirstSeenAt:     row.FirstSeenAt.Time,
-				UpdatedAt:       row.UpdatedAt.Time,
-				LastSeenAt:      row.LastSeenAt.Time,
-				ContentHash:     row.ContentHash,
-				Fingerprint:     row.Fingerprint,
-				CanonicalJobID:  database.UUIDPtrOrNil(row.CanonicalJobID),
-				Status:          row.Status,
-				CreatedAt:       row.CreatedAt.Time,
+				ID:                   database.PGToUUID(row.ID),
+				Source:               row.Source,
+				ExternalID:           row.ExternalID,
+				CompanyID:            database.PGToUUID(row.CompanyID),
+				CompanyName:          row.CompanyName,
+				Title:                row.Title,
+				NormalizedTitle:      row.NormalizedTitle,
+				Seniority:            database.TextOrNil(row.Seniority),
+				Description:          row.Description,
+				Country:              database.TextOrNil(row.Country),
+				State:                database.TextOrNil(row.State),
+				City:                 database.TextOrNil(row.City),
+				LocationText:         database.TextOrNil(row.LocationText),
+				CountryCode:          database.TextOrNil(row.CountryCode),
+				StateCode:            database.TextOrNil(row.StateCode),
+				WorkplaceType:        row.WorkplaceType,
+				RemoteScope:          row.RemoteScope,
+				EligibleCountryCodes: row.EligibleCountryCodes,
+				LocationConfidence:   row.LocationConfidence,
+				RemoteType:           database.TextOrNil(row.RemoteType),
+				EmploymentType:       database.TextOrNil(row.EmploymentType),
+				SalaryMin:            database.Int4OrNil(row.SalaryMin),
+				SalaryMax:            database.Int4OrNil(row.SalaryMax),
+				SalaryCurrency:       database.TextOrNil(row.SalaryCurrency),
+				ApplyURL:             database.TextOrNil(row.ApplyUrl),
+				SourceURL:            database.TextOrNil(row.SourceUrl),
+				PostedAt:             database.TimeOrNil(row.PostedAt),
+				FirstSeenAt:          row.FirstSeenAt.Time,
+				UpdatedAt:            row.UpdatedAt.Time,
+				LastSeenAt:           row.LastSeenAt.Time,
+				ContentHash:          row.ContentHash,
+				Fingerprint:          row.Fingerprint,
+				CanonicalJobID:       database.UUIDPtrOrNil(row.CanonicalJobID),
+				Status:               row.Status,
+				CreatedAt:            row.CreatedAt.Time,
 			},
 			Distance: row.Distance,
 		})
@@ -334,7 +398,8 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column3: filter.EmploymentType,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
 		Column5: filter.Location,
-		Column6: filter.Sort,
+		Column6: filter.CountryCode,
+		Column7: filter.Sort,
 		Limit:   limit,
 		Offset:  filter.Offset,
 	})
@@ -348,6 +413,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]Job, int64,
 		Column3: filter.EmploymentType,
 		Column4: database.PGTimestamptz(filter.PostedAfter),
 		Column5: filter.Location,
+		Column6: filter.CountryCode,
 	})
 	if err != nil {
 		return nil, 0, err

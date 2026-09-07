@@ -273,3 +273,54 @@ func TestRepository_ListAndGet(t *testing.T) {
 		t.Fatalf("expected title %q, got %q", "Platform Engineer", fetched.Title)
 	}
 }
+
+func TestRepository_List_UsesExactCountryAndStrictPostedAt(t *testing.T) {
+	q := testdb.OpenTx(t)
+	repo := &Repository{q: q}
+	ctx := context.Background()
+
+	testID := uuid.NewString()
+	companyID, err := repo.UpsertCompany(ctx, "Location Filter Co", "location-filter-"+testID)
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+	title := "Location Filter Engineer " + testID
+	now := time.Now().UTC()
+	us := "US"
+	australia := "AU"
+	base := Job{
+		Source:          "GREENHOUSE",
+		CompanyID:       companyID,
+		CompanyName:     "Location Filter Co",
+		Title:           title,
+		NormalizedTitle: normalizeTitle(title),
+		Description:     "Build location-safe filters",
+		ContentHash:     contentHash("Location Filter Co", title, "", "Build location-safe filters"),
+	}
+
+	for _, job := range []Job{
+		{ExternalID: uuid.NewString(), CountryCode: &us, PostedAt: &now},
+		{ExternalID: uuid.NewString(), CountryCode: &australia, PostedAt: &now},
+		{ExternalID: uuid.NewString(), CountryCode: &us},
+	} {
+		job.Source = base.Source
+		job.CompanyID = base.CompanyID
+		job.CompanyName = base.CompanyName
+		job.Title = base.Title
+		job.NormalizedTitle = base.NormalizedTitle
+		job.Description = base.Description
+		job.ContentHash = base.ContentHash + job.ExternalID
+		if _, err := repo.UpsertJob(ctx, job); err != nil {
+			t.Fatalf("UpsertJob: %v", err)
+		}
+	}
+
+	cutoff := now.Add(-time.Hour)
+	jobs, total, err := repo.List(ctx, ListFilter{Search: testID, CountryCode: "US", PostedAfter: &cutoff})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 || len(jobs) != 1 || jobs[0].CountryCode == nil || *jobs[0].CountryCode != "US" {
+		t.Fatalf("expected exactly the current US job, got total=%d jobs=%+v", total, jobs)
+	}
+}

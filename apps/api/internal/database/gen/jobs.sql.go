@@ -42,22 +42,14 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
-  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
     OR location_text ILIKE '%' || $5 || '%'
     OR city ILIKE '%' || $5 || '%'
     OR state ILIKE '%' || $5 || '%'
-    OR country ILIKE '%' || $5 || '%'
-    OR (
-      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-      AND (
-        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-        OR
-        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
-      )
-    )
   )
+  AND ($6::text = '' OR country_code = $6)
 `
 
 type CountJobsParams struct {
@@ -66,6 +58,7 @@ type CountJobsParams struct {
 	Column3 string             `json:"column_3"`
 	Column4 pgtype.Timestamptz `json:"column_4"`
 	Column5 string             `json:"column_5"`
+	Column6 string             `json:"column_6"`
 }
 
 func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, error) {
@@ -75,6 +68,7 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 		arg.Column3,
 		arg.Column4,
 		arg.Column5,
+		arg.Column6,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -83,7 +77,8 @@ func (q *Queries) CountJobs(ctx context.Context, arg CountJobsParams) (int64, er
 
 const findCanonicalByFingerprint = `-- name: FindCanonicalByFingerprint :one
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
@@ -98,35 +93,41 @@ type FindCanonicalByFingerprintParams struct {
 }
 
 type FindCanonicalByFingerprintRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
-	ContentHash     string             `json:"content_hash"`
-	Status          string             `json:"status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Fingerprint     string             `json:"fingerprint"`
-	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+	ID                   pgtype.UUID        `json:"id"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash          string             `json:"content_hash"`
+	Status               string             `json:"status"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Fingerprint          string             `json:"fingerprint"`
+	CanonicalJobID       pgtype.UUID        `json:"canonical_job_id"`
 }
 
 // Finds an existing, still-canonical job with the same fingerprint from a
@@ -149,6 +150,12 @@ func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanoni
 		&i.State,
 		&i.City,
 		&i.LocationText,
+		&i.CountryCode,
+		&i.StateCode,
+		&i.WorkplaceType,
+		&i.RemoteScope,
+		&i.EligibleCountryCodes,
+		&i.LocationConfidence,
 		&i.RemoteType,
 		&i.EmploymentType,
 		&i.SalaryMin,
@@ -171,42 +178,49 @@ func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanoni
 
 const getJobByID = `-- name: GetJobByID :one
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs WHERE id = $1
 `
 
 type GetJobByIDRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
-	ContentHash     string             `json:"content_hash"`
-	Status          string             `json:"status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Fingerprint     string             `json:"fingerprint"`
-	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+	ID                   pgtype.UUID        `json:"id"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash          string             `json:"content_hash"`
+	Status               string             `json:"status"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Fingerprint          string             `json:"fingerprint"`
+	CanonicalJobID       pgtype.UUID        `json:"canonical_job_id"`
 }
 
 func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow, error) {
@@ -226,6 +240,12 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 		&i.State,
 		&i.City,
 		&i.LocationText,
+		&i.CountryCode,
+		&i.StateCode,
+		&i.WorkplaceType,
+		&i.RemoteScope,
+		&i.EligibleCountryCodes,
+		&i.LocationConfidence,
 		&i.RemoteType,
 		&i.EmploymentType,
 		&i.SalaryMin,
@@ -248,7 +268,8 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 
 const listJobs = `-- name: ListJobs :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
@@ -256,27 +277,19 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
-  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
     OR location_text ILIKE '%' || $5 || '%'
     OR city ILIKE '%' || $5 || '%'
     OR state ILIKE '%' || $5 || '%'
-    OR country ILIKE '%' || $5 || '%'
-    OR (
-      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-      AND (
-        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-        OR
-        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
-      )
-    )
   )
+  AND ($6::text = '' OR country_code = $6)
 ORDER BY
-  CASE WHEN $6::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
-  CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
+  CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
+  CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
   first_seen_at DESC
-LIMIT $7 OFFSET $8
+LIMIT $8 OFFSET $9
 `
 
 type ListJobsParams struct {
@@ -286,40 +299,47 @@ type ListJobsParams struct {
 	Column4 pgtype.Timestamptz `json:"column_4"`
 	Column5 string             `json:"column_5"`
 	Column6 string             `json:"column_6"`
+	Column7 string             `json:"column_7"`
 	Limit   int32              `json:"limit"`
 	Offset  int32              `json:"offset"`
 }
 
 type ListJobsRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
-	ContentHash     string             `json:"content_hash"`
-	Status          string             `json:"status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Fingerprint     string             `json:"fingerprint"`
-	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
+	ID                   pgtype.UUID        `json:"id"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash          string             `json:"content_hash"`
+	Status               string             `json:"status"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Fingerprint          string             `json:"fingerprint"`
+	CanonicalJobID       pgtype.UUID        `json:"canonical_job_id"`
 }
 
 func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error) {
@@ -330,6 +350,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
+		arg.Column7,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -354,6 +375,12 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 			&i.State,
 			&i.City,
 			&i.LocationText,
+			&i.CountryCode,
+			&i.StateCode,
+			&i.WorkplaceType,
+			&i.RemoteScope,
+			&i.EligibleCountryCodes,
+			&i.LocationConfidence,
 			&i.RemoteType,
 			&i.EmploymentType,
 			&i.SalaryMin,
@@ -383,7 +410,8 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 
 const searchJobsByEmbedding = `-- name: SearchJobsByEmbedding :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
     (embedding <=> $1)::float8 AS distance
@@ -391,7 +419,8 @@ FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND ($3::text = '' OR remote_type = $3)
   AND ($4::text = '' OR employment_type = $4)
-  AND ($5::timestamptz IS NULL OR posted_at >= $5 OR (posted_at IS NULL AND first_seen_at >= $5))
+  AND ($5::timestamptz IS NULL OR posted_at >= $5)
+  AND ($6::text = '' OR country_code = $6)
 ORDER BY embedding <=> $1
 LIMIT $2
 `
@@ -402,39 +431,46 @@ type SearchJobsByEmbeddingParams struct {
 	Column3   string             `json:"column_3"`
 	Column4   string             `json:"column_4"`
 	Column5   pgtype.Timestamptz `json:"column_5"`
+	Column6   string             `json:"column_6"`
 }
 
 type SearchJobsByEmbeddingRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
-	ContentHash     string             `json:"content_hash"`
-	Status          string             `json:"status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Fingerprint     string             `json:"fingerprint"`
-	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
-	Distance        float64            `json:"distance"`
+	ID                   pgtype.UUID        `json:"id"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash          string             `json:"content_hash"`
+	Status               string             `json:"status"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Fingerprint          string             `json:"fingerprint"`
+	CanonicalJobID       pgtype.UUID        `json:"canonical_job_id"`
+	Distance             float64            `json:"distance"`
 }
 
 // Semantic retrieval (Phase G's hard-filter -> vector-retrieval funnel):
@@ -450,6 +486,7 @@ func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmb
 		arg.Column3,
 		arg.Column4,
 		arg.Column5,
+		arg.Column6,
 	)
 	if err != nil {
 		return nil, err
@@ -472,6 +509,12 @@ func (q *Queries) SearchJobsByEmbedding(ctx context.Context, arg SearchJobsByEmb
 			&i.State,
 			&i.City,
 			&i.LocationText,
+			&i.CountryCode,
+			&i.StateCode,
+			&i.WorkplaceType,
+			&i.RemoteScope,
+			&i.EligibleCountryCodes,
+			&i.LocationConfidence,
 			&i.RemoteType,
 			&i.EmploymentType,
 			&i.SalaryMin,
@@ -532,10 +575,11 @@ func (q *Queries) UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbedding
 const upsertJob = `-- name: UpsertJob :one
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
-    country, state, city, location_text, remote_type, employment_type,
+  country, state, city, location_text, country_code, state_code, workplace_type, remote_scope,
+  eligible_country_codes, location_confidence, remote_type, employment_type,
     salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash, fingerprint
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     company_id = EXCLUDED.company_id,
@@ -548,6 +592,12 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     state = EXCLUDED.state,
     city = EXCLUDED.city,
     location_text = EXCLUDED.location_text,
+    country_code = EXCLUDED.country_code,
+    state_code = EXCLUDED.state_code,
+    workplace_type = EXCLUDED.workplace_type,
+    remote_scope = EXCLUDED.remote_scope,
+    eligible_country_codes = EXCLUDED.eligible_country_codes,
+    location_confidence = EXCLUDED.location_confidence,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,
@@ -562,68 +612,81 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     updated_at = now(),
     last_seen_at = now()
 RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
     (xmax = 0) AS inserted
 `
 
 type UpsertJobParams struct {
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	ContentHash     string             `json:"content_hash"`
-	Fingerprint     string             `json:"fingerprint"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	ContentHash          string             `json:"content_hash"`
+	Fingerprint          string             `json:"fingerprint"`
 }
 
 type UpsertJobRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	Source          string             `json:"source"`
-	ExternalID      string             `json:"external_id"`
-	CompanyID       pgtype.UUID        `json:"company_id"`
-	CompanyName     string             `json:"company_name"`
-	Title           string             `json:"title"`
-	NormalizedTitle string             `json:"normalized_title"`
-	Seniority       pgtype.Text        `json:"seniority"`
-	Description     string             `json:"description"`
-	Country         pgtype.Text        `json:"country"`
-	State           pgtype.Text        `json:"state"`
-	City            pgtype.Text        `json:"city"`
-	LocationText    pgtype.Text        `json:"location_text"`
-	RemoteType      pgtype.Text        `json:"remote_type"`
-	EmploymentType  pgtype.Text        `json:"employment_type"`
-	SalaryMin       pgtype.Int4        `json:"salary_min"`
-	SalaryMax       pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency  pgtype.Text        `json:"salary_currency"`
-	ApplyUrl        pgtype.Text        `json:"apply_url"`
-	SourceUrl       pgtype.Text        `json:"source_url"`
-	PostedAt        pgtype.Timestamptz `json:"posted_at"`
-	FirstSeenAt     pgtype.Timestamptz `json:"first_seen_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
-	ContentHash     string             `json:"content_hash"`
-	Status          string             `json:"status"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	Fingerprint     string             `json:"fingerprint"`
-	CanonicalJobID  pgtype.UUID        `json:"canonical_job_id"`
-	Inserted        bool               `json:"inserted"`
+	ID                   pgtype.UUID        `json:"id"`
+	Source               string             `json:"source"`
+	ExternalID           string             `json:"external_id"`
+	CompanyID            pgtype.UUID        `json:"company_id"`
+	CompanyName          string             `json:"company_name"`
+	Title                string             `json:"title"`
+	NormalizedTitle      string             `json:"normalized_title"`
+	Seniority            pgtype.Text        `json:"seniority"`
+	Description          string             `json:"description"`
+	Country              pgtype.Text        `json:"country"`
+	State                pgtype.Text        `json:"state"`
+	City                 pgtype.Text        `json:"city"`
+	LocationText         pgtype.Text        `json:"location_text"`
+	CountryCode          pgtype.Text        `json:"country_code"`
+	StateCode            pgtype.Text        `json:"state_code"`
+	WorkplaceType        string             `json:"workplace_type"`
+	RemoteScope          string             `json:"remote_scope"`
+	EligibleCountryCodes []string           `json:"eligible_country_codes"`
+	LocationConfidence   string             `json:"location_confidence"`
+	RemoteType           pgtype.Text        `json:"remote_type"`
+	EmploymentType       pgtype.Text        `json:"employment_type"`
+	SalaryMin            pgtype.Int4        `json:"salary_min"`
+	SalaryMax            pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
+	ApplyUrl             pgtype.Text        `json:"apply_url"`
+	SourceUrl            pgtype.Text        `json:"source_url"`
+	PostedAt             pgtype.Timestamptz `json:"posted_at"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	ContentHash          string             `json:"content_hash"`
+	Status               string             `json:"status"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	Fingerprint          string             `json:"fingerprint"`
+	CanonicalJobID       pgtype.UUID        `json:"canonical_job_id"`
+	Inserted             bool               `json:"inserted"`
 }
 
 // Column list deliberately excludes embedding/embedding_model/embedded_at:
@@ -644,6 +707,12 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJob
 		arg.State,
 		arg.City,
 		arg.LocationText,
+		arg.CountryCode,
+		arg.StateCode,
+		arg.WorkplaceType,
+		arg.RemoteScope,
+		arg.EligibleCountryCodes,
+		arg.LocationConfidence,
 		arg.RemoteType,
 		arg.EmploymentType,
 		arg.SalaryMin,
@@ -670,6 +739,12 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJob
 		&i.State,
 		&i.City,
 		&i.LocationText,
+		&i.CountryCode,
+		&i.StateCode,
+		&i.WorkplaceType,
+		&i.RemoteScope,
+		&i.EligibleCountryCodes,
+		&i.LocationConfidence,
 		&i.RemoteType,
 		&i.EmploymentType,
 		&i.SalaryMin,

@@ -3,6 +3,7 @@ package jobs
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -35,6 +36,14 @@ func (h *Handlers) Mount(r chi.Router) {
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	countryCode := strings.ToUpper(strings.TrimSpace(q.Get("country")))
+	location := q.Get("location")
+	if countryCode == "" {
+		countryCode = "US"
+	}
+	if countryCode == "US" && usCountryTokens[strings.ToLower(strings.TrimSpace(location))] {
+		location = ""
+	}
 
 	var postedAfter *time.Time
 	if within := q.Get("posted_within"); within != "" {
@@ -58,7 +67,8 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		RemoteType:     q.Get("remote_type"),
 		EmploymentType: q.Get("employment_type"),
 		PostedAfter:    postedAfter,
-		Location:       q.Get("location"),
+		Location:       location,
+		CountryCode:    countryCode,
 		Sort:           q.Get("sort"),
 		Limit:          limit,
 		Offset:         offset,
@@ -115,20 +125,28 @@ func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
 
 func toSummary(j Job) map[string]any {
 	return map[string]any{
-		"id":               j.ID,
-		"source":           j.Source,
-		"company_name":     j.CompanyName,
-		"title":            j.Title,
-		"normalized_title": j.NormalizedTitle,
-		"location_text":    j.LocationText,
-		"remote_type":      j.RemoteType,
-		"employment_type":  j.EmploymentType,
-		"salary_min":       j.SalaryMin,
-		"salary_max":       j.SalaryMax,
-		"salary_currency":  j.SalaryCurrency,
-		"apply_url":        j.ApplyURL,
-		"posted_at":        j.PostedAt,
-		"first_seen_at":    j.FirstSeenAt,
+		"id":                  j.ID,
+		"source":              j.Source,
+		"company_name":        j.CompanyName,
+		"title":               j.Title,
+		"normalized_title":    j.NormalizedTitle,
+		"country":             j.Country,
+		"state":               j.State,
+		"city":                j.City,
+		"location_text":       j.LocationText,
+		"country_code":        j.CountryCode,
+		"state_code":          j.StateCode,
+		"workplace_type":      j.WorkplaceType,
+		"remote_scope":        j.RemoteScope,
+		"location_confidence": j.LocationConfidence,
+		"remote_type":         j.RemoteType,
+		"employment_type":     j.EmploymentType,
+		"salary_min":          j.SalaryMin,
+		"salary_max":          j.SalaryMax,
+		"salary_currency":     j.SalaryCurrency,
+		"apply_url":           j.ApplyURL,
+		"posted_at":           j.PostedAt,
+		"first_seen_at":       j.FirstSeenAt,
 	}
 }
 

@@ -84,6 +84,131 @@ func normalizeCompanyName(name string) string {
 	return strings.TrimSpace(lower)
 }
 
+// NormalizedLocation is the deterministic location representation used for
+// catalog and recommendation hard filters.
+type NormalizedLocation struct {
+	CountryCode          string
+	StateCode            string
+	City                 string
+	WorkplaceType        string
+	RemoteScope          string
+	EligibleCountryCodes []string
+	LocationConfidence   string
+}
+
+var usStateCodes = map[string]string{
+	"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
+	"connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+	"illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS", "kentucky": "KY", "louisiana": "LA",
+	"maine": "ME", "maryland": "MD", "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+	"missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ",
+	"new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+	"oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", "tennessee": "TN",
+	"texas": "TX", "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+	"wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+}
+
+var usCountryTokens = map[string]bool{
+	"united states": true, "united states of america": true, "us": true, "usa": true, "u.s.": true, "u.s": true,
+}
+
+// normalizeLocation retains source fields while assigning a canonical country
+// only when the source data or location text is unambiguous.
+func normalizeLocation(raw RawJob) NormalizedLocation {
+	location := strings.TrimSpace(raw.LocationText)
+	country := strings.ToLower(strings.TrimSpace(raw.Country))
+	state := strings.TrimSpace(raw.State)
+	city := strings.TrimSpace(raw.City)
+	result := NormalizedLocation{
+		City:               city,
+		RemoteScope:        "UNKNOWN",
+		LocationConfidence: "LOW",
+		WorkplaceType:      "ONSITE",
+	}
+
+	switch strings.ToLower(strings.TrimSpace(raw.RemoteType)) {
+	case "remote":
+		result.WorkplaceType = "REMOTE"
+	case "hybrid":
+		result.WorkplaceType = "HYBRID"
+	}
+
+	if usCountryTokens[country] || containsUSCountry(location) {
+		result.CountryCode = "US"
+		result.EligibleCountryCodes = []string{"US"}
+		result.LocationConfidence = "HIGH"
+		if result.WorkplaceType == "REMOTE" {
+			result.RemoteScope = "US"
+		}
+	}
+
+	if stateCode := normalizeUSState(state); stateCode != "" {
+		result.StateCode = stateCode
+	} else if stateCode := stateCodeInLocation(location); stateCode != "" {
+		result.StateCode = stateCode
+	}
+	if result.StateCode != "" {
+		result.CountryCode = "US"
+		result.EligibleCountryCodes = []string{"US"}
+		result.LocationConfidence = "HIGH"
+		if result.City == "" && result.WorkplaceType != "REMOTE" {
+			result.City = cityInLocation(location)
+		}
+		if result.WorkplaceType == "REMOTE" {
+			result.RemoteScope = "STATE_RESTRICTED"
+		}
+	}
+	return result
+}
+
+func containsUSCountry(location string) bool {
+	lower := strings.ToLower(location)
+	for token := range usCountryTokens {
+		if lower == token || strings.Contains(lower, ", "+token) || strings.HasSuffix(lower, " "+token) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeUSState(state string) string {
+	lower := strings.ToLower(strings.TrimSpace(state))
+	if code, ok := usStateCodes[lower]; ok {
+		return code
+	}
+	if len(lower) == 2 {
+		upper := strings.ToUpper(lower)
+		for _, code := range usStateCodes {
+			if code == upper {
+				return code
+			}
+		}
+	}
+	return ""
+}
+
+func stateCodeInLocation(location string) string {
+	for name, code := range usStateCodes {
+		if strings.Contains(strings.ToLower(location), name) {
+			return code
+		}
+	}
+	for _, code := range usStateCodes {
+		if regexp.MustCompile(`(?i)(^|[,\s])` + code + `($|[,\s])`).MatchString(location) {
+			return code
+		}
+	}
+	return ""
+}
+
+func cityInLocation(location string) string {
+	parts := strings.Split(location, ",")
+	if len(parts) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
+}
+
 // buildFingerprint produces a coarse cross-source dedupe key: the same real
 // posting from two different sources (e.g. a company's own Greenhouse board
 // and an aggregator like Arbeitnow) should normally produce the same

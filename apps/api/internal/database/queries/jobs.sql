@@ -5,10 +5,11 @@
 -- callers of UpsertJob never need the embedding anyway.
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
-    country, state, city, location_text, remote_type, employment_type,
+  country, state, city, location_text, country_code, state_code, workplace_type, remote_scope,
+  eligible_country_codes, location_confidence, remote_type, employment_type,
     salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash, fingerprint
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     company_id = EXCLUDED.company_id,
@@ -21,6 +22,12 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     state = EXCLUDED.state,
     city = EXCLUDED.city,
     location_text = EXCLUDED.location_text,
+    country_code = EXCLUDED.country_code,
+    state_code = EXCLUDED.state_code,
+    workplace_type = EXCLUDED.workplace_type,
+    remote_scope = EXCLUDED.remote_scope,
+    eligible_country_codes = EXCLUDED.eligible_country_codes,
+    location_confidence = EXCLUDED.location_confidence,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,
@@ -35,7 +42,8 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     updated_at = now(),
     last_seen_at = now()
 RETURNING id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
     (xmax = 0) AS inserted;
@@ -45,7 +53,8 @@ RETURNING id, source, external_id, company_id, company_name, title, normalized_t
 -- DIFFERENT source row (cross-source dedupe target). Excludes jobID itself
 -- so a job never becomes its own canonical.
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
@@ -67,7 +76,8 @@ WHERE source = $1 AND company_id = $2 AND status = 'ACTIVE' AND last_seen_at < $
 
 -- name: GetJobByID :one
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs WHERE id = $1;
@@ -78,26 +88,19 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
-  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
     OR location_text ILIKE '%' || $5 || '%'
     OR city ILIKE '%' || $5 || '%'
     OR state ILIKE '%' || $5 || '%'
-    OR country ILIKE '%' || $5 || '%'
-    OR (
-      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-      AND (
-        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-        OR
-        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
-      )
-    )
-  );
+  )
+  AND ($6::text = '' OR country_code = $6);
 
 -- name: ListJobs :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
@@ -105,27 +108,19 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
-  AND ($4::timestamptz IS NULL OR posted_at >= $4 OR (posted_at IS NULL AND first_seen_at >= $4))
+  AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
     OR location_text ILIKE '%' || $5 || '%'
     OR city ILIKE '%' || $5 || '%'
     OR state ILIKE '%' || $5 || '%'
-    OR country ILIKE '%' || $5 || '%'
-    OR (
-      lower($5) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-      AND (
-        lower(country) IN ('united states', 'us', 'usa', 'u.s.', 'u.s')
-        OR
-        location_text ~* '(^|[^a-z])(united states|usa|u\.s\.?)([^a-z]|$)'
-      )
-    )
   )
+  AND ($6::text = '' OR country_code = $6)
 ORDER BY
-  CASE WHEN $6::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
-  CASE WHEN $6::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
+  CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
+  CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
   first_seen_at DESC
-LIMIT $7 OFFSET $8;
+LIMIT $8 OFFSET $9;
 
 -- name: UpdateJobEmbedding :exec
 UPDATE jobs SET embedding = $2, embedding_model = $3, embedded_at = now() WHERE id = $1;
@@ -138,7 +133,8 @@ UPDATE jobs SET embedding = $2, embedding_model = $3, embedded_at = now() WHERE 
 -- than the whole table. embedding IS NOT NULL is guaranteed by the WHERE
 -- clause, so scanning it as a non-nullable pgvector.Vector is safe.
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
-    description, country, state, city, location_text, remote_type, employment_type, salary_min,
+  description, country, state, city, location_text, country_code, state_code, workplace_type,
+  remote_scope, eligible_country_codes, location_confidence, remote_type, employment_type, salary_min,
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id,
     (embedding <=> $1)::float8 AS distance
@@ -146,6 +142,7 @@ FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND ($3::text = '' OR remote_type = $3)
   AND ($4::text = '' OR employment_type = $4)
-  AND ($5::timestamptz IS NULL OR posted_at >= $5 OR (posted_at IS NULL AND first_seen_at >= $5))
+  AND ($5::timestamptz IS NULL OR posted_at >= $5)
+  AND ($6::text = '' OR country_code = $6)
 ORDER BY embedding <=> $1
 LIMIT $2;

@@ -2,6 +2,30 @@ package jobs
 
 import "testing"
 
+func TestNormalizeLocation_ClassifiesExplicitUSAndState(t *testing.T) {
+	location := normalizeLocation(RawJob{LocationText: "San Francisco, CA, United States", RemoteType: "hybrid"})
+	if location.CountryCode != "US" || location.StateCode != "CA" || location.City != "San Francisco" {
+		t.Fatalf("unexpected normalized location: %+v", location)
+	}
+	if location.WorkplaceType != "HYBRID" || location.LocationConfidence != "HIGH" {
+		t.Fatalf("expected high-confidence hybrid US location, got %+v", location)
+	}
+}
+
+func TestNormalizeLocation_DoesNotTreatAustraliaAsUS(t *testing.T) {
+	location := normalizeLocation(RawJob{LocationText: "Sydney, Australia"})
+	if location.CountryCode != "" || location.RemoteScope != "UNKNOWN" {
+		t.Fatalf("Australia must not be classified as US: %+v", location)
+	}
+}
+
+func TestNormalizeLocation_LeavesUnscopedRemoteUnknown(t *testing.T) {
+	location := normalizeLocation(RawJob{LocationText: "Remote", RemoteType: "remote"})
+	if location.CountryCode != "" || location.RemoteScope != "UNKNOWN" || location.WorkplaceType != "REMOTE" {
+		t.Fatalf("unscoped remote job must remain geographically unknown: %+v", location)
+	}
+}
+
 func TestNormalizeTitle(t *testing.T) {
 	cases := map[string]string{
 		"Sr. Backend Engineer":    "backend engineer",
