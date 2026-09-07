@@ -6,10 +6,10 @@
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
   country, state, city, location_text, country_code, state_code, workplace_type, remote_scope,
-  eligible_country_codes, location_confidence, remote_type, employment_type,
+  eligible_country_codes, location_confidence, job_family, role_classification, role_classification_confidence, remote_type, employment_type,
     salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash, fingerprint
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     company_id = EXCLUDED.company_id,
@@ -28,6 +28,9 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote_scope = EXCLUDED.remote_scope,
     eligible_country_codes = EXCLUDED.eligible_country_codes,
     location_confidence = EXCLUDED.location_confidence,
+    job_family = EXCLUDED.job_family,
+    role_classification = EXCLUDED.role_classification,
+    role_classification_confidence = EXCLUDED.role_classification_confidence,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,
@@ -65,6 +68,14 @@ LIMIT 1;
 -- name: SetCanonicalJobID :exec
 UPDATE jobs SET canonical_job_id = $2, updated_at = now() WHERE id = $1;
 
+-- name: UpdateJobRoleClassification :exec
+UPDATE jobs
+SET job_family = $2,
+    role_classification = $3,
+    role_classification_confidence = $4,
+    updated_at = now()
+WHERE id = $1;
+
 -- name: CloseStaleJobs :execrows
 -- Marks jobs CLOSED when a source poll completed without re-seeing them
 -- (last_seen_at predates the poll's start). Only meaningful for sources that
@@ -84,7 +95,7 @@ FROM jobs WHERE id = $1;
 
 -- name: CountJobs :one
 SELECT count(*) FROM jobs
-WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -104,7 +115,7 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
-WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -140,6 +151,7 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     (embedding <=> $1)::float8 AS distance
 FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+  AND role_classification = 'IC_SOFTWARE'
   AND ($3::text = '' OR remote_type = $3)
   AND ($4::text = '' OR employment_type = $4)
   AND ($5::timestamptz IS NULL OR posted_at >= $5)

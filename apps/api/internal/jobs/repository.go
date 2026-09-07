@@ -148,6 +148,7 @@ type UpsertJobResult struct {
 
 // UpsertJob idempotently inserts or updates a canonical job by (source, external_id).
 func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, error) {
+	classification := classifyTitle(in.Title)
 	eligibleCountryCodes := in.EligibleCountryCodes
 	if eligibleCountryCodes == nil {
 		eligibleCountryCodes = []string{}
@@ -165,34 +166,37 @@ func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, er
 		locationConfidence = "LOW"
 	}
 	row, err := r.q.UpsertJob(ctx, db.UpsertJobParams{
-		Source:               in.Source,
-		ExternalID:           in.ExternalID,
-		CompanyID:            database.UUIDToPG(in.CompanyID),
-		CompanyName:          in.CompanyName,
-		Title:                in.Title,
-		NormalizedTitle:      in.NormalizedTitle,
-		Seniority:            database.PGText(in.Seniority),
-		Description:          in.Description,
-		Country:              database.PGText(in.Country),
-		State:                database.PGText(in.State),
-		City:                 database.PGText(in.City),
-		LocationText:         database.PGText(in.LocationText),
-		CountryCode:          database.PGText(in.CountryCode),
-		StateCode:            database.PGText(in.StateCode),
-		WorkplaceType:        workplaceType,
-		RemoteScope:          remoteScope,
-		EligibleCountryCodes: eligibleCountryCodes,
-		LocationConfidence:   locationConfidence,
-		RemoteType:           database.PGText(in.RemoteType),
-		EmploymentType:       database.PGText(in.EmploymentType),
-		SalaryMin:            database.PGInt4(in.SalaryMin),
-		SalaryMax:            database.PGInt4(in.SalaryMax),
-		SalaryCurrency:       database.PGText(in.SalaryCurrency),
-		ApplyUrl:             database.PGText(in.ApplyURL),
-		SourceUrl:            database.PGText(in.SourceURL),
-		PostedAt:             database.PGTimestamptz(in.PostedAt),
-		ContentHash:          in.ContentHash,
-		Fingerprint:          in.Fingerprint,
+		Source:                       in.Source,
+		ExternalID:                   in.ExternalID,
+		CompanyID:                    database.UUIDToPG(in.CompanyID),
+		CompanyName:                  in.CompanyName,
+		Title:                        in.Title,
+		NormalizedTitle:              in.NormalizedTitle,
+		Seniority:                    database.PGText(in.Seniority),
+		Description:                  in.Description,
+		Country:                      database.PGText(in.Country),
+		State:                        database.PGText(in.State),
+		City:                         database.PGText(in.City),
+		LocationText:                 database.PGText(in.LocationText),
+		CountryCode:                  database.PGText(in.CountryCode),
+		StateCode:                    database.PGText(in.StateCode),
+		WorkplaceType:                workplaceType,
+		RemoteScope:                  remoteScope,
+		EligibleCountryCodes:         eligibleCountryCodes,
+		LocationConfidence:           locationConfidence,
+		JobFamily:                    classification.Family,
+		RoleClassification:           classification.Classification,
+		RoleClassificationConfidence: classification.Confidence,
+		RemoteType:                   database.PGText(in.RemoteType),
+		EmploymentType:               database.PGText(in.EmploymentType),
+		SalaryMin:                    database.PGInt4(in.SalaryMin),
+		SalaryMax:                    database.PGInt4(in.SalaryMax),
+		SalaryCurrency:               database.PGText(in.SalaryCurrency),
+		ApplyUrl:                     database.PGText(in.ApplyURL),
+		SourceUrl:                    database.PGText(in.SourceURL),
+		PostedAt:                     database.PGTimestamptz(in.PostedAt),
+		ContentHash:                  in.ContentHash,
+		Fingerprint:                  in.Fingerprint,
 	})
 	if err != nil {
 		return UpsertJobResult{}, err
@@ -281,6 +285,15 @@ func (r *Repository) SetCanonicalJobID(ctx context.Context, jobID, canonicalJobI
 	return r.q.SetCanonicalJobID(ctx, db.SetCanonicalJobIDParams{
 		ID:             database.UUIDToPG(jobID),
 		CanonicalJobID: database.PGUUID(&canonicalJobID),
+	})
+}
+
+func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UUID, classification RoleClassification) error {
+	return r.q.UpdateJobRoleClassification(ctx, db.UpdateJobRoleClassificationParams{
+		ID:                           database.UUIDToPG(jobID),
+		JobFamily:                    classification.Family,
+		RoleClassification:           classification.Classification,
+		RoleClassificationConfidence: classification.Confidence,
 	})
 }
 

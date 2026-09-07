@@ -38,7 +38,7 @@ func (q *Queries) CloseStaleJobs(ctx context.Context, arg CloseStaleJobsParams) 
 
 const countJobs = `-- name: CountJobs :one
 SELECT count(*) FROM jobs
-WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -273,7 +273,7 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     salary_max, salary_currency, apply_url, source_url, posted_at, first_seen_at, updated_at,
     last_seen_at, content_hash, status, created_at, fingerprint, canonical_job_id
 FROM jobs
-WHERE status = 'ACTIVE' AND canonical_job_id IS NULL
+WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
   AND ($3::text = '' OR employment_type = $3)
@@ -417,6 +417,7 @@ SELECT id, source, external_id, company_id, company_name, title, normalized_titl
     (embedding <=> $1)::float8 AS distance
 FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
+  AND role_classification = 'IC_SOFTWARE'
   AND ($3::text = '' OR remote_type = $3)
   AND ($4::text = '' OR employment_type = $4)
   AND ($5::timestamptz IS NULL OR posted_at >= $5)
@@ -572,14 +573,40 @@ func (q *Queries) UpdateJobEmbedding(ctx context.Context, arg UpdateJobEmbedding
 	return err
 }
 
+const updateJobRoleClassification = `-- name: UpdateJobRoleClassification :exec
+UPDATE jobs
+SET job_family = $2,
+    role_classification = $3,
+    role_classification_confidence = $4,
+    updated_at = now()
+WHERE id = $1
+`
+
+type UpdateJobRoleClassificationParams struct {
+	ID                           pgtype.UUID `json:"id"`
+	JobFamily                    string      `json:"job_family"`
+	RoleClassification           string      `json:"role_classification"`
+	RoleClassificationConfidence float32     `json:"role_classification_confidence"`
+}
+
+func (q *Queries) UpdateJobRoleClassification(ctx context.Context, arg UpdateJobRoleClassificationParams) error {
+	_, err := q.db.Exec(ctx, updateJobRoleClassification,
+		arg.ID,
+		arg.JobFamily,
+		arg.RoleClassification,
+		arg.RoleClassificationConfidence,
+	)
+	return err
+}
+
 const upsertJob = `-- name: UpsertJob :one
 INSERT INTO jobs (
     source, external_id, company_id, company_name, title, normalized_title, seniority, description,
   country, state, city, location_text, country_code, state_code, workplace_type, remote_scope,
-  eligible_country_codes, location_confidence, remote_type, employment_type,
+  eligible_country_codes, location_confidence, job_family, role_classification, role_classification_confidence, remote_type, employment_type,
     salary_min, salary_max, salary_currency, apply_url, source_url, posted_at, content_hash, fingerprint
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     company_id = EXCLUDED.company_id,
@@ -598,6 +625,9 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote_scope = EXCLUDED.remote_scope,
     eligible_country_codes = EXCLUDED.eligible_country_codes,
     location_confidence = EXCLUDED.location_confidence,
+    job_family = EXCLUDED.job_family,
+    role_classification = EXCLUDED.role_classification,
+    role_classification_confidence = EXCLUDED.role_classification_confidence,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,
@@ -620,34 +650,37 @@ RETURNING id, source, external_id, company_id, company_name, title, normalized_t
 `
 
 type UpsertJobParams struct {
-	Source               string             `json:"source"`
-	ExternalID           string             `json:"external_id"`
-	CompanyID            pgtype.UUID        `json:"company_id"`
-	CompanyName          string             `json:"company_name"`
-	Title                string             `json:"title"`
-	NormalizedTitle      string             `json:"normalized_title"`
-	Seniority            pgtype.Text        `json:"seniority"`
-	Description          string             `json:"description"`
-	Country              pgtype.Text        `json:"country"`
-	State                pgtype.Text        `json:"state"`
-	City                 pgtype.Text        `json:"city"`
-	LocationText         pgtype.Text        `json:"location_text"`
-	CountryCode          pgtype.Text        `json:"country_code"`
-	StateCode            pgtype.Text        `json:"state_code"`
-	WorkplaceType        string             `json:"workplace_type"`
-	RemoteScope          string             `json:"remote_scope"`
-	EligibleCountryCodes []string           `json:"eligible_country_codes"`
-	LocationConfidence   string             `json:"location_confidence"`
-	RemoteType           pgtype.Text        `json:"remote_type"`
-	EmploymentType       pgtype.Text        `json:"employment_type"`
-	SalaryMin            pgtype.Int4        `json:"salary_min"`
-	SalaryMax            pgtype.Int4        `json:"salary_max"`
-	SalaryCurrency       pgtype.Text        `json:"salary_currency"`
-	ApplyUrl             pgtype.Text        `json:"apply_url"`
-	SourceUrl            pgtype.Text        `json:"source_url"`
-	PostedAt             pgtype.Timestamptz `json:"posted_at"`
-	ContentHash          string             `json:"content_hash"`
-	Fingerprint          string             `json:"fingerprint"`
+	Source                       string             `json:"source"`
+	ExternalID                   string             `json:"external_id"`
+	CompanyID                    pgtype.UUID        `json:"company_id"`
+	CompanyName                  string             `json:"company_name"`
+	Title                        string             `json:"title"`
+	NormalizedTitle              string             `json:"normalized_title"`
+	Seniority                    pgtype.Text        `json:"seniority"`
+	Description                  string             `json:"description"`
+	Country                      pgtype.Text        `json:"country"`
+	State                        pgtype.Text        `json:"state"`
+	City                         pgtype.Text        `json:"city"`
+	LocationText                 pgtype.Text        `json:"location_text"`
+	CountryCode                  pgtype.Text        `json:"country_code"`
+	StateCode                    pgtype.Text        `json:"state_code"`
+	WorkplaceType                string             `json:"workplace_type"`
+	RemoteScope                  string             `json:"remote_scope"`
+	EligibleCountryCodes         []string           `json:"eligible_country_codes"`
+	LocationConfidence           string             `json:"location_confidence"`
+	JobFamily                    string             `json:"job_family"`
+	RoleClassification           string             `json:"role_classification"`
+	RoleClassificationConfidence float32            `json:"role_classification_confidence"`
+	RemoteType                   pgtype.Text        `json:"remote_type"`
+	EmploymentType               pgtype.Text        `json:"employment_type"`
+	SalaryMin                    pgtype.Int4        `json:"salary_min"`
+	SalaryMax                    pgtype.Int4        `json:"salary_max"`
+	SalaryCurrency               pgtype.Text        `json:"salary_currency"`
+	ApplyUrl                     pgtype.Text        `json:"apply_url"`
+	SourceUrl                    pgtype.Text        `json:"source_url"`
+	PostedAt                     pgtype.Timestamptz `json:"posted_at"`
+	ContentHash                  string             `json:"content_hash"`
+	Fingerprint                  string             `json:"fingerprint"`
 }
 
 type UpsertJobRow struct {
@@ -713,6 +746,9 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (UpsertJob
 		arg.RemoteScope,
 		arg.EligibleCountryCodes,
 		arg.LocationConfidence,
+		arg.JobFamily,
+		arg.RoleClassification,
+		arg.RoleClassificationConfidence,
 		arg.RemoteType,
 		arg.EmploymentType,
 		arg.SalaryMin,
