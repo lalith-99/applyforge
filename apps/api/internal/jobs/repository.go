@@ -305,6 +305,41 @@ func (r *Repository) SetCanonicalJobID(ctx context.Context, jobID, canonicalJobI
 	})
 }
 
+// PromoteCanonicalJob makes betterJobID the canonical row for a duplicate
+// cluster whose previous canonical was oldCanonicalID. Existing duplicate
+// pointers are repointed atomically so there is never a chain of canonical
+// references.
+func (r *Repository) PromoteCanonicalJob(ctx context.Context, betterJobID, oldCanonicalID uuid.UUID) error {
+	if r.pool == nil {
+		return errors.New("canonical promotion requires a repository backed by a database pool")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = $1, updated_at = now() WHERE canonical_job_id = $2",
+		betterJobID, oldCanonicalID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = $1, updated_at = now() WHERE id = $2",
+		betterJobID, oldCanonicalID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		"UPDATE jobs SET canonical_job_id = NULL, updated_at = now() WHERE id = $1",
+		betterJobID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UUID, classification RoleClassification) error {
 	return r.q.UpdateJobRoleClassification(ctx, db.UpdateJobRoleClassificationParams{
 		ID:                           database.UUIDToPG(jobID),
