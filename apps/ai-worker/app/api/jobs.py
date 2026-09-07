@@ -11,8 +11,18 @@ import logging
 
 from fastapi import APIRouter
 
-from app.jobs.models import ParseRequirementsRequest, ParseRequirementsResponse
-from app.jobs.parsing import parse_job_requirements, parse_job_requirements_ai
+from app.jobs.models import (
+    ClassifyRoleRequest,
+    ClassifyRoleResponse,
+    ParseRequirementsRequest,
+    ParseRequirementsResponse,
+)
+from app.jobs.parsing import (
+    classify_job_role,
+    classify_job_role_ai,
+    parse_job_requirements,
+    parse_job_requirements_ai,
+)
 from app.providers.openai_provider import AIProviderError, is_configured
 
 logger = logging.getLogger(__name__)
@@ -33,3 +43,15 @@ def parse_requirements(request: ParseRequirementsRequest) -> ParseRequirementsRe
 
     requirements = parse_job_requirements(request.title, request.description)
     return ParseRequirementsResponse(requirements=requirements)
+
+
+@router.post("/classify-role", response_model=ClassifyRoleResponse)
+def classify_role(request: ClassifyRoleRequest) -> ClassifyRoleResponse:
+    if is_configured():
+        try:
+            result = classify_job_role_ai(request.title, request.description)
+            return ClassifyRoleResponse(result=result)
+        except AIProviderError:
+            logger.warning("AI role classification failed, falling back to heuristic", exc_info=True)
+
+    return ClassifyRoleResponse(result=classify_job_role(request.title, request.description))
