@@ -561,7 +561,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 		}
 		health.BySource24H = append(health.BySource24H, item)
 	}
-	if err := sourceRows.Close(); err != nil {
+	sourceRows.Close()
+	if err := sourceRows.Err(); err != nil {
 		return MarketCoverageHealth{}, err
 	}
 
@@ -583,7 +584,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 		}
 		health.ByRoleFamily24H = append(health.ByRoleFamily24H, item)
 	}
-	if err := roleRows.Close(); err != nil {
+	roleRows.Close()
+	if err := roleRows.Err(); err != nil {
 		return MarketCoverageHealth{}, err
 	}
 
@@ -620,7 +622,8 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 		}
 		health.ByLanguageSignal24H = append(health.ByLanguageSignal24H, item)
 	}
-	if err := languageRows.Close(); err != nil {
+	languageRows.Close()
+	if err := languageRows.Err(); err != nil {
 		return MarketCoverageHealth{}, err
 	}
 
