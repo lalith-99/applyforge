@@ -472,12 +472,41 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 		return MarketCoverageHealth{}, err
 	}
 
-	// Explicit positive support is intentionally derived from posting text
-	// using the same narrow phrases as matching. Historical employer support
-	// remains separate because it is weaker evidence than the role itself.
+	// Explicit role-level support is stronger than employer history. Denial
+	// always wins, matching the same precedence used by AssessImmigration.
 	if err := r.pool.QueryRow(ctx, `
 		WITH fresh AS (
-			SELECT j.id, j.company_id, lower(j.description) AS description, j.explicit_sponsorship_denied
+			SELECT
+				j.id,
+				j.company_id,
+				j.explicit_sponsorship_denied,
+				(
+					j.explicit_sponsorship_denied = false
+					AND lower(j.description) LIKE ANY (ARRAY[
+						'%h-1b sponsorship available%',
+						'%h1b sponsorship available%',
+						'%visa sponsorship available%',
+						'%visa sponsorship provided%',
+						'%sponsorship is available%',
+						'%sponsorship available%',
+						'%we sponsor h-1b%',
+						'%we sponsor h1b%',
+						'%sponsor h-1b%',
+						'%sponsor h1b%',
+						'%h-1b visa sponsorship%',
+						'%h1b visa sponsorship%',
+						'%h-1b transfer%',
+						'%h1b transfer%',
+						'%h-1b portability%',
+						'%h1b portability%',
+						'%support h-1b%',
+						'%support h1b%',
+						'%h-1b sponsorship support%',
+						'%h1b sponsorship support%',
+						'%provide visa sponsorship%',
+						'%provides visa sponsorship%'
+					])
+				) AS explicit_supported
 			FROM jobs j
 			WHERE `+basePredicate+`
 		),
@@ -493,81 +522,16 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 			  )
 		)
 		SELECT
+			count(*) FILTER (WHERE explicit_supported)::bigint,
 			count(*) FILTER (
 				WHERE explicit_sponsorship_denied = false
-				  AND description LIKE ANY (ARRAY[
-					'%h-1b sponsorship available%',
-					'%h1b sponsorship available%',
-					'%visa sponsorship available%',
-					'%visa sponsorship provided%',
-					'%sponsorship is available%',
-					'%sponsorship available%',
-					'%sponsor h-1b%',
-					'%sponsor h1b%',
-					'%h-1b visa sponsorship%',
-					'%h1b visa sponsorship%',
-					'%h-1b portability%',
-					'%h1b portability%',
-					'%h-1b sponsorship support%',
-					'%h1b sponsorship support%',
-					'%visa sponsorship provided%',
-					'%sponsorship is available%',
-					'%sponsorship available%',
-					'%sponsor h-1b%',
-					'%sponsor h1b%',
-					'%h-1b visa sponsorship%',
-					'%h1b visa sponsorship%',
-					'%h-1b portability%',
-					'%h1b portability%',
-					'%h-1b sponsorship support%',
-					'%h1b sponsorship support%',
-					'%we sponsor h-1b%',
-					'%we sponsor h1b%',
-					'%h-1b transfer%',
-					'%h1b transfer%',
-					'%support h-1b%',
-					'%support h1b%',
-					'%provide visa sponsorship%',
-					'%provides visa sponsorship%'
-				])
+				  AND explicit_supported = false
+				  AND company_id IN (SELECT company_id FROM dol)
 			)::bigint,
 			count(*) FILTER (
 				WHERE explicit_sponsorship_denied = false
-				  AND NOT (
-					description LIKE ANY (ARRAY[
-						'%h-1b sponsorship available%',
-						'%h1b sponsorship available%',
-						'%visa sponsorship available%',
-						'%we sponsor h-1b%',
-						'%we sponsor h1b%',
-						'%h-1b transfer%',
-						'%h1b transfer%',
-						'%support h-1b%',
-						'%support h1b%',
-						'%provide visa sponsorship%',
-						'%provides visa sponsorship%'
-					])
-				)
-				AND company_id IN (SELECT company_id FROM dol)
-			)::bigint,
-			count(*) FILTER (
-				WHERE explicit_sponsorship_denied = false
-				  AND NOT (
-					description LIKE ANY (ARRAY[
-						'%h-1b sponsorship available%',
-						'%h1b sponsorship available%',
-						'%visa sponsorship available%',
-						'%we sponsor h-1b%',
-						'%we sponsor h1b%',
-						'%h-1b transfer%',
-						'%h1b transfer%',
-						'%support h-1b%',
-						'%support h1b%',
-						'%provide visa sponsorship%',
-						'%provides visa sponsorship%'
-					])
-				)
-				AND company_id NOT IN (SELECT company_id FROM dol)
+				  AND explicit_supported = false
+				  AND company_id NOT IN (SELECT company_id FROM dol)
 			)::bigint,
 			count(*) FILTER (WHERE explicit_sponsorship_denied = true)::bigint
 		FROM fresh
