@@ -28,9 +28,21 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote_scope = EXCLUDED.remote_scope,
     eligible_country_codes = EXCLUDED.eligible_country_codes,
     location_confidence = EXCLUDED.location_confidence,
-    job_family = EXCLUDED.job_family,
-    role_classification = EXCLUDED.role_classification,
-    role_classification_confidence = EXCLUDED.role_classification_confidence,
+    job_family = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.job_family
+        ELSE EXCLUDED.job_family
+    END,
+    role_classification = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.role_classification
+        ELSE EXCLUDED.role_classification
+    END,
+    role_classification_confidence = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.role_classification_confidence
+        ELSE EXCLUDED.role_classification_confidence
+    END,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,
