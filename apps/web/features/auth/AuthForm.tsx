@@ -27,6 +27,13 @@ export function AuthForm({ mode }: AuthFormProps) {
     onSuccess: async (user) => {
       queryClient.setQueryData(["auth", "session"], user);
 
+      const requireVerification =
+        process.env.NEXT_PUBLIC_REQUIRE_EMAIL_VERIFICATION === "true";
+      if (requireVerification && !user.email_verified_at) {
+        router.push("/verify-email");
+        return;
+      }
+
       // Signups never have a profile yet - always send them to onboarding.
       // Logins must NOT unconditionally do this: it used to send every
       // returning user back through the onboarding wizard, whose blank
@@ -88,6 +95,12 @@ export function AuthForm({ mode }: AuthFormProps) {
             ? mutation.error.message
             : "Something went wrong. Please try again."}
         </p>
+      )}
+
+      {mode === "login" && (
+        <a href="/forgot-password" className="text-right text-xs underline text-black/60 dark:text-white/60">
+          Forgot password?
+        </a>
       )}
 
       <button
