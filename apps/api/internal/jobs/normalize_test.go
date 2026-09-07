@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -167,5 +168,32 @@ func TestBuildFingerprint_NormalizesDescriptionFormatting(t *testing.T) {
 func TestBuildFingerprint_RequiresDescription(t *testing.T) {
 	if got := buildFingerprint("Acme", "Backend Engineer", "Remote", ""); got != "" {
 		t.Fatalf("description-less jobs are too ambiguous for cross-source dedupe: %q", got)
+	}
+}
+
+
+func TestStripTags_RemovesUnsafeBlocksAndPreservesLists(t *testing.T) {
+	input := `<section><h2>Responsibilities</h2><ul><li>Build APIs</li><li>Operate Kafka</li></ul><script>alert("x")</script><style>.x{}</style></section>`
+	got := stripTags(input)
+	want := "**Responsibilities**\n\n- Build APIs\n\n- Operate Kafka"
+	if got != want {
+		t.Fatalf("stripTags() = %q, want %q", got, want)
+	}
+}
+
+func TestStripTags_DedupesRepeatedLongATSBlocks(t *testing.T) {
+	block := "This is a sufficiently long company boilerplate paragraph that is duplicated by two responsive ATS containers."
+	input := "<div><p>" + block + "</p></div><div><p>" + block + "</p></div>"
+	got := stripTags(input)
+	if strings.Count(got, block) != 1 {
+		t.Fatalf("expected duplicate long ATS block to be removed: %q", got)
+	}
+}
+
+func TestContentHash_IgnoresEquivalentHTMLWrappers(t *testing.T) {
+	a := contentHash("Acme", "Backend Engineer", "Austin, TX", "<div><p>Build APIs with Go.</p></div>")
+	b := contentHash("Acme", "Backend Engineer", "Austin, TX", "<section class=\"mobile\"><p>Build APIs with Go.</p></section>")
+	if a != b {
+		t.Fatalf("equivalent rendered descriptions should hash identically: %q vs %q", a, b)
 	}
 }
