@@ -43,6 +43,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/jobs/{id}", h.handleGet)
 	if h.adminSyncToken != "" {
 		r.Post("/admin/job-sources/sync", h.handleSync)
+		r.Get("/admin/job-sources/health", h.handleSourceHealth)
 	}
 }
 
@@ -127,9 +128,13 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, detail)
 }
 
-func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) adminAuthorized(r *http.Request) bool {
 	provided := r.Header.Get("X-ApplyForge-Admin-Token")
-	if subtle.ConstantTimeCompare([]byte(provided), []byte(h.adminSyncToken)) != 1 {
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.adminSyncToken)) == 1
+}
+
+func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthorized(r) {
 		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
 		return
 	}
@@ -138,6 +143,36 @@ func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+}
+
+func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
+
+	limit := 200
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	sources, err := h.repo.ListSourceHealth(r.Context(), limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load source health")
+		return
+	}
+	catalog, err := h.repo.GetCatalogHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load catalog health")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"catalog": catalog,
+		"sources": sources,
+	})
 }
 
 func toSummary(j Job) map[string]any {
