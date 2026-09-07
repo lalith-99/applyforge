@@ -87,7 +87,12 @@ func run() error {
 		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 	})
 	authActions := auth.NewActionService(db, auth.NewMailerFromEnv(), webBaseURL)
+	cookieSameSite, err := authCookieSameSite(environment)
+	if err != nil {
+		return err
+	}
 	authHandlers := auth.NewHandlers(authService, webBaseURL, environment == "production").
+		WithCookieSameSite(cookieSameSite).
 		WithActionService(authActions)
 
 	profileRepo := profile.NewRepository(db)
