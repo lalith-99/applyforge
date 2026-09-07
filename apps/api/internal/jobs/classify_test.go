@@ -33,7 +33,7 @@ func TestClassifyTitle(t *testing.T) {
 		{"Integration Engineer", "SOFTWARE_ENGINEERING", "IC_SOFTWARE"},
 		{"Software Engineering Consultant", "CONSULTING_ENGINEERING", "IC_SOFTWARE"},
 		{"Java Consultant", "CONSULTING_ENGINEERING", "IC_SOFTWARE"},
-		{"DevOps Consultant", "CONSULTING_ENGINEERING", "IC_SOFTWARE"},
+		{"DevOps Consultant", "DEVOPS", "IC_SOFTWARE"},
 		{"Sales Engineer", "EXCLUDED", "NON_SOFTWARE"},
 		{"Network Engineer", "UNKNOWN", "UNKNOWN"},
 	}
