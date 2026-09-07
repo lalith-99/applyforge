@@ -168,9 +168,15 @@ func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not load catalog health")
 		return
 	}
+	queue, err := h.repo.GetQueueHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load queue health")
+		return
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"catalog": catalog,
+		"queue":   queue,
 		"sources": sources,
 	})
 }
