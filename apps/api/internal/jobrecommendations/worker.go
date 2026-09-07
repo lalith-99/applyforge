@@ -97,6 +97,10 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			DeterministicScore:      int32(r.Result.TotalScore),
 			FinalScore:              int32(r.Result.TotalScore),
 			CandidateProfileVersion: &version,
+			ImmigrationStatus:       r.Result.Eligibility.Immigration.Status,
+			ImmigrationConfidence:   r.Result.Eligibility.Immigration.Confidence,
+			ImmigrationEvidence:     r.Result.Eligibility.Immigration.Evidence,
+			ImmigrationPriorityScore: int32(r.Result.ImmigrationPriorityScore),
 		}
 		if r.HasJudgment {
 			fitScore := int32(r.Judgment.FitScore)
