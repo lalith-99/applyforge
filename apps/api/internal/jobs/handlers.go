@@ -173,10 +173,16 @@ func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not load queue health")
 		return
 	}
+	ai, err := h.repo.GetAIUsageHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load AI usage health")
+		return
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"catalog": catalog,
 		"queue":   queue,
+		"ai":      ai,
 		"sources": sources,
 	})
 }
