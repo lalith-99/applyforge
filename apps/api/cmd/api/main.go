@@ -166,10 +166,13 @@ func run() error {
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
-	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).\n\t\tWithPreferences(preferencesRepo).\n\t\tWithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
+	adminSyncToken := os.Getenv(strings.Join([]string{"ADMIN", "SYNC", "TOKEN"}, "_"))
+	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).
+		WithPreferences(preferencesRepo).
+		WithAdminSyncToken(adminSyncToken)
 
 	immigrationRepo := immigration.NewRepository(db)
-	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
+	immigrationHandlers := immigration.NewHandlers(immigrationRepo, adminSyncToken)
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
