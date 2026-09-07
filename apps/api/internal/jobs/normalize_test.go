@@ -142,3 +142,30 @@ func TestIsFreshForEagerAI(t *testing.T) {
 		t.Fatal("wildly future timestamp must not be eligible for eager AI")
 	}
 }
+
+
+func TestBuildFingerprint_PreservesSeniorityAndLocation(t *testing.T) {
+	senior := buildFingerprint("Acme", "Senior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	junior := buildFingerprint("Acme", "Junior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	otherLocation := buildFingerprint("Acme", "Senior Backend Engineer", "Seattle, WA", "Build APIs with Go.")
+	if senior == junior {
+		t.Fatal("senior and junior openings must not share a dedupe fingerprint")
+	}
+	if senior == otherLocation {
+		t.Fatal("same-title openings in different locations must not share a dedupe fingerprint")
+	}
+}
+
+func TestBuildFingerprint_NormalizesDescriptionFormatting(t *testing.T) {
+	a := buildFingerprint("Acme", "Senior Backend Engineer", "Austin, TX", "<p>Build   APIs with Go.</p>")
+	b := buildFingerprint("Acme, Inc.", "Senior Backend Engineer", "Austin, TX", "Build APIs with Go.")
+	if a == "" || a != b {
+		t.Fatalf("expected equivalent normalized postings to dedupe: %q vs %q", a, b)
+	}
+}
+
+func TestBuildFingerprint_RequiresDescription(t *testing.T) {
+	if got := buildFingerprint("Acme", "Backend Engineer", "Remote", ""); got != "" {
+		t.Fatalf("description-less jobs are too ambiguous for cross-source dedupe: %q", got)
+	}
+}
