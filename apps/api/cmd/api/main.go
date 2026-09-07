@@ -99,6 +99,20 @@ func run() error {
 	aiWorkerClient.SetUsageRecorder(func(ctx context.Context, operation string, latencyMS int64, status string, errMsg *string) {
 		aiUsageRepo.RecordAsync(ctx, aiusage.Entry{Operation: operation, Status: status, LatencyMS: latencyMS, ErrorMessage: errMsg})
 	})
+	aiWorkerClient.SetDetailedUsageRecorder(func(ctx context.Context, usage aiclient.DetailedUsage) {
+		aiUsageRepo.RecordAsync(ctx, aiusage.Entry{
+			Operation:        usage.Operation,
+			Status:           usage.Status,
+			LatencyMS:        usage.LatencyMS,
+			ErrorMessage:     usage.ErrorMessage,
+			Provider:         usage.Provider,
+			Model:            usage.Model,
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			TotalTokens:      usage.TotalTokens,
+			EstimatedCostUSD: usage.EstimatedCostUSD,
+		})
+	})
 
 	skillsNormalizer, err := skills.NewNormalizer(ctx, db)
 	if err != nil {
