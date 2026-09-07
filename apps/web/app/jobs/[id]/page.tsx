@@ -59,10 +59,14 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           <button
             type="button"
             onClick={() => qualifyMutation.mutate()}
-            disabled={qualifyMutation.isPending}
+            disabled={qualifyMutation.isPending || match?.Eligibility.Eligible === false}
             className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-60 dark:border-white/15"
           >
-            {qualifyMutation.isPending ? "Analyzing…" : "Make Me Qualified"}
+            {qualifyMutation.isPending
+              ? "Analyzing…"
+              : match?.Eligibility.Eligible === false
+                ? "Not eligible"
+                : "Make Me Qualified"}
           </button>
           <button
             type="button"
@@ -96,14 +100,24 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
         {match && (
           <section className="rounded-md border border-black/10 p-6 dark:border-white/15">
             <h2 className="text-lg font-medium">Job Match</h2>
-            <p className="mt-1 text-3xl font-semibold">
-              {match.TotalScore}% <span className="text-lg font-normal text-black/60 dark:text-white/60">{match.Grade}</span>
-            </p>
+            {match.Eligibility.Eligible ? (
+              <p className="mt-1 text-3xl font-semibold">
+                {match.TotalScore}%{" "}
+                <span className="text-lg font-normal text-black/60 dark:text-white/60">{match.Grade}</span>
+              </p>
+            ) : (
+              <div className="mt-2">
+                <p className="text-3xl font-semibold text-red-700">Not eligible</p>
+                <p className="mt-1 text-sm text-black/60 dark:text-white/60">
+                  Technical/profile match: {match.TotalScore}% ({match.Grade})
+                </p>
+              </div>
+            )}
             <p className="mt-2 text-sm text-black/70 dark:text-white/70">{match.Explanation}</p>
 
             {!match.Eligibility.Eligible && (
               <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
-                Not eligible: {match.Eligibility.HardFailures?.join(", ")}
+                {match.Eligibility.HardFailures?.join(", ")}
               </div>
             )}
 
