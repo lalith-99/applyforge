@@ -142,12 +142,24 @@ func (r *Repository) UpsertCompany(ctx context.Context, name, normalizedName str
 
 // UpsertJobResult reports whether the upsert inserted a brand new row.
 type UpsertJobResult struct {
-	Job      Job
-	Inserted bool
+	Job            Job
+	Inserted       bool
+	ContentChanged bool
 }
 
 // UpsertJob idempotently inserts or updates a canonical job by (source, external_id).
 func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, error) {
+	previousHash, previousErr := r.q.GetJobContentHashBySourceExternalID(ctx, db.GetJobContentHashBySourceExternalIDParams{
+		Source:     in.Source,
+		ExternalID: in.ExternalID,
+	})
+	existed := true
+	if errors.Is(previousErr, pgx.ErrNoRows) {
+		existed = false
+	} else if previousErr != nil {
+		return UpsertJobResult{}, previousErr
+	}
+
 	classification := classifyTitle(in.Title)
 	eligibleCountryCodes := in.EligibleCountryCodes
 	if eligibleCountryCodes == nil {
@@ -201,7 +213,11 @@ func (r *Repository) UpsertJob(ctx context.Context, in Job) (UpsertJobResult, er
 	if err != nil {
 		return UpsertJobResult{}, err
 	}
-	return UpsertJobResult{Job: jobFromUpsertRow(row), Inserted: row.Inserted}, nil
+	return UpsertJobResult{
+		Job:            jobFromUpsertRow(row),
+		Inserted:       row.Inserted,
+		ContentChanged: existed && previousHash != in.ContentHash,
+	}, nil
 }
 
 func jobFromUpsertRow(row db.UpsertJobRow) Job {
