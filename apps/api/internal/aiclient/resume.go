@@ -18,9 +18,10 @@ import (
 
 // Client calls the AI worker's HTTP API.
 type Client struct {
-	baseURL       string
-	http          *http.Client
-	usageRecorder UsageRecorder
+	baseURL               string
+	http                  *http.Client
+	usageRecorder         UsageRecorder
+	detailedUsageRecorder DetailedUsageRecorder
 }
 
 // New builds a Client pointed at the given AI worker base URL.
