@@ -372,6 +372,17 @@ func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UU
 	})
 }
 
+func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID uuid.UUID, denied bool) error {
+	if r.pool == nil {
+		return errors.New("sponsorship prefilter update requires a repository backed by a database pool")
+	}
+	_, err := r.pool.Exec(ctx,
+		"UPDATE jobs SET explicit_sponsorship_denied = $2, updated_at = now() WHERE id = $1",
+		jobID, denied,
+	)
+	return err
+}
+
 // CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
 // weren't touched (last_seen_at) since cutoff, and returns how many were
 // closed. Intended to be called once per poll of a source that returns its
