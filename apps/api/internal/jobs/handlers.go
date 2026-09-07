@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,9 +16,10 @@ import (
 
 // Handlers wires the jobs Repository/IngestionService to HTTP routes.
 type Handlers struct {
-	repo         *Repository
-	svc          *IngestionService
-	requirements *jobrequirements.Service
+	repo           *Repository
+	svc            *IngestionService
+	requirements   *jobrequirements.Service
+	adminSyncToken string
 }
 
 // NewHandlers builds jobs Handlers. requirements may be nil if JD parsing
@@ -26,12 +28,22 @@ func NewHandlers(repo *Repository, svc *IngestionService, requirements *jobrequi
 	return &Handlers{repo: repo, svc: svc, requirements: requirements}
 }
 
+// WithAdminSyncToken enables the manual global source-sync endpoint. When the
+// token is empty the route is not mounted at all; normal scheduled ingestion
+// is unaffected.
+func (h *Handlers) WithAdminSyncToken(token string) *Handlers {
+	h.adminSyncToken = strings.TrimSpace(token)
+	return h
+}
+
 // Mount registers job routes onto r. Callers must apply auth.RequireAuth
 // before mounting.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/jobs", h.handleList)
 	r.Get("/jobs/{id}", h.handleGet)
-	r.Post("/admin/job-sources/sync", h.handleSync)
+	if h.adminSyncToken != "" {
+		r.Post("/admin/job-sources/sync", h.handleSync)
+	}
 }
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +128,11 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleSync(w http.ResponseWriter, r *http.Request) {
+	provided := r.Header.Get("X-ApplyForge-Admin-Token")
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(h.adminSyncToken)) != 1 {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
 	if err := h.svc.EnqueueSyncTasks(r.Context()); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "sync failed")
 		return
