@@ -27,6 +27,7 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateskills"
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpapi"
+	"github.com/lalithlochan/applyforge/apps/api/internal/immigration"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrecommendations"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
@@ -126,12 +127,16 @@ func run() error {
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
 	jobsHandlers := jobs.NewHandlers(jobsRepo, ingestionService, jobRequirementsService).WithAdminSyncToken(os.Getenv("ADMIN_SYNC_TOKEN"))
 
+	immigrationRepo := immigration.NewRepository(db)
+	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
+
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
 	matchingRepo := matching.NewRepository(db)
-	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo)
+	matchingService := matching.NewService(matchingRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, preferencesRepo, profileRepo, candidateProfileRepo).
+		WithImmigrationEvidence(immigrationRepo)
 	matchingHandlers := matching.NewHandlers(matchingService)
 
 	airankService := airank.NewService(aiWorkerClient)
@@ -239,7 +244,7 @@ func run() error {
 		WebBaseURL:  webBaseURL,
 		RequireAuth: auth.RequireAuth(authService),
 		Auth:        authHandlers,
-		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
+		Authed:      []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
 	})
 
 	server := &http.Server{
