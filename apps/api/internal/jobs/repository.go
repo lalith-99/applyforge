@@ -113,12 +113,13 @@ type ListFilter struct {
 
 // Repository provides access to company/job-source/job records.
 type Repository struct {
-	q *db.Queries
+	q    *db.Queries
+	pool *database.Pool
 }
 
 // NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries()}
+	return &Repository{q: pool.Queries(), pool: pool}
 }
 
 // NewRepositoryFromQueries builds a Repository from an existing sqlc Queries
