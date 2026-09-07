@@ -110,7 +110,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		Location:                 location,
 		CountryCode:              countryCode,
 		ExcludeSponsorshipDenied: excludeSponsorshipDenied,
-		RequireRecentH1BHistory:   requireRecentH1BHistory,
+		RequireRecentH1BHistory:  requireRecentH1BHistory,
 		Sort:                     q.Get("sort"),
 		Limit:                    limit,
 		Offset:                   offset,
