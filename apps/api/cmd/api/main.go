@@ -59,7 +59,14 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	addr := getenv("API_ADDR", ":8080")
+	addr := strings.TrimSpace(os.Getenv("API_ADDR"))
+	if addr == "" {
+		if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+			addr = ":" + port
+		} else {
+			addr = ":8080"
+		}
+	}
 	dsn := getenv("DATABASE_URL", "postgres://applyforge:applyforge@localhost:5432/applyforge?sslmode=disable")
 	webBaseURL := getenv("WEB_BASE_URL", "http://localhost:3000")
 	environment := getenv("ENVIRONMENT", "development")
