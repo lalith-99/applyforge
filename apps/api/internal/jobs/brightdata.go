@@ -27,8 +27,10 @@ var brightDataTitleShards = map[string][]string{
 	},
 	"us-java-24h": {
 		"Java Developer", "Java Engineer", "Java Backend Developer",
-		"Java Full Stack Developer", "Spring Boot Developer", "Spring Boot Engineer",
-		"J2EE Developer",
+		"Java Full Stack Developer", "Java Full Stack Engineer", "Full Stack Java Developer",
+		"Senior Java Full Stack Developer", "Lead Java Full Stack Engineer",
+		"Spring Boot Developer", "Spring Boot Engineer", "Java Microservices Developer",
+		"Java Application Developer", "J2EE Developer", "Java J2EE Developer",
 	},
 	"us-go-24h": {
 		"Golang Developer", "Golang Engineer", "Golang Software Engineer",
@@ -36,7 +38,8 @@ var brightDataTitleShards = map[string][]string{
 		"Backend Engineer Golang", "Backend Engineer Go", "Go Backend Developer",
 	},
 	"us-fullstack-web-24h": {
-		"Full Stack Developer", "Full Stack Engineer", "Frontend Developer",
+		"Full Stack Developer", "Full Stack Engineer", "Full Stack Software Developer",
+		"Full Stack AI Developer", "Frontend Developer",
 		"Frontend Engineer", "Front End Developer", "UI Developer", "Web Developer",
 		"React Developer", "React Engineer", "Angular Developer", "Angular Engineer",
 		"Vue Developer", "Vue.js Developer", "JavaScript Developer",
@@ -48,8 +51,9 @@ var brightDataTitleShards = map[string][]string{
 		"API Engineer", "Microservices Engineer",
 	},
 	"us-devops-cloud-24h": {
-		"DevOps Engineer", "DevSecOps Engineer", "Site Reliability Engineer",
-		"Cloud Engineer", "Kubernetes Engineer", "Build Engineer", "Release Engineer",
+		"DevOps Engineer", "DevSecOps Engineer", "DevOps Developer", "Azure DevOps Developer",
+		"Site Reliability Engineer", "Cloud Engineer", "Kubernetes Engineer",
+		"Build Engineer", "Release Engineer",
 	},
 	"us-data-ai-24h": {
 		"Data Engineer", "Machine Learning Engineer", "AI Engineer",
