@@ -352,3 +352,85 @@ func (r *Repository) GetQueueHealth(ctx context.Context) (QueueHealth, error) {
 	}
 	return health, rows.Err()
 }
+
+
+type AIOperationHealth struct {
+	Operation        string  `json:"operation"`
+	Calls24H         int64   `json:"calls_24h"`
+	Errors24H        int64   `json:"errors_24h"`
+	TotalTokens24H   int64   `json:"total_tokens_24h"`
+	KnownCostUSD24H  float64 `json:"known_cost_usd_24h"`
+}
+
+type AIUsageHealth struct {
+	Calls24H          int64               `json:"calls_24h"`
+	Errors24H         int64               `json:"errors_24h"`
+	PromptTokens24H   int64               `json:"prompt_tokens_24h"`
+	CompletionTokens24H int64             `json:"completion_tokens_24h"`
+	TotalTokens24H    int64               `json:"total_tokens_24h"`
+	KnownCostUSD24H   float64             `json:"known_cost_usd_24h"`
+	CallsMissingCost24H int64             `json:"calls_missing_cost_24h"`
+	ByOperation       []AIOperationHealth `json:"by_operation"`
+}
+
+func (r *Repository) GetAIUsageHealth(ctx context.Context) (AIUsageHealth, error) {
+	if r.pool == nil {
+		return AIUsageHealth{}, ErrSourceHealthUnavailable
+	}
+	var health AIUsageHealth
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*)::bigint,
+			count(*) FILTER (WHERE status = 'ERROR')::bigint,
+			COALESCE(sum(prompt_tokens), 0)::bigint,
+			COALESCE(sum(completion_tokens), 0)::bigint,
+			COALESCE(sum(total_tokens), 0)::bigint,
+			COALESCE(sum(estimated_cost_usd), 0)::double precision,
+			count(*) FILTER (
+				WHERE provider IS NOT NULL AND estimated_cost_usd IS NULL
+			)::bigint
+		FROM ai_usage
+		WHERE created_at >= now() - INTERVAL '24 hours'
+	`).Scan(
+		&health.Calls24H,
+		&health.Errors24H,
+		&health.PromptTokens24H,
+		&health.CompletionTokens24H,
+		&health.TotalTokens24H,
+		&health.KnownCostUSD24H,
+		&health.CallsMissingCost24H,
+	); err != nil {
+		return AIUsageHealth{}, err
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			operation,
+			count(*)::bigint,
+			count(*) FILTER (WHERE status = 'ERROR')::bigint,
+			COALESCE(sum(total_tokens), 0)::bigint,
+			COALESCE(sum(estimated_cost_usd), 0)::double precision
+		FROM ai_usage
+		WHERE created_at >= now() - INTERVAL '24 hours'
+		GROUP BY operation
+		ORDER BY count(*) DESC, operation
+	`)
+	if err != nil {
+		return AIUsageHealth{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item AIOperationHealth
+		if err := rows.Scan(
+			&item.Operation,
+			&item.Calls24H,
+			&item.Errors24H,
+			&item.TotalTokens24H,
+			&item.KnownCostUSD24H,
+		); err != nil {
+			return AIUsageHealth{}, err
+		}
+		health.ByOperation = append(health.ByOperation, item)
+	}
+	return health, rows.Err()
+}
