@@ -66,7 +66,7 @@ AS $$
                  )
           )
     );
-$;
+$$;
 -- +goose StatementEnd
 
 -- Add the newer role-family shards when upgrading an already-created local DB.
