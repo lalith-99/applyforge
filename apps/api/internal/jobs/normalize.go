@@ -6,13 +6,11 @@ import (
 	"html"
 	"regexp"
 	"strings"
+
+	xhtml "golang.org/x/net/html"
 )
 
 var (
-	tagRe          = regexp.MustCompile(`<[^>]*>`)
-	headingTagRe   = regexp.MustCompile(`(?i)</?h[1-6](?:\s[^>]*)?>`)
-	blockTagRe     = regexp.MustCompile(`(?i)</?(?:article|br|div|h[1-6]|li|ol|p|section|table|tr|ul)(?:\s[^>]*)?>`)
-	boldTagRe      = regexp.MustCompile(`(?i)</?(?:b|strong)(?:\s[^>]*)?>`)
 	whitespaceRe   = regexp.MustCompile(`[ \t\f\v\r]+`)
 	lineBreakRe    = regexp.MustCompile(`\n{3,}`)
 	seniorityWords = []string{
@@ -21,7 +19,10 @@ var (
 	}
 )
 
-// stripTags decodes escaped HTML, removes markup, and preserves block breaks.
+// stripTags decodes escaped HTML and structurally renders readable text.
+// It preserves headings, lists, paragraphs, and emphasis while removing
+// script/style/template/svg content entirely. Using an HTML parser rather
+// than regex means malformed/nested ATS markup is handled much more safely.
 func stripTags(value string) string {
 	for i := 0; i < 3; i++ {
 		decoded := html.UnescapeString(value)
@@ -30,23 +31,160 @@ func stripTags(value string) string {
 		}
 		value = decoded
 	}
-	text := headingTagRe.ReplaceAllStringFunc(value, func(tag string) string {
-		if strings.HasPrefix(tag, "</") {
-			return "**\n"
+
+	if !strings.Contains(value, "<") {
+		return normalizeRenderedText(value)
+	}
+
+	doc, err := xhtml.Parse(strings.NewReader("<html><body>" + value + "</body></html>"))
+	if err != nil {
+		// Parser failures are unusual because x/net/html is deliberately
+		// tolerant. Fall back to normalized plain text rather than returning
+		// an empty JD.
+		return normalizeRenderedText(value)
+	}
+
+	var b strings.Builder
+	renderHTMLNode(&b, doc)
+	return dedupeRepeatedBlocks(normalizeRenderedText(b.String()))
+}
+
+func renderHTMLNode(b *strings.Builder, node *xhtml.Node) {
+	if node == nil {
+		return
+	}
+
+	if node.Type == xhtml.TextNode {
+		b.WriteString(node.Data)
+		return
+	}
+
+	if node.Type != xhtml.ElementNode && node.Type != xhtml.DocumentNode {
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			renderHTMLNode(b, child)
 		}
-		return "\n**"
-	})
-	text = blockTagRe.ReplaceAllString(text, "\n")
-	text = boldTagRe.ReplaceAllStringFunc(text, func(tag string) string {
-		if strings.HasPrefix(tag, "</") {
-			return "**"
+		return
+	}
+
+	tag := strings.ToLower(node.Data)
+	switch tag {
+	case "script", "style", "svg", "noscript", "template":
+		return
+	case "br":
+		b.WriteByte('\n')
+		return
+	case "h1", "h2", "h3", "h4", "h5", "h6":
+		text := strings.Join(strings.Fields(nodeText(node)), " ")
+		if text != "" {
+			b.WriteString("\n**")
+			b.WriteString(text)
+			b.WriteString("**\n")
 		}
-		return "**"
-	})
-	text = tagRe.ReplaceAllString(text, " ")
-	text = whitespaceRe.ReplaceAllString(text, " ")
+		return
+	case "li":
+		b.WriteString("\n- ")
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			renderHTMLNode(b, child)
+		}
+		b.WriteByte('\n')
+		return
+	case "strong", "b":
+		b.WriteString("**")
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			renderHTMLNode(b, child)
+		}
+		b.WriteString("**")
+		return
+	}
+
+	block := isHTMLBlock(tag)
+	if block {
+		b.WriteByte('\n')
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		renderHTMLNode(b, child)
+	}
+	if block {
+		b.WriteByte('\n')
+	}
+}
+
+func nodeText(node *xhtml.Node) string {
+	var b strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(n *xhtml.Node) {
+		if n.Type == xhtml.TextNode {
+			b.WriteString(n.Data)
+			b.WriteByte(' ')
+		}
+		if n.Type == xhtml.ElementNode {
+			switch strings.ToLower(n.Data) {
+			case "script", "style", "svg", "noscript", "template":
+				return
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return b.String()
+}
+
+func isHTMLBlock(tag string) bool {
+	switch tag {
+	case "article", "aside", "blockquote", "div", "footer", "header", "main",
+		"ol", "p", "section", "table", "tbody", "td", "th", "thead", "tr", "ul":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeRenderedText(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	value = whitespaceRe.ReplaceAllString(value, " ")
+
+	lines := strings.Split(value, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			if len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			continue
+		}
+		out = append(out, line)
+	}
+	text := strings.Join(out, "\n")
 	text = lineBreakRe.ReplaceAllString(text, "\n\n")
 	return strings.TrimSpace(text)
+}
+
+// dedupeRepeatedBlocks removes repeated long ATS blocks (for example the same
+// company boilerplate rendered twice by desktop/mobile markup) while keeping
+// short repeated bullets/headings intact.
+func dedupeRepeatedBlocks(value string) string {
+	blocks := strings.Split(value, "\n\n")
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(block), " "))
+		if len(key) >= 80 {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		out = append(out, block)
+	}
+	return strings.Join(out, "\n\n")
 }
 
 // normalizeTitle produces a coarse, comparison-friendly title: lowercased,
@@ -277,6 +415,7 @@ func normalizedDescriptionHash(description string) string {
 // contentHash fingerprints the parts of a job posting that matter for
 // change detection (see MASTER_REQUIREMENTS.md §15).
 func contentHash(company, title, location, description string) string {
-	sum := sha256.Sum256([]byte(strings.ToLower(company) + "|" + strings.ToLower(title) + "|" + strings.ToLower(location) + "|" + description))
+	normalizedDescription := strings.ToLower(stripTags(description))
+	sum := sha256.Sum256([]byte(strings.ToLower(company) + "|" + strings.ToLower(title) + "|" + strings.ToLower(location) + "|" + normalizedDescription))
 	return hex.EncodeToString(sum[:])
 }
