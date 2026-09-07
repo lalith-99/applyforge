@@ -6,9 +6,7 @@ import (
 )
 
 func immigrationRequired(in Input) bool {
-	return in.RequiresH1BTransfer ||
-		in.RequiresNewH1BCapSponsorship ||
-		in.RequiresFutureEmploymentSponsorship ||
+	return h1bSupportRequired(in) ||
 		in.GreenCardSupportPreferred ||
 		in.GreenCardSupportRequired ||
 		in.PermSupportPreferred
@@ -17,7 +15,15 @@ func immigrationRequired(in Input) bool {
 func h1bSupportRequired(in Input) bool {
 	return in.RequiresH1BTransfer ||
 		in.RequiresNewH1BCapSponsorship ||
-		in.RequiresFutureEmploymentSponsorship
+		in.RequiresFutureEmploymentSponsorship ||
+		looksLikeH1B(in.ImmigrationStatus) ||
+		looksLikeH1B(in.WorkAuthorization)
+}
+
+func looksLikeH1B(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("-", "", " ", "", "_", "").Replace(normalized)
+	return strings.Contains(normalized, "h1b")
 }
 
 func permSupportRelevant(in Input) bool {
