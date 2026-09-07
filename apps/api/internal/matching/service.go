@@ -99,7 +99,13 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 		PreferredOnsite:          prefs.Onsite,
 		PreferredEmploymentTypes: prefs.EmploymentTypes,
 		ExcludedCompanies:        prefs.ExcludedCompanies,
-		ExcludedLocations:        prefs.ExcludedLocations,
+		ExcludedLocations:                   prefs.ExcludedLocations,
+		RequiresH1BTransfer:                 prefs.RequiresH1BTransfer,
+		RequiresNewH1BCapSponsorship:        prefs.RequiresNewH1BCapSponsorship,
+		RequiresFutureEmploymentSponsorship: prefs.RequiresFutureEmploymentSponsorship,
+		GreenCardSupportPreferred:           prefs.GreenCardSupportPreferred,
+		GreenCardSupportRequired:            prefs.GreenCardSupportRequired,
+		PermSupportPreferred:                prefs.PermSupportPreferred,
 		CompanyName:              job.CompanyName,
 		LocationText:             stringOrEmpty(job.LocationText),
 		RemoteType:               stringOrEmpty(job.RemoteType),
@@ -111,7 +117,9 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 		HasEducationReqs:         len(reqs.EducationRequirements) > 0,
 		HasCertReqs:              len(reqs.Certifications) > 0,
 		PostedAt:                 job.PostedAt,
-		FirstSeenAt:              job.FirstSeenAt,
+		FirstSeenAt:                  job.FirstSeenAt,
+		JobDescription:               job.Description,
+		WorkAuthorizationRequirements: stringOrEmpty(reqs.WorkAuthorizationRequirements),
 	}
 
 	result := Score(input)
