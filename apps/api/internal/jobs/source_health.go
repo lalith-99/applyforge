@@ -439,7 +439,7 @@ type CoverageBreakdown struct {
 }
 
 type MarketCoverageHealth struct {
-	UniqueCompanies24H             int64               `json:"unique_companies_24h"`
+	UniqueCompanies24H            int64               `json:"unique_companies_24h"`
 	ExplicitSponsorshipSupport24H int64               `json:"explicit_sponsorship_support_24h"`
 	HistoricalSupport24H          int64               `json:"historical_support_24h"`
 	SponsorshipUnknown24H         int64               `json:"sponsorship_unknown_24h"`
