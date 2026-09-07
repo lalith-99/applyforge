@@ -118,7 +118,13 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		if upserted.Inserted && job.Fingerprint != "" {
 			canonical, findErr := s.repo.FindCanonicalByFingerprint(ctx, job.Fingerprint, upserted.Job.ID)
 			if findErr == nil {
-				if setErr := s.repo.SetCanonicalJobID(ctx, upserted.Job.ID, canonical.ID); setErr != nil {
+				var setErr error
+				if sourcePriority(upserted.Job.Source) > sourcePriority(canonical.Source) {
+					setErr = s.repo.PromoteCanonicalJob(ctx, upserted.Job.ID, canonical.ID)
+				} else {
+					setErr = s.repo.SetCanonicalJobID(ctx, upserted.Job.ID, canonical.ID)
+				}
+				if setErr != nil {
 					slog.Error("set canonical job id failed", "job_id", upserted.Job.ID, "canonical_job_id", canonical.ID, "error", setErr)
 				} else {
 					result.Deduped++
@@ -268,4 +274,18 @@ func strOrNil(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+
+func sourcePriority(source string) int {
+	switch source {
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE":
+		return 100
+	case "BRIGHTDATA":
+		return 60
+	case "ARBEITNOW":
+		return 40
+	default:
+		return 20
+	}
 }
