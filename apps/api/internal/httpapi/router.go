@@ -42,6 +42,7 @@ func NewRouter(cfg Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
+	r.Use(securityHeaders)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(requestLogger)
@@ -49,7 +50,7 @@ func NewRouter(cfg Config) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.WebBaseURL},
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type"},
+		AllowedHeaders:   []string{"Content-Type", "X-ApplyForge-Admin-Token"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -64,6 +65,7 @@ func NewRouter(cfg Config) http.Handler {
 	r.Get("/ready", handleReady(cfg.DB))
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(protectBrowserMutations(cfg.WebBaseURL))
 		if cfg.Auth != nil {
 			r.Route("/auth", func(r chi.Router) {
 				r.Use(authRateLimiter.middleware)
