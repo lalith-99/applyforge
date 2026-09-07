@@ -327,20 +327,24 @@ func (h *Handlers) setSessionCookie(w http.ResponseWriter, token string) {
 }
 
 func (h *Handlers) clearSessionCookie(w http.ResponseWriter) {
-	ClearSessionCookie(w, h.secureCookie)
+	clearSessionCookie(w, h.secureCookie, h.sameSite)
 }
 
 // ClearSessionCookie expires the af_session cookie. Exported so other
 // packages (e.g. account deletion) can log the browser out without
 // depending on auth.Handlers directly.
 func ClearSessionCookie(w http.ResponseWriter, secure bool) {
+	clearSessionCookie(w, secure, http.SameSiteLaxMode)
+}
+
+func clearSessionCookie(w http.ResponseWriter, secure bool, sameSite http.SameSite) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: h.sameSite,
+		SameSite: sameSite,
 		MaxAge:   -1,
 	})
 }
