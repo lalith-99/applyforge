@@ -148,6 +148,7 @@ func run() error {
 	immigrationHandlers := immigration.NewHandlers(immigrationRepo, os.Getenv("ADMIN_SYNC_TOKEN"))
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
+	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
 
@@ -196,6 +197,7 @@ func run() error {
 		w := background.NewWorker(jobQueue, fmt.Sprintf("api-inprocess-worker-%d", i))
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
+		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
 		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
