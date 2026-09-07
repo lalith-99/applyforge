@@ -243,21 +243,35 @@ func normalizeEmploymentType(value string) string {
 	}
 }
 
-// buildFingerprint produces a coarse cross-source dedupe key: the same real
-// posting from two different sources (e.g. a company's own Greenhouse board
-// and an aggregator like Arbeitnow) should normally produce the same
-// fingerprint even though their (source, external_id) differ. Deliberately
-// uses remote_type rather than raw location text, since free-text location
-// formatting varies far more across sources than a normalized title/company
-// pair does - remote_type is already normalized identically by every
-// connector (see source.go's RawJob.RemoteType).
-func buildFingerprint(companyName, title, remoteType string) string {
+// buildFingerprint produces a conservative cross-source identity key.
+// Unlike normalizeTitle (which intentionally removes seniority for search /
+// matching), identityTitle preserves Senior/Junior/Staff distinctions.
+// Location and a normalized-description hash keep same-title openings for
+// different teams/locations from collapsing into one canonical job.
+func buildFingerprint(companyName, title, location, description string) string {
 	company := normalizeCompanyName(companyName)
-	normTitle := normalizeTitle(title)
-	if company == "" || normTitle == "" {
+	identityTitle := normalizeIdentityTitle(title)
+	locationKey := strings.ToLower(strings.Join(strings.Fields(location), " "))
+	descriptionKey := normalizedDescriptionHash(description)
+	if company == "" || identityTitle == "" || descriptionKey == "" {
 		return ""
 	}
-	return company + "|" + normTitle + "|" + strings.ToLower(strings.TrimSpace(remoteType))
+	return company + "|" + identityTitle + "|" + locationKey + "|" + descriptionKey
+}
+
+func normalizeIdentityTitle(title string) string {
+	lower := strings.ToLower(strings.TrimSpace(title))
+	lower = strings.NewReplacer(",", " ", "-", " ", "/", " ").Replace(lower)
+	return strings.Join(strings.Fields(lower), " ")
+}
+
+func normalizedDescriptionHash(description string) string {
+	normalized := strings.Join(strings.Fields(strings.ToLower(stripTags(description))), " ")
+	if normalized == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
 }
 
 // contentHash fingerprints the parts of a job posting that matter for
