@@ -71,6 +71,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		}
 
 		location := normalizeLocation(raw)
+		classification := classifyTitle(raw.Title)
 		country := raw.Country
 		if country == "" && location.CountryCode == "US" {
 			country = "United States"
@@ -127,7 +128,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			}
 		}
 
-		// Enrich eagerly only for jobs seen for the first time. Re-touching
+		// Enrich eagerly only for fresh U.S. IC-software jobs. Re-touching
 		// an already-seen job on every poll (the common case once a source
 		// is caught up) would otherwise re-enqueue enrichment for its whole
 		// backlog every cycle; GetOrParse's content_hash cache means that's
@@ -139,7 +140,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		// change - just not proactively.
 		if upserted.Inserted {
 			result.Inserted++
-			if s.queue != nil {
+			if s.queue != nil && location.CountryCode == "US" && classification.Classification == "IC_SOFTWARE" {
 				payload := EnrichPayload{JobID: upserted.Job.ID.String()}
 				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
 					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
