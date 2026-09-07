@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"errors"
 	"crypto/subtle"
 	"net/http"
 	"strconv"
@@ -10,8 +11,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobrequirements"
+	"github.com/lalithlochan/applyforge/apps/api/internal/preferences"
 )
 
 // Handlers wires the jobs Repository/IngestionService to HTTP routes.
@@ -19,6 +22,7 @@ type Handlers struct {
 	repo           *Repository
 	svc            *IngestionService
 	requirements   *jobrequirements.Service
+	preferences    *preferences.Repository
 	adminSyncToken string
 }
 
@@ -36,6 +40,13 @@ func (h *Handlers) WithAdminSyncToken(token string) *Handlers {
 	return h
 }
 
+// WithPreferences enables user-specific catalog hard filters such as explicit
+// sponsorship denials for H-1B candidates.
+func (h *Handlers) WithPreferences(repo *preferences.Repository) *Handlers {
+	h.preferences = repo
+	return h
+}
+
 // Mount registers job routes onto r. Callers must apply auth.RequireAuth
 // before mounting.
 func (h *Handlers) Mount(r chi.Router) {
@@ -50,6 +61,19 @@ func (h *Handlers) Mount(r chi.Router) {
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+
+	excludeSponsorshipDenied := false
+	if h.preferences != nil {
+		if user, ok := auth.UserFromContext(r.Context()); ok {
+			prefs, err := h.preferences.Get(r.Context(), user.ID)
+			if err == nil {
+				excludeSponsorshipDenied = preferences.RequiresH1BSupport(prefs)
+			} else if !errors.Is(err, preferences.ErrNotFound) {
+				httpx.WriteError(w, http.StatusInternalServerError, "could not load job preferences")
+				return
+			}
+		}
+	}
 	countryCode := strings.ToUpper(strings.TrimSpace(q.Get("country")))
 	location := q.Get("location")
 	if countryCode == "" {
@@ -82,8 +106,9 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		EmploymentType: normalizeEmploymentType(q.Get("employment_type")),
 		PostedAfter:    postedAfter,
 		Location:       location,
-		CountryCode:    countryCode,
-		Sort:           q.Get("sort"),
+		CountryCode:              countryCode,
+		ExcludeSponsorshipDenied: excludeSponsorshipDenied,
+		Sort:                     q.Get("sort"),
 		Limit:          limit,
 		Offset:         offset,
 	})
