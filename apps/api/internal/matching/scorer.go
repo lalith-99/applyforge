@@ -70,6 +70,14 @@ func Score(in Input) Result {
 		SuggestedTargetAdditions: suggestedAdditions,
 		Eligibility:              eligibility,
 	}
+
+	switch result.Eligibility.Immigration.Status {
+	case "SUPPORTED":
+		result.PositiveEvidence = append(result.PositiveEvidence, "Job posting explicitly indicates immigration sponsorship/support.")
+	case "HISTORICAL_SUPPORT":
+		result.PositiveEvidence = append(result.PositiveEvidence, "Historical DOL immigration evidence: "+result.Eligibility.Immigration.Evidence)
+	}
+
 	result.Explanation = explanation(result, in)
 	return result
 }
@@ -264,6 +272,12 @@ func preferencesAlignment(eligibility EligibilityResult) float64 {
 	}
 	if len(eligibility.Warnings) > 0 {
 		return 0.6
+	}
+	// Historical DOL activity is useful, but it is weaker than explicit
+	// role-level sponsorship language and therefore never receives full
+	// preference credit.
+	if eligibility.Immigration.Status == "HISTORICAL_SUPPORT" {
+		return 0.85
 	}
 	return 1.0
 }
