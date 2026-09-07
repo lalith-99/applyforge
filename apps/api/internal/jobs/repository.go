@@ -556,6 +556,20 @@ func (r *Repository) CreateJobSource(ctx context.Context, sourceType string, com
 	return database.PGToUUID(row.ID), nil
 }
 
+// SetSourceTypeEnabled toggles all configured shards/connectors for a source
+// type. Optional paid providers use this at startup so secrets + an explicit
+// environment flag are enough to activate their pre-seeded shards.
+func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string, enabled bool) error {
+	if r.pool == nil {
+		return errors.New("source enablement requires a repository backed by a database pool")
+	}
+	_, err := r.pool.Exec(ctx,
+		"UPDATE job_sources SET enabled = $2 WHERE source_type = $1",
+		sourceType, enabled,
+	)
+	return err
+}
+
 // ListJobSources returns all enabled job source configurations.
 func (r *Repository) ListJobSources(ctx context.Context) ([]JobSourceConfig, error) {
 	rows, err := r.q.ListJobSources(ctx)
