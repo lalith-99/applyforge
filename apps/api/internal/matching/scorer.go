@@ -19,21 +19,28 @@ func Score(in Input) Result {
 	mustHaveCoverage := creditRatio(len(in.RequiredSkills), requiredCredit)
 	preferredCoverage := creditRatio(len(in.PreferredSkills), preferredCredit)
 
-	responsibilityRatio := responsibilityAlignment(in.Responsibilities, in.CandidateSkills)
+	responsibilityRatio := responsibilityAlignment(
+		in.Responsibilities,
+		in.CandidateSkills,
+		append(append([]SkillRequirement{}, in.RequiredSkills...), in.PreferredSkills...),
+	)
 	seniorityScore := seniorityAlignment(in.CandidateSeniority, in.JobSeniority)
+	domainScore := domainAlignment(in.CandidateDomains, in.JobDomains)
 	locationScore := locationAlignment(in)
 	educationScore := educationAlignment(in)
 	preferencesScore := preferencesAlignment(eligibility)
 
+	// Keep these weights aligned with MASTER_REQUIREMENTS.md §20. They sum to
+	// exactly 100, which makes each component independently auditable.
 	components := ComponentScores{
-		MustHaveSkillCoverage:   40 * mustHaveCoverage,
-		ResponsibilityAlignment: 10 * responsibilityRatio,
+		MustHaveSkillCoverage:   30 * mustHaveCoverage,
+		ResponsibilityAlignment: 20 * responsibilityRatio,
 		RoleSeniority:           15 * seniorityScore,
-		PreferredSkills:         15 * preferredCoverage,
-		DomainAlignment:         0, // no reliable domain signal from the JD parser yet; not weighted until it exists
-		LocationWorkArrangement: 8 * locationScore,
+		PreferredSkills:         10 * preferredCoverage,
+		DomainAlignment:         10 * domainScore,
+		LocationWorkArrangement: 5 * locationScore,
 		EducationCertifications: 5 * educationScore,
-		CandidatePreferences:    7 * preferencesScore,
+		CandidatePreferences:    5 * preferencesScore,
 	}
 
 	total := int(components.Total() + 0.5)
@@ -187,21 +194,72 @@ func mergeTransfers(a, b []TransferableMatch) []TransferableMatch {
 	return out
 }
 
-func responsibilityAlignment(responsibilities []string, candidateSkills map[string]bool) float64 {
+func responsibilityAlignment(
+	responsibilities []string,
+	candidateSkills map[string]bool,
+	jobSkills []SkillRequirement,
+) float64 {
 	if len(responsibilities) == 0 {
 		return 0.7 // no responsibilities extracted; neutral-leaning-positive default
 	}
-	matched := 0
+
+	// Score responsibility lines with explicit extracted technologies against
+	// concrete candidate skills. Generic duties are not evidence of a gap.
+	totalCredit := 0.0
 	for _, resp := range responsibilities {
 		lower := strings.ToLower(resp)
-		for skill := range candidateSkills {
+		mentioned := make([]string, 0, 2)
+		for _, req := range jobSkills {
+			skill := strings.ToLower(strings.TrimSpace(req.NormalizedName))
 			if skill != "" && strings.Contains(lower, skill) {
+				mentioned = append(mentioned, skill)
+			}
+		}
+
+		if len(mentioned) == 0 {
+			totalCredit += 0.7
+			continue
+		}
+		for _, skill := range mentioned {
+			if candidateSkills[skill] {
+				totalCredit += 1.0
+				break
+			}
+		}
+	}
+	return totalCredit / float64(len(responsibilities))
+}
+
+func domainAlignment(candidateDomains, jobDomains []string) float64 {
+	if len(jobDomains) == 0 {
+		return 1.0
+	}
+	if len(candidateDomains) == 0 {
+		return 0.7
+	}
+
+	matched := 0
+	for _, jobDomain := range jobDomains {
+		job := normalizeDomain(jobDomain)
+		if job == "" {
+			continue
+		}
+		for _, candidateDomain := range candidateDomains {
+			candidate := normalizeDomain(candidateDomain)
+			if candidate == "" {
+				continue
+			}
+			if candidate == job || strings.Contains(candidate, job) || strings.Contains(job, candidate) {
 				matched++
 				break
 			}
 		}
 	}
-	return coverageRatio(len(responsibilities), matched)
+	return coverageRatio(len(jobDomains), matched)
+}
+
+func normalizeDomain(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
 
 var seniorityOrder = map[string]int{
