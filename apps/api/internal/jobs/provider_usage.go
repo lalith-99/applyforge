@@ -11,9 +11,9 @@ import (
 var ErrProviderBudgetExhausted = errors.New("provider request budget exhausted")
 
 type ProviderRequestBudget struct {
-	MaxPerDay          int
-	MaxPerMonth        int
-	EstimatedCostUSD   float64
+	MaxPerDay        int
+	MaxPerMonth      int
+	EstimatedCostUSD float64
 }
 
 func (b ProviderRequestBudget) validate() error {
