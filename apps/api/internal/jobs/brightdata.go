@@ -17,10 +17,23 @@ import (
 
 const (
 	defaultBrightDataBaseURL = "https://api.brightdata.com"
-	defaultBrightDataLimit   = 1500
+	defaultBrightDataLimit   = 140
 )
 
 var brightDataTitleShards = map[string][]string{
+	// Single-user MVP shard: one bounded snapshot per day avoids paying for
+	// overlapping records across many role shards while covering the user's
+	// primary Java/Go/backend/full-stack/platform/DevOps search directions.
+	"us-single-user-core-24h": {
+		"Software Engineer", "Software Developer", "Software Development Engineer",
+		"Java Developer", "Java Engineer", "Java Backend Developer",
+		"Java Full Stack Developer", "Java Full Stack Engineer",
+		"Spring Boot Developer", "Spring Boot Engineer", "Java Microservices Developer", "J2EE Developer",
+		"Golang Developer", "Golang Engineer", "Go Developer", "Go Engineer", "Go Software Engineer", "Go Backend Developer",
+		"Full Stack Developer", "Full Stack Engineer", "React Developer", "Angular Developer",
+		"Backend Engineer", "Backend Developer", "Platform Engineer", "Distributed Systems Engineer", "API Engineer", "Microservices Engineer",
+		"DevOps Engineer", "Site Reliability Engineer", "Cloud Engineer", "Kubernetes Engineer",
+	},
 	"us-software-general-24h": {
 		"Software Engineer", "Software Developer", "Software Development Engineer",
 		"Application Engineer", "Application Developer",
