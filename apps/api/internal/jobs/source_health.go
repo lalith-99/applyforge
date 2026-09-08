@@ -439,20 +439,20 @@ type CoverageBreakdown struct {
 }
 
 type SourceDiscoveryHealth struct {
-	WatchlistTotal             int64               `json:"watchlist_total"`
-	WatchlistResolved          int64               `json:"watchlist_resolved"`
-	WatchlistPartial           int64               `json:"watchlist_partial"`
-	WatchlistPending           int64               `json:"watchlist_pending"`
-	WatchlistFailed            int64               `json:"watchlist_failed"`
-	RegistryTotal              int64               `json:"registry_total"`
-	RegistryMonitorable        int64               `json:"registry_monitorable"`
-	InspectionPending          int64               `json:"inspection_pending"`
-	InspectionResolved         int64               `json:"inspection_resolved"`
-	InspectionFailed           int64               `json:"inspection_failed"`
-	InspectionUnsupported      int64               `json:"inspection_unsupported"`
-	ProviderRequestsMonth      int64               `json:"provider_requests_month"`
-	ProviderEstimatedUSDMonth  float64             `json:"provider_estimated_usd_month"`
-	ByRegistrySourceType       []CoverageBreakdown `json:"by_registry_source_type"`
+	WatchlistTotal            int64               `json:"watchlist_total"`
+	WatchlistResolved         int64               `json:"watchlist_resolved"`
+	WatchlistPartial          int64               `json:"watchlist_partial"`
+	WatchlistPending          int64               `json:"watchlist_pending"`
+	WatchlistFailed           int64               `json:"watchlist_failed"`
+	RegistryTotal             int64               `json:"registry_total"`
+	RegistryMonitorable       int64               `json:"registry_monitorable"`
+	InspectionPending         int64               `json:"inspection_pending"`
+	InspectionResolved        int64               `json:"inspection_resolved"`
+	InspectionFailed          int64               `json:"inspection_failed"`
+	InspectionUnsupported     int64               `json:"inspection_unsupported"`
+	ProviderRequestsMonth     int64               `json:"provider_requests_month"`
+	ProviderEstimatedUSDMonth float64             `json:"provider_estimated_usd_month"`
+	ByRegistrySourceType      []CoverageBreakdown `json:"by_registry_source_type"`
 }
 
 func (r *Repository) GetSourceDiscoveryHealth(ctx context.Context) (SourceDiscoveryHealth, error) {
