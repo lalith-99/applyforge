@@ -34,6 +34,16 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: ./apps/api
+    entrypoint: ["/migrate"]
+    environment:
+      DATABASE_URL: "postgres://applyforge:applyforge@postgres:5432/applyforge?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ./apps/api
@@ -56,6 +66,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   ai-worker:
     build:
