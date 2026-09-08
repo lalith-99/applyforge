@@ -38,7 +38,6 @@ type JobSource interface {
 	Fetch(ctx context.Context, cursor *Cursor) ([]RawJob, *Cursor, error)
 }
 
-
 // CompleteSnapshotSource is implemented by sources that enumerate the full
 // set of currently-open external IDs but intentionally hydrate only a fresh
 // subset with expensive detail calls. Ingestion touches already-known rows for
