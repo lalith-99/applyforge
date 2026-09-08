@@ -754,3 +754,22 @@ and `ai-worker` containers rebuilt together per the Phase I lesson.
 3. **The DOL importer now reports that refresh was queued.** It no longer waits for a synchronous
    company count or prints a misleading zero when the API returns an asynchronous response.
 
+## Restore canonical Job Match Score weights and domain alignment
+
+1. **The scorer again uses the documented 100-point weights.** A regression had shifted the live
+   implementation to 40/10/15/15/0/8/5/7 while the product specification and Interview Readiness logic
+   still assumed 30/20/15/10/10/5/5/5. The scorer now uses the canonical weights, which sum to exactly 100.
+
+2. **Domain alignment is no longer a permanent zero.** Extracted JD domains are compared deterministically
+   with the user's configured preferred industries/target domains. No explicit JD domain is non-penalizing;
+   absent candidate-domain configuration gets neutral credit rather than a fabricated match.
+
+3. **Generic responsibility prose is neutral, not a false mismatch.** Responsibility lines containing an
+   explicit extracted job skill are scored against concrete candidate skills. Lines without a concrete
+   technology signal receive neutral credit so collaboration/system-design wording cannot erase otherwise
+   complete required-skill coverage.
+
+4. **Education/certification evidence remains separate follow-up work.** It still receives neutral partial
+   credit when the JD contains such requirements until verified resume education/certification evidence is
+   made available to matching without adding another per-job database lookup.
+
