@@ -216,7 +216,8 @@ func run() error {
 		WithAdminSyncToken(adminSyncToken)
 
 	immigrationRepo := immigration.NewRepository(db)
-	immigrationHandlers := immigration.NewHandlers(immigrationRepo, adminSyncToken)
+	immigrationHandlers := immigration.NewHandlers(immigrationRepo, adminSyncToken).WithQueue(jobQueue)
+	watchlistRefreshWorker := immigration.NewSponsorWatchlistRefreshWorker(immigrationRepo)
 
 	var (
 		companySourceDiscoveryWorker    *jobs.CompanySourceDiscoveryWorker
@@ -385,6 +386,7 @@ func run() error {
 	for i := 0; i < workerCount; i++ {
 		w := background.NewWorker(jobQueue, fmt.Sprintf("api-inprocess-worker-%d", i))
 		w.Register(resume.JobTypeParse, resumeParseWorker.Handle)
+		w.Register(immigration.JobTypeRefreshSponsorWatchlist, watchlistRefreshWorker.Handle)
 		w.Register(jobs.JobTypeSyncSource, syncSourceWorker.Handle)
 		if companySourceDiscoveryWorker != nil {
 			w.Register(jobs.JobTypeResolveCompanySource, companySourceDiscoveryWorker.Handle)
