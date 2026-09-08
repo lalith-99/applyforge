@@ -96,12 +96,10 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 					Confidence: 1, Monitorable: true,
 				})
 			}
-		case strings.HasSuffix(host, ".myworkdayjobs.com") || host == "myworkdayjobs.com":
-			add(DiscoveredCompanySource{
-				SourceType: "WORKDAY", BoardToken: host,
-				SourceURL:  "https://" + host,
-				Confidence: 0.95, Monitorable: false,
-			})
+		case isWorkdayHost(host):
+			if discovered, ok := parseWorkdayCareerURL(raw); ok {
+				add(discovered)
+			}
 		case strings.HasSuffix(host, ".icims.com") || host == "icims.com":
 			add(DiscoveredCompanySource{
 				SourceType: "ICIMS", BoardToken: host,

@@ -67,7 +67,7 @@ provider can expose a direct application URL. ApplyForge inspects those URLs loc
 - Ashby
 - SmartRecruiters
 - Workable
-- Workday (registry only today)
+- Workday (direct public CXS monitoring)
 - iCIMS (registry only today)
 - Oracle Cloud Recruiting (registry only today)
 
@@ -159,3 +159,15 @@ ORDER BY provider, operation, status;
 
 Companies with a supported direct ATS stop needing source-resolution calls. Partial/failed
 discoveries use long retry windows, and queue retries do not immediately repeat paid requests.
+
+
+### Workday direct monitoring
+
+When a discovered URL contains an exact Workday tenant and external career site, ApplyForge
+promotes it into an authoritative `WORKDAY` source. The connector enumerates the complete public
+CXS listing in 20-record pages and hydrates recent postings through Workday's public detail
+endpoint.
+
+To avoid thousands of detail requests for old jobs, only recent postings are hydrated by default
+(`WORKDAY_DETAIL_MAX_AGE_DAYS=7`). The connector still records the complete set of external IDs,
+so already-known older rows are touched before closure detection and are not falsely closed.

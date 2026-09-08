@@ -15,7 +15,7 @@ func TestDetectCompanySources(t *testing.T) {
 		{"https://jobs.ashbyhq.com/acme/abc", "ASHBY", "acme", true},
 		{"https://jobs.smartrecruiters.com/Acme/123", "SMARTRECRUITERS", "Acme", true},
 		{"https://apply.workable.com/acme/j/ABC/", "WORKABLE", "acme", true},
-		{"https://acme.wd1.myworkdayjobs.com/Careers/job/123", "WORKDAY", "acme.wd1.myworkdayjobs.com", false},
+		{"https://acme.wd1.myworkdayjobs.com/Careers/job/123", "WORKDAY", "acme.wd1.myworkdayjobs.com|acme|Careers", true},
 	}
 
 	for _, tc := range cases {
