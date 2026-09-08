@@ -267,6 +267,11 @@ END;
 $$;
 -- +goose StatementEnd
 
+-- Build the initial list immediately when upgrading an existing database that
+-- already contains imported DOL evidence. Fresh databases simply produce zero
+-- rows until the importer runs, which refreshes the list again at completion.
+SELECT refresh_company_sponsor_watchlist(10000);
+
 -- +goose Down
 DROP FUNCTION IF EXISTS refresh_company_sponsor_watchlist(INTEGER);
 DROP TABLE company_source_registry;
