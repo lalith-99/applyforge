@@ -118,6 +118,22 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		); err != nil {
 			slog.Error("update sponsorship prefilter failed", "job_id", upserted.Job.ID, "error", err)
 		}
+
+		// Aggregated discovery sources frequently carry the employer's direct
+		// application URL. Learn supported ATS board tokens from those URLs and
+		// promote the company to direct polling automatically. This is best-
+		// effort: a source-registry failure must never discard the job itself.
+		discoveries := DetectCompanySources(raw.ApplyURL, raw.SourceURL)
+		if len(discoveries) > 0 {
+			if err := s.repo.RecordDiscoveredCompanySources(ctx, jobCompanyID, discoveries); err != nil {
+				slog.Error("record discovered company source failed",
+					"source", sourceName,
+					"company_id", jobCompanyID,
+					"company_name", jobCompanyName,
+					"error", err,
+				)
+			}
+		}
 		// Cross-source dedupe: a brand new posting whose fingerprint matches
 		// one already canonical from a DIFFERENT (source, external_id) is
 		// linked to it instead of surfacing as a separate result. Only
