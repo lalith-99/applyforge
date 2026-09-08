@@ -51,6 +51,16 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		return IngestResult{}, fmt.Errorf("fetch from %s: %w", sourceName, err)
 	}
 
+	if completeSnapshot, ok := source.(CompleteSnapshotSource); ok {
+		if err := s.repo.TouchSeenJobs(ctx, sourceName, companyID, completeSnapshot.SeenExternalIDs(), pollStart); err != nil {
+			slog.Error("touch complete source snapshot failed",
+				"source", sourceName,
+				"company_id", companyID,
+				"error", err,
+			)
+		}
+	}
+
 	// Cache resolved companies within this poll to avoid re-upserting the
 	// same company for every one of its postings.
 	resolvedCompanies := map[string]uuid.UUID{}
@@ -219,6 +229,12 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 		return NewSmartRecruitersSource(cfg.BoardToken), "SMARTRECRUITERS", nil
 	case "WORKABLE":
 		return NewWorkableSource(cfg.BoardToken), "WORKABLE", nil
+	case "WORKDAY":
+		source, err := NewWorkdaySource(cfg.BoardToken)
+		if err != nil {
+			return nil, "", err
+		}
+		return source, "WORKDAY", nil
 	case "ARBEITNOW":
 		return NewArbeitnowSource(), "ARBEITNOW", nil
 	case "BRIGHTDATA":
@@ -320,7 +336,7 @@ func strOrNil(s string) *string {
 
 func sourcePriority(source string) int {
 	switch source {
-	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE":
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY":
 		return 100
 	case "BRIGHTDATA":
 		return 60
