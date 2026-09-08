@@ -387,6 +387,23 @@ func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID 
 	return err
 }
 
+// TouchSeenJobs advances last_seen_at for already-known jobs that appeared in
+// a complete source snapshot even when the connector skipped expensive detail
+// hydration for older postings.
+func (r *Repository) TouchSeenJobs(ctx context.Context, source string, companyID uuid.UUID, externalIDs []string, seenAt time.Time) error {
+	if r.pool == nil || len(externalIDs) == 0 {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE jobs
+		SET last_seen_at = $4
+		WHERE source = $1
+		  AND company_id = $2
+		  AND external_id = ANY($3::text[])
+	`, source, companyID, externalIDs, seenAt)
+	return err
+}
+
 // CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
 // weren't touched (last_seen_at) since cutoff, and returns how many were
 // closed. Intended to be called once per poll of a source that returns its
