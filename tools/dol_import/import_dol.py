@@ -386,7 +386,7 @@ def refresh_sponsor_watchlist(
     api_base: str,
     admin_token: str,
     limit: int,
-) -> int:
+) -> dict[str, Any]:
     url = (
         api_base.rstrip("/")
         + f"/admin/immigration/watchlist/refresh?limit={limit}"
@@ -403,9 +403,14 @@ def refresh_sponsor_watchlist(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
-            return int(payload.get("watchlist_companies", 0))
+            if payload.get("status") != "queued":
+                raise RuntimeError(
+                    "ApplyForge watchlist refresh returned an "
+                    f"unexpected response: {payload}"
+                )
+            return payload
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(
@@ -634,20 +639,20 @@ def main() -> int:
         total_employers += employers
         total_certified += certified
 
-    watchlist_companies = None
+    watchlist_refresh = None
     if (
         not args.dry_run
         and not args.skip_watchlist_refresh
         and args.lca_file
     ):
-        watchlist_companies = refresh_sponsor_watchlist(
+        watchlist_refresh = refresh_sponsor_watchlist(
             args.api_base,
             args.admin_token,
             args.watchlist_limit,
         )
         print(
-            f"H-1B sponsor watchlist refreshed: "
-            f"{watchlist_companies:,} companies",
+            f"H-1B sponsor watchlist refresh queued: "
+            f"limit={args.watchlist_limit:,}",
             file=sys.stderr,
         )
 
@@ -656,7 +661,8 @@ def main() -> int:
             {
                 "employer_program_rows": total_employers,
                 "certified_case_signals": total_certified,
-                "watchlist_companies": watchlist_companies,
+                "watchlist_companies": None,
+                "watchlist_refresh": watchlist_refresh,
                 "dry_run": args.dry_run,
             },
             indent=2,
