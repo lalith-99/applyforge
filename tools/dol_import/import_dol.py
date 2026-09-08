@@ -314,7 +314,7 @@ def make_rows(
                 "other_count": item.other_count,
                 "total_count": item.total_count,
                 "latest_decision_date": (
-                    item.latest_decision_date.isoformat()
+                    f"{item.latest_decision_date.isoformat()}T00:00:00Z"
                     if item.latest_decision_date
                     else None
                 ),
