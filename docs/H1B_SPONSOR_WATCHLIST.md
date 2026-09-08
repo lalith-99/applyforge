@@ -98,21 +98,64 @@ That is intentional for the current H-1B transfer goal. A later importer/schema 
 SOC/software relevance and worker-position signals without changing the watchlist/source-discovery
 architecture.
 
-## Next discovery layer
+## Proactive source resolution
 
 The watchlist gives ApplyForge the company universe, but an employer name alone does not reveal its
-career domain or ATS. Today source discovery happens opportunistically from observed job/apply URLs.
+career domain or ATS. Source discovery therefore has two inputs:
 
-The next provider-independent worker should resolve unresolved watchlist companies:
+1. opportunistic detection from job/apply URLs already seen in the catalog;
+2. proactive company-source resolution for unresolved sponsor-watchlist companies.
+
+The resolver is provider-independent:
 
 ```text
-company_sponsor_watchlist (PENDING)
-  -> company/domain resolver
-  -> careers URL
+company_sponsor_watchlist (PENDING / PARTIAL / FAILED)
+  -> CompanySourceResolver
+  -> careers / ATS candidates
   -> ATS detector
   -> company_source_registry
   -> direct job_sources when supported
 ```
 
-This worker can later use whichever web/company lookup provider performs best without coupling the
-watchlist to Bright Data or any single vendor.
+The first implementation uses DataForSEO Google Organic Live search for
+`<legal employer name> careers jobs`. It inspects the organic result URLs locally and promotes
+known Greenhouse, Lever, Ashby, SmartRecruiters, or Workable endpoints into direct polling.
+Workday, iCIMS, Oracle, and generic company career pages are retained in the source registry for
+the structured career-page crawler rather than guessed into unsupported connectors.
+
+### Budget controls
+
+DataForSEO source resolution is disabled by default and requires API credentials in the local
+environment. Every external request is reserved in `provider_usage` before the call. PostgreSQL
+advisory locking serializes those reservations across API replicas, so daily/monthly request caps
+are hard limits rather than best-effort counters.
+
+Default bootstrap controls:
+
+```text
+batch size           500 companies
+enqueue interval      15 minutes
+daily request cap     10,000
+monthly request cap   10,000
+depth                 10 organic results
+```
+
+The default estimated request cost is only accounting metadata. Provider pricing can change, so
+the request caps are the enforcement mechanism.
+
+Provider usage can be inspected with:
+
+```sql
+SELECT
+    provider,
+    operation,
+    status,
+    count(*) AS requests,
+    sum(estimated_cost_usd) AS estimated_cost_usd
+FROM provider_usage
+GROUP BY provider, operation, status
+ORDER BY provider, operation, status;
+```
+
+Companies with a supported direct ATS stop needing source-resolution calls. Partial/failed
+discoveries use long retry windows, and queue retries do not immediately repeat paid requests.
