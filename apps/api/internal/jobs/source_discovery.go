@@ -14,11 +14,12 @@ import (
 // job_sources automatically; unsupported ATSs remain in the registry so a
 // future connector/crawler can take over without rediscovering the company.
 type DiscoveredCompanySource struct {
-	SourceType  string
-	BoardToken  string
-	SourceURL   string
-	Confidence  float32
-	Monitorable bool
+	SourceType      string
+	BoardToken      string
+	SourceURL       string
+	DiscoveryMethod string
+	Confidence      float32
+	Monitorable     bool
 }
 
 // DetectCompanySources recognizes stable ATS URL patterns without making any
@@ -101,15 +102,19 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 				add(discovered)
 			}
 		case strings.HasSuffix(host, ".icims.com") || host == "icims.com":
+			candidate := *u
+			candidate.Fragment = ""
 			add(DiscoveredCompanySource{
 				SourceType: "ICIMS", BoardToken: host,
-				SourceURL:  "https://" + host,
+				SourceURL:  candidate.String(),
 				Confidence: 0.95, Monitorable: false,
 			})
 		case strings.HasSuffix(host, ".oraclecloud.com"):
+			candidate := *u
+			candidate.Fragment = ""
 			add(DiscoveredCompanySource{
 				SourceType: "ORACLE", BoardToken: host,
-				SourceURL:  "https://" + host,
+				SourceURL:  candidate.String(),
 				Confidence: 0.95, Monitorable: false,
 			})
 		}
@@ -156,17 +161,22 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 	resolved := false
 	partial := false
 	for _, d := range discoveries {
+		method := strings.TrimSpace(d.DiscoveryMethod)
+		if method == "" {
+			method = "JOB_URL"
+		}
 		if _, err := r.pool.Exec(ctx, `
 			INSERT INTO company_source_registry (
 				company_id, source_type, board_token, source_url,
 				discovery_method, confidence, monitorable, last_seen_at
-			) VALUES ($1, $2, $3, $4, 'JOB_URL', $5, $6, now())
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 			ON CONFLICT (company_id, source_type, board_token, source_url)
 			DO UPDATE SET
+				discovery_method = EXCLUDED.discovery_method,
 				confidence = GREATEST(company_source_registry.confidence, EXCLUDED.confidence),
 				monitorable = company_source_registry.monitorable OR EXCLUDED.monitorable,
 				last_seen_at = now()
-		`, companyID, d.SourceType, d.BoardToken, d.SourceURL, d.Confidence, d.Monitorable); err != nil {
+		`, companyID, d.SourceType, d.BoardToken, d.SourceURL, method, d.Confidence, d.Monitorable); err != nil {
 			return fmt.Errorf("record discovered %s source: %w", d.SourceType, err)
 		}
 
