@@ -160,9 +160,8 @@ func run() error {
 			return fmt.Errorf("enable development bootstrap job sources: %w", err)
 		}
 		if enabled > 0 {
-			slog.Info("enabled development bootstrap job sources",
+			slog.Info("ensured development bootstrap job sources",
 				"sources", enabled,
-				"reason", "sponsor watchlist is empty",
 			)
 		}
 	}
