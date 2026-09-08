@@ -203,3 +203,66 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 
 	return nil
 }
+
+
+// BackfillDiscoveredCompanySources rebuilds direct ATS knowledge from URLs
+// already stored in the catalog. This makes upgrades useful immediately even
+// when legacy direct source rows were deleted by an older migration.
+func (r *Repository) BackfillDiscoveredCompanySources(ctx context.Context) (int, error) {
+	if r.pool == nil {
+		return 0, nil
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT company_id, apply_url, source_url
+		FROM jobs
+		WHERE company_id IS NOT NULL
+		  AND (apply_url IS NOT NULL OR source_url IS NOT NULL)
+		ORDER BY first_seen_at DESC
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		companyID uuid.UUID
+		applyURL  string
+		sourceURL string
+	}
+	candidates := make([]candidate, 0)
+	for rows.Next() {
+		var item candidate
+		var applyURL, sourceURL *string
+		if err := rows.Scan(&item.companyID, &applyURL, &sourceURL); err != nil {
+			return 0, err
+		}
+		if applyURL != nil {
+			item.applyURL = *applyURL
+		}
+		if sourceURL != nil {
+			item.sourceURL = *sourceURL
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	discovered := 0
+	seen := map[string]bool{}
+	for _, item := range candidates {
+		for _, d := range DetectCompanySources(item.applyURL, item.sourceURL) {
+			key := item.companyID.String() + "|" + d.SourceType + "|" + d.BoardToken
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			if err := r.RecordDiscoveredCompanySources(ctx, item.companyID, []DiscoveredCompanySource{d}); err != nil {
+				return discovered, err
+			}
+			discovered++
+		}
+	}
+	return discovered, nil
+}
