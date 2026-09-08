@@ -54,6 +54,17 @@ func (s *Service) WithImmigrationEvidence(repo *immigrationdata.Repository) *Ser
 	return s
 }
 
+// candidateMatchContext contains user-specific inputs shared by every job in a
+// recommendation run. Loading it once avoids re-reading the same candidate
+// skills, preferences, profile, and transferability graph for every job.
+type candidateMatchContext struct {
+	skills       map[string]bool
+	targetSkills map[string]bool
+	transferable []TransferableSkill
+	prefs        preferences.Preferences
+	profile      profile.Profile
+}
+
 // Match computes (and caches) the deterministic match Result for a user against a job.
 func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, error) {
 	job, err := s.jobsRepo.GetByID(ctx, jobID)
@@ -61,40 +72,71 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 		return Result{}, err
 	}
 
-	reqs, err := s.requirementsSvc.GetOrParse(ctx, job.ID, job.Title, job.Description, job.ContentHash)
+	candidateCtx, err := s.loadCandidateMatchContext(ctx, userID)
 	if err != nil {
 		return Result{}, err
 	}
+	return s.matchJobWithContext(ctx, job, userID, candidateCtx)
+}
 
+func (s *Service) loadCandidateMatchContext(ctx context.Context, userID uuid.UUID) (candidateMatchContext, error) {
 	skills, err := s.candidateSkills.ListForUser(ctx, userID)
 	if err != nil {
-		return Result{}, err
+		return candidateMatchContext{}, err
 	}
 
 	prefs, err := s.preferencesRepo.Get(ctx, userID)
 	if err != nil && err != preferences.ErrNotFound {
-		return Result{}, err
+		return candidateMatchContext{}, err
 	}
 
 	candidateProfile, err := s.profileRepo.Get(ctx, userID)
 	if err != nil && err != profile.ErrNotFound {
-		return Result{}, err
+		return candidateMatchContext{}, err
 	}
 
-	candidateSkillSet := make(map[string]bool, len(skills))
-	candidateTargetSkillSet := make(map[string]bool)
-	skillKeys := make([]string, 0, len(skills))
+	candidateSkillSet, candidateTargetSkillSet, transferableSkillKeys := buildCandidateSkillSets(skills)
+	transferable, err := s.repo.ListTransferableFromSkills(ctx, transferableSkillKeys)
+	if err != nil {
+		return candidateMatchContext{}, err
+	}
+
+	return candidateMatchContext{
+		skills:       candidateSkillSet,
+		targetSkills: candidateTargetSkillSet,
+		transferable: transferable,
+		prefs:        prefs,
+		profile:      candidateProfile,
+	}, nil
+}
+
+func buildCandidateSkillSets(skills []candidateskills.Skill) (current, target map[string]bool, transferableKeys []string) {
+	current = make(map[string]bool, len(skills))
+	target = make(map[string]bool)
+	transferableKeys = make([]string, 0, len(skills))
+
 	for _, sk := range skills {
-		key := strings.ToLower(sk.NormalizedName)
-		skillKeys = append(skillKeys, key)
-		if sk.Status == candidateskills.StatusUserApproved || sk.Status == candidateskills.StatusTargetSkill {
-			candidateTargetSkillSet[key] = true
-		} else {
-			candidateSkillSet[key] = true
+		key := strings.ToLower(strings.TrimSpace(sk.NormalizedName))
+		if key == "" {
+			continue
 		}
+		if sk.Status == candidateskills.StatusUserApproved || sk.Status == candidateskills.StatusTargetSkill {
+			target[key] = true
+			continue
+		}
+		current[key] = true
+		transferableKeys = append(transferableKeys, key)
 	}
+	return current, target, transferableKeys
+}
 
-	transferable, err := s.repo.ListTransferableFromSkills(ctx, skillKeys)
+func (s *Service) matchJobWithContext(
+	ctx context.Context,
+	job jobs.Job,
+	userID uuid.UUID,
+	candidateCtx candidateMatchContext,
+) (Result, error) {
+	reqs, err := s.requirementsSvc.GetOrParse(ctx, job.ID, job.Title, job.Description, job.ContentHash)
 	if err != nil {
 		return Result{}, err
 	}
@@ -111,25 +153,25 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 	}
 
 	input := Input{
-		CandidateSkills:                     candidateSkillSet,
-		CandidateTargetSkills:               candidateTargetSkillSet,
-		TransferableFromSkills:              transferable,
-		CandidateSeniority:                  stringOrEmpty(candidateProfile.Seniority),
-		CandidateDomains:                    candidateProfile.PreferredIndustries,
-		PreferredRemote:                     prefs.Remote,
-		PreferredHybrid:                     prefs.Hybrid,
-		PreferredOnsite:                     prefs.Onsite,
-		PreferredEmploymentTypes:            prefs.EmploymentTypes,
-		ExcludedCompanies:                   prefs.ExcludedCompanies,
-		ExcludedLocations:                   prefs.ExcludedLocations,
-		RequiresH1BTransfer:                 prefs.RequiresH1BTransfer,
-		RequiresNewH1BCapSponsorship:        prefs.RequiresNewH1BCapSponsorship,
-		RequiresFutureEmploymentSponsorship: prefs.RequiresFutureEmploymentSponsorship,
-		GreenCardSupportPreferred:           prefs.GreenCardSupportPreferred,
-		GreenCardSupportRequired:            prefs.GreenCardSupportRequired,
-		PermSupportPreferred:                prefs.PermSupportPreferred,
-		WorkAuthorization:                   stringOrEmpty(prefs.WorkAuthorization),
-		ImmigrationStatus:                   stringOrEmpty(prefs.ImmigrationStatus),
+		CandidateSkills:                     candidateCtx.skills,
+		CandidateTargetSkills:               candidateCtx.targetSkills,
+		TransferableFromSkills:              candidateCtx.transferable,
+		CandidateSeniority:                  stringOrEmpty(candidateCtx.profile.Seniority),
+		CandidateDomains:                    candidateCtx.profile.PreferredIndustries,
+		PreferredRemote:                     candidateCtx.prefs.Remote,
+		PreferredHybrid:                     candidateCtx.prefs.Hybrid,
+		PreferredOnsite:                     candidateCtx.prefs.Onsite,
+		PreferredEmploymentTypes:            candidateCtx.prefs.EmploymentTypes,
+		ExcludedCompanies:                   candidateCtx.prefs.ExcludedCompanies,
+		ExcludedLocations:                   candidateCtx.prefs.ExcludedLocations,
+		RequiresH1BTransfer:                 candidateCtx.prefs.RequiresH1BTransfer,
+		RequiresNewH1BCapSponsorship:        candidateCtx.prefs.RequiresNewH1BCapSponsorship,
+		RequiresFutureEmploymentSponsorship: candidateCtx.prefs.RequiresFutureEmploymentSponsorship,
+		GreenCardSupportPreferred:           candidateCtx.prefs.GreenCardSupportPreferred,
+		GreenCardSupportRequired:            candidateCtx.prefs.GreenCardSupportRequired,
+		PermSupportPreferred:                candidateCtx.prefs.PermSupportPreferred,
+		WorkAuthorization:                   stringOrEmpty(candidateCtx.prefs.WorkAuthorization),
+		ImmigrationStatus:                   stringOrEmpty(candidateCtx.prefs.ImmigrationStatus),
 		CompanyH1BCertifiedCases:            companyEvidence.H1BCertified,
 		CompanyH1BTotalCases:                companyEvidence.H1BTotal,
 		CompanyPERMCertifiedCases:           companyEvidence.PERMCertified,
@@ -154,7 +196,7 @@ func (s *Service) Match(ctx context.Context, jobID, userID uuid.UUID) (Result, e
 	}
 
 	result := Score(input)
-	if err := s.repo.Save(ctx, jobID, userID, result); err != nil {
+	if err := s.repo.Save(ctx, job.ID, userID, result); err != nil {
 		return Result{}, err
 	}
 	return result, nil
@@ -196,10 +238,11 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return nil, err
 	}
 
-	prefs, err := s.preferencesRepo.Get(ctx, userID)
-	if err != nil && err != preferences.ErrNotFound {
+	candidateCtx, err := s.loadCandidateMatchContext(ctx, userID)
+	if err != nil {
 		return nil, err
 	}
+	prefs := candidateCtx.prefs
 
 	const recommendedJobMaxAge = 7 * 24 * time.Hour
 	postedAfter := time.Now().UTC().Add(-recommendedJobMaxAge)
@@ -279,7 +322,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	ranked := make([]RankedJob, 0, len(candidateOrder))
 	for _, jobID := range candidateOrder {
 		job := candidateByID[jobID]
-		result, err := s.Match(ctx, job.ID, userID)
+		result, err := s.matchJobWithContext(ctx, job, userID, candidateCtx)
 		if err != nil {
 			slog.Error("match failed during recommend", "job_id", job.ID, "user_id", userID, "error", err)
 			continue

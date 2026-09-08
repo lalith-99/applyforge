@@ -773,3 +773,20 @@ and `ai-worker` containers rebuilt together per the Phase I lesson.
    credit when the JD contains such requirements until verified resume education/certification evidence is
    made available to matching without adding another per-job database lookup.
 
+## Reuse candidate context during recommendation scoring
+
+1. **Recommendation scoring loads candidate context once.** The hybrid retrieval stage can produce hundreds
+   of jobs. Previously every job called `Match`, which reloaded the same candidate skills, preferences,
+   user profile, and transferable-skill graph and also re-fetched a job that the retrieval stage already had.
+   `Recommend` now loads a shared candidate match context once and scores each retrieved `jobs.Job`
+   directly. Single-job `Match` preserves the same public behavior by loading the context once for that call.
+
+2. **Target-only skills cannot seed transferable-skill credit.** `TARGET_SKILL` and `USER_APPROVED`
+   remain eligible for Target Profile Match, but only current/verified/familiar/learning skills are used as
+   source nodes when looking up transferable skills. This prevents a skill the candidate merely intends to
+   learn from creating a second-order match to another missing technology.
+
+3. **Per-job work is intentionally retained where it is job-specific.** JD requirement lookup/parsing,
+   employer immigration evidence, deterministic scoring, and match-result persistence still happen for each
+   candidate job. A later bulk-scoring pass can optimize those independently without changing score semantics.
+
