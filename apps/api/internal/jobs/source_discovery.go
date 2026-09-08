@@ -225,11 +225,14 @@ func (r *Repository) BackfillDiscoveredCompanySources(ctx context.Context) (int,
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT company_id, apply_url, source_url
-		FROM jobs
-		WHERE company_id IS NOT NULL
-		  AND (apply_url IS NOT NULL OR source_url IS NOT NULL)
-		ORDER BY first_seen_at DESC
+		SELECT j.company_id, j.apply_url, j.source_url
+		FROM jobs j
+		JOIN company_sponsor_watchlist w ON w.company_id = j.company_id
+		WHERE w.source_discovery_status IN ('PENDING', 'PARTIAL')
+		  AND (j.apply_url IS NOT NULL OR j.source_url IS NOT NULL)
+		  AND j.first_seen_at >= now() - INTERVAL '180 days'
+		ORDER BY w.watchlist_rank, j.first_seen_at DESC
+		LIMIT 50000
 	`)
 	if err != nil {
 		return 0, err
