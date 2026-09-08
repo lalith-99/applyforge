@@ -131,7 +131,7 @@ func parseCareerPageDocument(baseURL *url.URL, body []byte) (CareerPageInspectio
 
 	effectiveBase := baseURL
 	var (
-		candidateURLs []string
+		candidateURLs = []string{baseURL.String()}
 		jsonLDScripts []string
 	)
 
