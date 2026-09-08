@@ -259,6 +259,25 @@ BEGIN
         WHERE c.id = w.company_id
     );
 
+    -- Keep direct ATS cadence synchronized with the latest sponsor priority.
+    UPDATE job_sources js
+    SET poll_interval_minutes = w.poll_interval_minutes
+    FROM company_sponsor_watchlist w
+    WHERE js.company_id = w.company_id
+      AND js.source_type IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE');
+
+    -- Direct polling capacity is sponsor-first. Keep discovered endpoints in
+    -- company_source_registry, but stop scheduled ATS polling when a company
+    -- falls outside the refreshed watchlist.
+    UPDATE job_sources js
+    SET enabled = false
+    WHERE js.source_type IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
+      AND NOT EXISTS (
+          SELECT 1
+          FROM company_sponsor_watchlist w
+          WHERE w.company_id = js.company_id
+      );
+
     SELECT count(*)::INTEGER INTO inserted_count
     FROM company_sponsor_watchlist;
 
