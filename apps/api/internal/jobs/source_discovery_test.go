@@ -41,3 +41,29 @@ func TestDetectCompanySourcesIgnoresGenericAndDeduplicates(t *testing.T) {
 		t.Fatalf("expected same board to deduplicate, got %d", len(got))
 	}
 }
+
+func TestDetectCompanySourcesPreservesRegistryURL(t *testing.T) {
+	cases := []struct {
+		raw        string
+		sourceType string
+	}{
+		{"https://jobs-acme.icims.com/jobs/123/software-engineer/job?mode=job", "ICIMS"},
+		{"https://acme.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/123", "ORACLE"},
+	}
+
+	for _, tc := range cases {
+		got := DetectCompanySources(tc.raw)
+		if len(got) != 1 {
+			t.Fatalf("%s: expected one discovery, got %+v", tc.raw, got)
+		}
+		if got[0].SourceType != tc.sourceType {
+			t.Fatalf("%s: unexpected source type %s", tc.raw, got[0].SourceType)
+		}
+		if got[0].SourceURL != tc.raw {
+			t.Fatalf("%s: expected exact source URL, got %s", tc.raw, got[0].SourceURL)
+		}
+		if got[0].Monitorable {
+			t.Fatalf("%s: registry-only source must not be directly monitorable", tc.raw)
+		}
+	}
+}

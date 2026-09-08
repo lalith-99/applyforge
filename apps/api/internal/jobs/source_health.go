@@ -438,6 +438,107 @@ type CoverageBreakdown struct {
 	Count int64  `json:"count"`
 }
 
+type SourceDiscoveryHealth struct {
+	WatchlistTotal            int64               `json:"watchlist_total"`
+	WatchlistResolved         int64               `json:"watchlist_resolved"`
+	WatchlistPartial          int64               `json:"watchlist_partial"`
+	WatchlistPending          int64               `json:"watchlist_pending"`
+	WatchlistFailed           int64               `json:"watchlist_failed"`
+	RegistryTotal             int64               `json:"registry_total"`
+	RegistryMonitorable       int64               `json:"registry_monitorable"`
+	InspectionPending         int64               `json:"inspection_pending"`
+	InspectionResolved        int64               `json:"inspection_resolved"`
+	InspectionFailed          int64               `json:"inspection_failed"`
+	InspectionUnsupported     int64               `json:"inspection_unsupported"`
+	ProviderRequestsMonth     int64               `json:"provider_requests_month"`
+	ProviderEstimatedUSDMonth float64             `json:"provider_estimated_usd_month"`
+	ByRegistrySourceType      []CoverageBreakdown `json:"by_registry_source_type"`
+}
+
+func (r *Repository) GetSourceDiscoveryHealth(ctx context.Context) (SourceDiscoveryHealth, error) {
+	if r.pool == nil {
+		return SourceDiscoveryHealth{}, ErrSourceHealthUnavailable
+	}
+
+	var health SourceDiscoveryHealth
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*)::bigint,
+			count(*) FILTER (WHERE source_discovery_status = 'RESOLVED')::bigint,
+			count(*) FILTER (WHERE source_discovery_status = 'PARTIAL')::bigint,
+			count(*) FILTER (WHERE source_discovery_status = 'PENDING')::bigint,
+			count(*) FILTER (WHERE source_discovery_status = 'FAILED')::bigint
+		FROM company_sponsor_watchlist
+	`).Scan(
+		&health.WatchlistTotal,
+		&health.WatchlistResolved,
+		&health.WatchlistPartial,
+		&health.WatchlistPending,
+		&health.WatchlistFailed,
+	); err != nil {
+		return SourceDiscoveryHealth{}, err
+	}
+
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*)::bigint,
+			count(*) FILTER (WHERE monitorable = true)::bigint,
+			count(*) FILTER (WHERE inspection_status = 'PENDING')::bigint,
+			count(*) FILTER (WHERE inspection_status = 'RESOLVED')::bigint,
+			count(*) FILTER (WHERE inspection_status = 'FAILED')::bigint,
+			count(*) FILTER (WHERE inspection_status = 'UNSUPPORTED')::bigint
+		FROM company_source_registry
+	`).Scan(
+		&health.RegistryTotal,
+		&health.RegistryMonitorable,
+		&health.InspectionPending,
+		&health.InspectionResolved,
+		&health.InspectionFailed,
+		&health.InspectionUnsupported,
+	); err != nil {
+		return SourceDiscoveryHealth{}, err
+	}
+
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*)::bigint,
+			COALESCE(sum(estimated_cost_usd), 0)::double precision
+		FROM provider_usage
+		WHERE created_at >= (
+			date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+		)
+		  AND status <> 'CANCELLED'
+	`).Scan(
+		&health.ProviderRequestsMonth,
+		&health.ProviderEstimatedUSDMonth,
+	); err != nil {
+		return SourceDiscoveryHealth{}, err
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT source_type, count(*)::bigint
+		FROM company_source_registry
+		GROUP BY source_type
+		ORDER BY count(*) DESC, source_type
+	`)
+	if err != nil {
+		return SourceDiscoveryHealth{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item CoverageBreakdown
+		if err := rows.Scan(&item.Key, &item.Count); err != nil {
+			return SourceDiscoveryHealth{}, err
+		}
+		health.ByRegistrySourceType = append(health.ByRegistrySourceType, item)
+	}
+	if err := rows.Err(); err != nil {
+		return SourceDiscoveryHealth{}, err
+	}
+
+	return health, nil
+}
+
 type MarketCoverageHealth struct {
 	UniqueCompanies24H            int64               `json:"unique_companies_24h"`
 	ExplicitSponsorshipSupport24H int64               `json:"explicit_sponsorship_support_24h"`

@@ -598,7 +598,7 @@ func (r *Repository) CloseRetiredManualSourceJobs(ctx context.Context) (int64, e
 		UPDATE jobs j
 		SET status = 'CLOSED', updated_at = now()
 		WHERE j.status = 'ACTIVE'
-		  AND j.source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE', 'WORKDAY')
+		  AND j.source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE', 'WORKDAY', 'CAREER_PAGE')
 		  AND j.last_seen_at < now() - INTERVAL '48 hours'
 		  AND NOT EXISTS (
 		      SELECT 1

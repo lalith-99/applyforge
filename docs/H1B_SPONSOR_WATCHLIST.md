@@ -85,8 +85,9 @@ aggregator job
   -> future Acme jobs polled directly
 ```
 
-Unsupported ATSs remain in `company_source_registry` so future connectors or a career-page crawler
-can resolve them without rediscovering the company.
+Registry-only ATSs remain in `company_source_registry` and are handed to the structured career-page
+inspection stage, so ApplyForge can still recover public structured jobs or discover a linked
+supported ATS without rediscovering the company.
 
 ## Important limitation
 
@@ -119,9 +120,10 @@ company_sponsor_watchlist (PENDING / PARTIAL / FAILED)
 
 The first implementation uses DataForSEO Google Organic Live search for
 `<legal employer name> careers jobs`. It inspects the organic result URLs locally and promotes
-known Greenhouse, Lever, Ashby, SmartRecruiters, or Workable endpoints into direct polling.
-Workday, iCIMS, Oracle, and generic company career pages are retained in the source registry for
-the structured career-page crawler rather than guessed into unsupported connectors.
+known Greenhouse, Lever, Ashby, SmartRecruiters, Workable, or exact Workday tenant/site endpoints
+into direct polling. iCIMS, Oracle, and generic company career pages are retained in the source
+registry and inspected by the structured career-page stage rather than guessed into unsupported
+vendor APIs.
 
 ### Budget controls
 
@@ -171,3 +173,51 @@ endpoint.
 To avoid thousands of detail requests for old jobs, only recent postings are hydrated by default
 (`WORKDAY_DETAIL_MAX_AGE_DAYS=7`). The connector still records the complete set of external IDs,
 so already-known older rows are touched before closure detection and are not falsely closed.
+
+
+## Structured career-page inspection
+
+Registry-only sources can be inspected with the optional
+`CAREER_PAGE_INSPECTION_ENABLED=true` worker. It makes one bounded request to the already-discovered
+career URL and looks for two deterministic signals:
+
+1. links or embeds that resolve to a supported direct ATS;
+2. schema.org `JobPosting` JSON-LD rendered in the page HTML.
+
+If a supported ATS is found, the normal direct connector is promoted. If structured JobPosting
+records are found, the page is promoted to a lower-priority `CAREER_PAGE` source and polled at the
+same sponsor-tier cadence.
+
+```text
+company_source_registry
+  -> bounded public HTML fetch
+  -> ATS links? ---------------------> direct ATS source
+  -> JobPosting JSON-LD? ------------> CAREER_PAGE source
+  -> neither ------------------------> long retry window
+```
+
+The generic career-page source deliberately does not close jobs merely because they disappear from
+one HTML page. Many career sites paginate or lazy-load results, so absence from a single page is not
+strong enough closure evidence.
+
+### Network safety
+
+Career-page requests use a dedicated public-internet HTTP client:
+
+- only HTTP/HTTPS URLs are accepted;
+- URLs containing credentials are rejected;
+- loopback, RFC1918/private, link-local, metadata, carrier-grade NAT, documentation, multicast,
+  and reserved IP ranges are blocked;
+- DNS is resolved before dialing and only public addresses are used;
+- redirects are capped at five and revalidated;
+- response bodies are capped at 2 MiB;
+- blocked pages are not bypassed with browser automation or anti-bot evasion.
+
+This stage is disabled by default because it performs outbound requests to employer career sites.
+The default enabled configuration is intentionally modest: 100 registry entries every 30 minutes.
+
+### Operational visibility
+
+`GET /api/v1/admin/job-sources/health` now includes a `discovery` section with watchlist status,
+registry monitorability, inspection status, monthly provider-request counts, estimated provider
+cost metadata, and registry coverage by source type.

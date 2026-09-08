@@ -187,11 +187,12 @@ func (r *DataForSEOCompanySourceResolver) Resolve(
 			continue
 		}
 		resolution.Sources = []DiscoveredCompanySource{{
-			SourceType:  "CUSTOM",
-			BoardToken:  strings.ToLower(parsed.Hostname()),
-			SourceURL:   item.url,
-			Confidence:  0.6,
-			Monitorable: false,
+			SourceType:      "CUSTOM",
+			BoardToken:      strings.ToLower(parsed.Hostname()),
+			SourceURL:       item.url,
+			DiscoveryMethod: "CAREER_PAGE",
+			Confidence:      0.6,
+			Monitorable:     false,
 		}}
 		break
 	}
