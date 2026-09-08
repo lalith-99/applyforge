@@ -269,15 +269,15 @@ func (r *Repository) GetForCompany(ctx context.Context, companyID uuid.UUID, com
 }
 
 type SponsorWatchlistSummary struct {
-	Total            int `json:"total"`
-	Hot              int `json:"hot"`
-	Warm             int `json:"warm"`
-	Cool             int `json:"cool"`
-	Cold             int `json:"cold"`
-	ResolvedSources  int `json:"resolved_sources"`
-	PartialSources   int `json:"partial_sources"`
-	PendingSources   int `json:"pending_sources"`
-	FailedSources    int `json:"failed_sources"`
+	Total           int `json:"total"`
+	Hot             int `json:"hot"`
+	Warm            int `json:"warm"`
+	Cool            int `json:"cool"`
+	Cold            int `json:"cold"`
+	ResolvedSources int `json:"resolved_sources"`
+	PartialSources  int `json:"partial_sources"`
+	PendingSources  int `json:"pending_sources"`
+	FailedSources   int `json:"failed_sources"`
 }
 
 func (r *Repository) RefreshSponsorWatchlist(ctx context.Context, limit int) (int, error) {
