@@ -17,7 +17,7 @@ type DiscoveredCompanySource struct {
 	SourceType  string
 	BoardToken  string
 	SourceURL   string
-	Confidence float32
+	Confidence  float32
 	Monitorable bool
 }
 
