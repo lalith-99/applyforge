@@ -17,11 +17,11 @@ import (
 const JobTypeInspectCompanySource = "inspect_company_source"
 
 type CompanySourceInspectionTarget struct {
-	RegistryID   uuid.UUID
-	CompanyID    uuid.UUID
-	CompanyName  string
-	SourceType   string
-	SourceURL    string
+	RegistryID    uuid.UUID
+	CompanyID     uuid.UUID
+	CompanyName   string
+	SourceType    string
+	SourceURL     string
 	WatchlistRank int
 }
 
