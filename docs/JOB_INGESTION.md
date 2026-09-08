@@ -51,9 +51,9 @@ sources to poll are configured via the `job_sources` table (seeded with one real
 Production remains sponsor-first: direct employer ATS polling is enabled from the H-1B sponsor
 watchlist and discovered source registry.
 
-A fresh local database has no DOL evidence yet, so its sponsor watchlist is empty. In non-production
-only, ApplyForge temporarily re-enables the already-verified public direct ATS seed rows
-(Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday) so the initial scheduler run can populate
-real jobs and the U.S.-only Jobs page is not empty. Once sponsor evidence exists, this fallback is no
-longer activated. Paid providers remain disabled unless explicitly configured.
+In non-production only, ApplyForge re-enables verified public direct ATS rows
+(Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday) for companies already present on the H-1B
+sponsor watchlist. If a fresh local database has no DOL evidence/watchlist yet, the verified seed rows
+are used temporarily so the initial scheduler run can populate real jobs and the U.S.-only Jobs page
+is not empty. Paid providers remain disabled unless explicitly configured.
 
