@@ -28,6 +28,21 @@ func TestSourceCompanyKey(t *testing.T) {
 	}
 }
 
+
+func TestSourceCompanyExactKeysIncludesBrandOverride(t *testing.T) {
+	keys := sourceCompanyExactKeys("Goldman Sachs Services LLC")
+	found := false
+	for _, key := range keys {
+		if key == "goldman sachs" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("keys = %v, want goldman sachs brand alias", keys)
+	}
+}
+
 func TestFreeSourceEntryScoreDemotesSecondaryWorkdaySites(t *testing.T) {
 	inventory := freeSourceInventory{Name: "workday", SourceType: "WORKDAY", AutoMonitor: true}
 
