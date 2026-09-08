@@ -381,6 +381,42 @@ def post_batch(
         ) from exc
 
 
+
+def refresh_sponsor_watchlist(
+    api_base: str,
+    admin_token: str,
+    limit: int,
+) -> int:
+    url = (
+        api_base.rstrip("/")
+        + f"/admin/immigration/watchlist/refresh?limit={limit}"
+    )
+
+    request = urllib.request.Request(
+        url,
+        data=b"",
+        method="POST",
+        headers={
+            "X-ApplyForge-Admin-Token": admin_token,
+            "User-Agent": "ApplyForge-DOL-Importer/1.0",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            return int(payload.get("watchlist_companies", 0))
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"ApplyForge watchlist refresh failed "
+            f"with HTTP {exc.code}: {details}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            f"Could not connect to ApplyForge API at {url}: {exc.reason}"
+        ) from exc
+
 def chunks(
     rows: list[dict[str, Any]],
     size: int,
@@ -528,6 +564,19 @@ def main() -> int:
         action="store_true",
     )
 
+    parser.add_argument(
+        "--watchlist-limit",
+        type=int,
+        default=10000,
+        help="Number of recent H-1B sponsor employers to retain in the watchlist",
+    )
+
+    parser.add_argument(
+        "--skip-watchlist-refresh",
+        action="store_true",
+        help="Import evidence without rebuilding the sponsor watchlist",
+    )
+
     args = parser.parse_args()
 
     if not args.lca_file and not args.perm_file:
@@ -545,6 +594,11 @@ def main() -> int:
     if args.batch_size < 1 or args.batch_size > 2000:
         parser.error(
             "--batch-size must be between 1 and 2000"
+        )
+
+    if args.watchlist_limit < 1 or args.watchlist_limit > 50000:
+        parser.error(
+            "--watchlist-limit must be between 1 and 50000"
         )
 
     total_employers = 0
@@ -580,11 +634,29 @@ def main() -> int:
         total_employers += employers
         total_certified += certified
 
+    watchlist_companies = None
+    if (
+        not args.dry_run
+        and not args.skip_watchlist_refresh
+        and args.lca_file
+    ):
+        watchlist_companies = refresh_sponsor_watchlist(
+            args.api_base,
+            args.admin_token,
+            args.watchlist_limit,
+        )
+        print(
+            f"H-1B sponsor watchlist refreshed: "
+            f"{watchlist_companies:,} companies",
+            file=sys.stderr,
+        )
+
     print(
         json.dumps(
             {
                 "employer_program_rows": total_employers,
                 "certified_case_signals": total_certified,
+                "watchlist_companies": watchlist_companies,
                 "dry_run": args.dry_run,
             },
             indent=2,
