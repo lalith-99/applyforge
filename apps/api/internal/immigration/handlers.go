@@ -24,7 +24,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	if h.adminToken == "" {
 		return
 	}
-	r.Post("/admin/immigration/evidence/import", h.handleImport)
+	r.Post("/admin/immigration/evidence/import", h.handleImport)\n\tr.Post("/admin/immigration/watchlist/refresh", h.handleWatchlistRefresh)\n\tr.Get("/admin/immigration/watchlist/summary", h.handleWatchlistSummary)
 }
 
 func (h *Handlers) authorized(r *http.Request) bool {
