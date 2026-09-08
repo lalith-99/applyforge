@@ -163,13 +163,36 @@ func run() error {
 	}
 
 	brightDataEnabled := strings.EqualFold(getenv("BRIGHTDATA_ENABLED", "false"), "true")
+	brightDataShards := []string{"us-single-user-core-24h"}
+	if raw := strings.TrimSpace(os.Getenv("BRIGHTDATA_ACTIVE_SHARDS")); raw != "" {
+		brightDataShards = strings.Split(raw, ",")
+	}
+	brightDataPollMinutes := 1440
+	if raw := strings.TrimSpace(os.Getenv("BRIGHTDATA_POLL_INTERVAL_MINUTES")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 15 || parsed > 1440 {
+			return fmt.Errorf("BRIGHTDATA_POLL_INTERVAL_MINUTES must be an integer between 15 and 1440")
+		}
+		brightDataPollMinutes = parsed
+	}
+
+	var brightDataConfig jobs.BrightDataConfig
 	if brightDataEnabled {
-		if _, err := jobs.BrightDataConfigFromEnv(); err != nil {
+		var err error
+		brightDataConfig, err = jobs.BrightDataConfigFromEnv()
+		if err != nil {
 			return fmt.Errorf("Bright Data ingestion enabled but configuration is invalid: %w", err)
 		}
 	}
-	if err := jobsRepo.SetSourceTypeEnabled(ctx, "BRIGHTDATA", brightDataEnabled); err != nil {
+	if err := jobsRepo.ConfigureSourceShards(ctx, "BRIGHTDATA", brightDataEnabled, brightDataShards, brightDataPollMinutes); err != nil {
 		return fmt.Errorf("configure Bright Data job sources: %w", err)
+	}
+	if brightDataEnabled {
+		slog.Info("Bright Data discovery configured",
+			"shards", brightDataShards,
+			"records_limit_per_poll", brightDataConfig.RecordsLimit,
+			"poll_interval_minutes", brightDataPollMinutes,
+		)
 	}
 
 	googleJobsEnabled := strings.EqualFold(getenv("SERPAPI_GOOGLE_JOBS_ENABLED", "false"), "true")

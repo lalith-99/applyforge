@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -594,6 +596,51 @@ func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string
 		sourceType, enabled,
 	)
 	return err
+}
+
+// ConfigureSourceShards disables every shard for sourceType, then enables only
+// the requested board tokens at the requested cadence. This prevents optional
+// paid broad-discovery providers from accidentally enabling every historical
+// shard when a single-user deployment intends to stay within a small quota.
+func (r *Repository) ConfigureSourceShards(ctx context.Context, sourceType string, enabled bool, boardTokens []string, pollIntervalMinutes int) error {
+	if r.pool == nil {
+		return errors.New("source shard configuration requires a repository backed by a database pool")
+	}
+	if pollIntervalMinutes < 15 || pollIntervalMinutes > 1440 {
+		return fmt.Errorf("poll interval must be between 15 and 1440 minutes: %d", pollIntervalMinutes)
+	}
+
+	if _, err := r.pool.Exec(ctx, "UPDATE job_sources SET enabled = false WHERE source_type = $1", sourceType); err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	for _, raw := range boardTokens {
+		token := strings.TrimSpace(raw)
+		if token == "" || seen[token] {
+			continue
+		}
+		seen[token] = true
+
+		tag, err := r.pool.Exec(ctx, `
+			UPDATE job_sources
+			SET enabled = true, poll_interval_minutes = $3
+			WHERE source_type = $1 AND board_token = $2
+		`, sourceType, token, pollIntervalMinutes)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("configured %s shard %q was not found; run migrations first", sourceType, token)
+		}
+	}
+	if len(seen) == 0 {
+		return fmt.Errorf("%s is enabled but no source shards were configured", sourceType)
+	}
+	return nil
 }
 
 // ListJobSources returns all enabled job source configurations.
