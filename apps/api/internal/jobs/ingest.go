@@ -17,15 +17,21 @@ import (
 // into the canonical jobs table (see MASTER_REQUIREMENTS.md §49: normalize
 // -> deduplicate, before any scoring/AI work happens).
 type IngestionService struct {
-	repo  *Repository
-	queue *background.Queue // nil in tests that don't exercise async enqueueing
+	repo              *Repository
+	queue             *background.Queue // nil in tests that don't exercise async enqueueing
+	embeddingsEnabled bool
 }
 
 // NewIngestionService builds an IngestionService. queue may be nil (e.g. in
 // unit tests that only exercise Ingest's upsert logic directly), in which
 // case async source-sync/enrichment enqueueing is simply skipped.
 func NewIngestionService(repo *Repository, queue *background.Queue) *IngestionService {
-	return &IngestionService{repo: repo, queue: queue}
+	return &IngestionService{repo: repo, queue: queue, embeddingsEnabled: true}
+}
+
+func (s *IngestionService) WithEmbeddingsEnabled(enabled bool) *IngestionService {
+	s.embeddingsEnabled = enabled
+	return s
 }
 
 // IngestResult summarizes the outcome of a single source poll.
@@ -189,8 +195,10 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 				if err := s.queue.Enqueue(ctx, JobTypeEnrich, payload, 3); err != nil {
 					slog.Error("enqueue enrich_job failed", "job_id", upserted.Job.ID, "error", err)
 				}
-				if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
-					slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+				if s.embeddingsEnabled {
+					if err := s.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: upserted.Job.ID.String()}, 3); err != nil {
+						slog.Error("enqueue embed_job failed", "job_id", upserted.Job.ID, "error", err)
+					}
 				}
 			case "UNKNOWN":
 				if err := s.queue.Enqueue(ctx, JobTypeClassifyRole, ClassifyRolePayload{JobID: upserted.Job.ID.String()}, 3); err != nil {

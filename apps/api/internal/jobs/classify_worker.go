@@ -20,13 +20,19 @@ type ClassifyRolePayload struct {
 }
 
 type ClassifyRoleWorker struct {
-	repo     *Repository
-	aiClient *aiclient.Client
-	queue    *background.Queue
+	repo              *Repository
+	aiClient          *aiclient.Client
+	queue             *background.Queue
+	embeddingsEnabled bool
 }
 
 func NewClassifyRoleWorker(repo *Repository, aiClient *aiclient.Client, queue *background.Queue) *ClassifyRoleWorker {
-	return &ClassifyRoleWorker{repo: repo, aiClient: aiClient, queue: queue}
+	return &ClassifyRoleWorker{repo: repo, aiClient: aiClient, queue: queue, embeddingsEnabled: true}
+}
+
+func (w *ClassifyRoleWorker) WithEmbeddingsEnabled(enabled bool) *ClassifyRoleWorker {
+	w.embeddingsEnabled = enabled
+	return w
 }
 
 func (w *ClassifyRoleWorker) Handle(ctx context.Context, job background.Job) error {
@@ -63,8 +69,10 @@ func (w *ClassifyRoleWorker) Handle(ctx context.Context, job background.Job) err
 	if err := w.queue.Enqueue(ctx, JobTypeEnrich, EnrichPayload{JobID: j.ID.String()}, 3); err != nil {
 		return fmt.Errorf("enqueue enrich after role classification: %w", err)
 	}
-	if err := w.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: j.ID.String()}, 3); err != nil {
-		return fmt.Errorf("enqueue embed after role classification: %w", err)
+	if w.embeddingsEnabled {
+		if err := w.queue.Enqueue(ctx, JobTypeEmbed, EmbedPayload{JobID: j.ID.String()}, 3); err != nil {
+			return fmt.Errorf("enqueue embed after role classification: %w", err)
+		}
 	}
 	return nil
 }

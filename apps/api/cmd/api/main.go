@@ -218,7 +218,12 @@ func run() error {
 		return fmt.Errorf("configure Google Jobs discovery sources: %w", err)
 	}
 
-	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue)
+	embeddingsEnabled := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
+	if !embeddingsEnabled {
+		slog.Info("semantic embeddings disabled", "reason", "OPENAI_API_KEY is not configured")
+	}
+	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue).
+		WithEmbeddingsEnabled(embeddingsEnabled)
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
 	adminSyncToken := os.Getenv(strings.Join([]string{"ADMIN", "SYNC", "TOKEN"}, "_"))
@@ -348,7 +353,8 @@ func run() error {
 	}
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
-	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
+	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue).
+		WithEmbeddingsEnabled(embeddingsEnabled)
 	catalogBackfillWorker := jobs.NewCatalogBackfillWorker(jobsRepo, jobQueue)
 	enrichWorker := jobs.NewEnrichWorker(jobsRepo, jobRequirementsService)
 	embedWorker := jobs.NewEmbedWorker(jobsRepo, aiWorkerClient)
@@ -408,7 +414,13 @@ func run() error {
 		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
 		w.Register(jobs.JobTypeCatalogBackfill, catalogBackfillWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
-		w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
+		if embeddingsEnabled {
+			w.Register(jobs.JobTypeEmbed, embedWorker.Handle)
+		} else {
+			// Drain embed jobs queued before startup discovered that embeddings
+			// are unavailable. New embed jobs are not enqueued while disabled.
+			w.Register(jobs.JobTypeEmbed, func(context.Context, background.Job) error { return nil })
+		}
 		w.Register(candidateprofile.JobTypeBuild, candidateProfileWorker.Handle)
 		w.Register(jobrecommendations.JobTypeCompute, jobRecommendationsWorker.Handle)
 		w.Register(tailoring.JobTypeProcess, tailoringWorker.Handle)
