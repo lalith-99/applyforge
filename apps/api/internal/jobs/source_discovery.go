@@ -165,18 +165,50 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 		if method == "" {
 			method = "JOB_URL"
 		}
+		inspectionStatus := "PENDING"
+		if d.Monitorable {
+			inspectionStatus = "RESOLVED"
+		}
 		if _, err := r.pool.Exec(ctx, `
 			INSERT INTO company_source_registry (
 				company_id, source_type, board_token, source_url,
-				discovery_method, confidence, monitorable, last_seen_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+				discovery_method, confidence, monitorable, last_seen_at,
+				inspection_status, next_inspection_at, last_verified_at
+			) VALUES (
+				$1, $2, $3, $4,
+				$5, $6, $7, now(),
+				$8,
+				CASE WHEN $7 THEN NULL ELSE now() END,
+				CASE WHEN $7 THEN now() ELSE NULL END
+			)
 			ON CONFLICT (company_id, source_type, board_token, source_url)
 			DO UPDATE SET
 				discovery_method = EXCLUDED.discovery_method,
 				confidence = GREATEST(company_source_registry.confidence, EXCLUDED.confidence),
 				monitorable = company_source_registry.monitorable OR EXCLUDED.monitorable,
+				inspection_status = CASE
+					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN 'RESOLVED'
+					ELSE company_source_registry.inspection_status
+				END,
+				next_inspection_at = CASE
+					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN NULL
+					ELSE company_source_registry.next_inspection_at
+				END,
+				last_verified_at = CASE
+					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN now()
+					ELSE company_source_registry.last_verified_at
+				END,
 				last_seen_at = now()
-		`, companyID, d.SourceType, d.BoardToken, d.SourceURL, method, d.Confidence, d.Monitorable); err != nil {
+		`,
+			companyID,
+			d.SourceType,
+			d.BoardToken,
+			d.SourceURL,
+			method,
+			d.Confidence,
+			d.Monitorable,
+			inspectionStatus,
+		); err != nil {
 			return fmt.Errorf("record discovered %s source: %w", d.SourceType, err)
 		}
 
