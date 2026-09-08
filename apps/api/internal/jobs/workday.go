@@ -21,15 +21,15 @@ const (
 )
 
 type WorkdaySource struct {
-	Host          string
-	Tenant        string
-	Site          string
-	BaseURL       string
-	MaxJobs       int
-	DetailMaxAge  time.Duration
-	http          *http.Client
-	now           func() time.Time
-	seenExternal  []string
+	Host         string
+	Tenant       string
+	Site         string
+	BaseURL      string
+	MaxJobs      int
+	DetailMaxAge time.Duration
+	http         *http.Client
+	now          func() time.Time
+	seenExternal []string
 }
 
 type workdayListResponse struct {
@@ -45,15 +45,15 @@ type workdayListResponse struct {
 
 type workdayDetailResponse struct {
 	JobPostingInfo struct {
-		Title                 string   `json:"title"`
-		JobReqID              string   `json:"jobReqId"`
-		JobPostingID          string   `json:"jobPostingId"`
-		JobDescription        string   `json:"jobDescription"`
-		StartDate             string   `json:"startDate"`
-		Location              string   `json:"location"`
-		AdditionalLocations   []string `json:"additionalLocations"`
-		TimeType              string   `json:"timeType"`
-		RemoteType            string   `json:"remoteType"`
+		Title                  string   `json:"title"`
+		JobReqID               string   `json:"jobReqId"`
+		JobPostingID           string   `json:"jobPostingId"`
+		JobDescription         string   `json:"jobDescription"`
+		StartDate              string   `json:"startDate"`
+		Location               string   `json:"location"`
+		AdditionalLocations    []string `json:"additionalLocations"`
+		TimeType               string   `json:"timeType"`
+		RemoteType             string   `json:"remoteType"`
 		JobRequisitionLocation struct {
 			Country struct {
 				Alpha2Code string `json:"alpha2Code"`
