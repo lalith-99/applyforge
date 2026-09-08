@@ -224,6 +224,40 @@ func run() error {
 	}
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue).
 		WithEmbeddingsEnabled(embeddingsEnabled)
+
+	freeHotSourceBootstrapEnabled := !strings.EqualFold(environment, "production") &&
+		strings.EqualFold(getenv("FREE_HOT_SOURCE_BOOTSTRAP_ENABLED", "true"), "true")
+	if freeHotSourceBootstrapEnabled {
+		go func() {
+			bootstrapCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+
+			result, err := jobsRepo.BootstrapFreeHotCompanySources(
+				bootstrapCtx,
+				jobs.FreeSourceBootstrapConfig{},
+			)
+			if err != nil {
+				slog.Warn("free HOT sponsor source bootstrap failed", "error", err)
+				return
+			}
+			slog.Info("free HOT sponsor source bootstrap completed",
+				"hot_companies_due", result.HotCompanies,
+				"directory_entries", result.DirectoryEntries,
+				"matched_companies", result.MatchedCompanies,
+				"resolved_companies", result.ResolvedCompanies,
+				"partial_companies", result.PartialCompanies,
+				"enabled_job_sources", result.EnabledJobSources,
+				"registry_candidates", result.RegistryCandidates,
+				"fetch_failures", result.FetchFailures,
+			)
+			if result.EnabledJobSources > 0 {
+				if err := ingestionService.EnqueueSyncTasks(bootstrapCtx); err != nil {
+					slog.Warn("enqueue newly bootstrapped HOT job sources failed", "error", err)
+				}
+			}
+		}()
+	}
+
 	jobRequirementsRepo := jobrequirements.NewRepository(db)
 	jobRequirementsService := jobrequirements.NewService(jobRequirementsRepo, aiWorkerClient).WithUsageTracking(aiUsageRepo)
 	adminSyncToken := os.Getenv(strings.Join([]string{"ADMIN", "SYNC", "TOKEN"}, "_"))
