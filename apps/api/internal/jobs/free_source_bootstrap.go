@@ -96,6 +96,45 @@ var sourceCompanyLegalSuffixes = map[string]bool{
 	"company": true, "co": true, "plc": true, "pbc": true, "na": true, "si": true,
 }
 
+var sourceCompanyBrandOverrides = map[string]string{
+	"american express travel related services": "american express",
+	"capital one national association":          "capital one",
+	"capital one services":                      "capital one",
+	"barclays capital":                          "barclays",
+	"barclays services":                         "barclays",
+	"bofa securities":                           "bank of america",
+	"db global technology":                      "deutsche bank",
+	"db usa core":                               "deutsche bank",
+	"deutsche bank securities":                  "deutsche bank",
+	"dell products":                             "dell",
+	"dell usa":                                  "dell",
+	"deloitte consulting":                       "deloitte",
+	"deloitte services":                         "deloitte",
+	"deloitte tax":                              "deloitte",
+	"deloitte and touche":                       "deloitte",
+	"goldman sachs bank usa":                    "goldman sachs",
+	"goldman sachs and co":                      "goldman sachs",
+	"goldman sachs services":                    "goldman sachs",
+	"moodys analytics":                          "moodys",
+	"moodys investors service":                  "moodys",
+	"morgan stanley and co":                     "morgan stanley",
+	"morgan stanley services group":             "morgan stanley",
+	"ntt data americas":                         "ntt data",
+	"ntt data services":                         "ntt data",
+	"openai opco":                               "openai",
+	"pricewaterhousecoopers advisory services":  "pwc",
+	"pricewaterhousecoopers":                    "pwc",
+	"pwc us tax":                                "pwc",
+	"robinhood markets":                         "robinhood",
+	"sap america":                               "sap",
+	"sap labs":                                  "sap",
+	"tmobile usa":                               "t mobile",
+	"visa technology and operations":            "visa",
+	"visa usa":                                  "visa",
+	"western digital technologies":              "western digital",
+	"zoom communications":                       "zoom",
+}
+
 var workdayReviewOnlyTokens = []string{
 	"internal", "campus", "student", "contractor", "restricted", "redeployment",
 	"apac", "india", "global_in", "emea", "europe", "exteu",
@@ -490,6 +529,10 @@ func sourceCompanyExactKeys(values ...string) []string {
 				out = append(out, withoutThe)
 			}
 		}
+		if brand, ok := sourceCompanyBrandOverrides[key]; ok && !seen[brand] {
+			seen[brand] = true
+			out = append(out, brand)
+		}
 	}
 	return out
 }
@@ -540,7 +583,7 @@ func builtInOfficialCareerPortal(values ...string) (string, bool) {
 			"annapurna labs u s":           "https://www.amazon.jobs/en",
 			"apple":                        "https://jobs.apple.com/en-us/search",
 			"google":                       "https://careers.google.com/jobs",
-			"microsoft":                    "https://jobs.careers.microsoft.com/global/en/search",
+			"microsoft":                    "https://careers.microsoft.com/v2/global/en/home.html",
 			"meta platforms":               "https://www.metacareers.com/jobs",
 			"netflix":                      "https://jobs.netflix.com/",
 			"salesforce":                   "https://careers.salesforce.com/en/jobs/",
