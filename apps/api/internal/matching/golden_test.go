@@ -240,9 +240,10 @@ func TestGolden_SmallWordingChanges_DoNotCauseUnstableScoreSwings(t *testing.T) 
 func TestGolden_FullRequiredSkillCoverage_ScoresStrong_NotWeak(t *testing.T) {
 	// Regression for a real user report: 4/4 required skills covered
 	// (directly), reasonable seniority and location fit, still scored only
-	// 69 ("Weak") because the fixed no-signal DomainAlignment stub and an
-	// overweighted, noisy ResponsibilityAlignment heuristic dragged an
-	// otherwise well-matched candidate's score down.
+	// 69 ("Weak") because an older scorer disabled DomainAlignment and treated
+	// generic responsibility text as a hard miss. Generic responsibilities
+	// now receive neutral credit, while explicit technology responsibilities
+	// remain evidence-based.
 	input := Input{
 		CompanyName:  "Acme",
 		RemoteType:   "onsite",
@@ -292,4 +293,75 @@ func contains(list []string, target string) bool {
 		}
 	}
 	return false
+}
+
+
+func TestGolden_CanonicalComponentWeightsSumTo100(t *testing.T) {
+	input := Input{
+		CompanyName:        "Acme",
+		JobSeniority:       "senior",
+		CandidateSeniority: "senior",
+		PreferredRemote:    true,
+		RemoteType:         "remote",
+		CandidateDomains:   []string{"financial services"},
+		JobDomains:         []string{"Financial Services"},
+		RequiredSkills:     []SkillRequirement{{NormalizedName: "go", Importance: "required"}},
+		PreferredSkills:    []SkillRequirement{{NormalizedName: "kafka", Importance: "preferred"}},
+		Responsibilities:   []string{"Build services in Go and Kafka."},
+		CandidateSkills:    skillSet("Go", "Kafka"),
+		FirstSeenAt:        time.Now(),
+	}
+
+	result := Score(input)
+	if result.TotalScore != 100 {
+		t.Fatalf("expected canonical perfect score of 100, got %d: %+v", result.TotalScore, result.Components)
+	}
+	if result.Components.MustHaveSkillCoverage != 30 ||
+		result.Components.ResponsibilityAlignment != 20 ||
+		result.Components.RoleSeniority != 15 ||
+		result.Components.PreferredSkills != 10 ||
+		result.Components.DomainAlignment != 10 ||
+		result.Components.LocationWorkArrangement != 5 ||
+		result.Components.EducationCertifications != 5 ||
+		result.Components.CandidatePreferences != 5 {
+		t.Fatalf("unexpected canonical component weights: %+v", result.Components)
+	}
+}
+
+func TestDomainAlignment_MatchesNormalizedIndustryNames(t *testing.T) {
+	got := domainAlignment(
+		[]string{"Financial Services", "Telecommunications"},
+		[]string{"financial   services"},
+	)
+	if got != 1 {
+		t.Fatalf("expected full domain match, got %.2f", got)
+	}
+}
+
+func TestDomainAlignment_NoJobDomainDoesNotPenalize(t *testing.T) {
+	if got := domainAlignment(nil, nil); got != 1 {
+		t.Fatalf("expected no job-domain signal to receive full credit, got %.2f", got)
+	}
+}
+
+func TestResponsibilityAlignment_GenericTextIsNeutralNotZero(t *testing.T) {
+	got := responsibilityAlignment(
+		[]string{"Collaborate cross functionally to design scalable systems."},
+		skillSet("Go"),
+		[]SkillRequirement{{NormalizedName: "go", Importance: "required"}},
+	)
+	if got != 0.7 {
+		t.Fatalf("expected generic responsibility to receive neutral credit, got %.2f", got)
+	}
+}
+
+func TestResponsibilityAlignment_ExplicitMissingSkillGetsNoCredit(t *testing.T) {
+	got := responsibilityAlignment(
+		[]string{"Build production services in Java."},
+		skillSet("Go"),
+		[]SkillRequirement{{NormalizedName: "java", Importance: "required"}},
+	)
+	if got != 0 {
+		t.Fatalf("expected explicit missing technology responsibility to receive zero credit, got %.2f", got)
+	}
 }
