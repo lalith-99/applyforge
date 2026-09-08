@@ -154,13 +154,15 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
-	// Production discovery is market-wide. Legacy per-company ATS rows are
-	// retained only for historical poll provenance and must not drive polling.
-	for _, sourceType := range []string{"GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE"} {
-		if err := jobsRepo.SetSourceTypeEnabled(ctx, sourceType, false); err != nil {
-			return fmt.Errorf("retire legacy %s job sources: %w", sourceType, err)
-		}
+	if discovered, err := jobsRepo.BackfillDiscoveredCompanySources(ctx); err != nil {
+		return fmt.Errorf("backfill discovered company job sources: %w", err)
+	} else if discovered > 0 {
+		slog.Info("restored direct ATS sources from existing catalog", "sources", discovered)
 	}
+	// Direct ATS sources are enabled dynamically when ApplyForge learns a
+	// company's public Greenhouse/Lever/Ashby/SmartRecruiters/Workable endpoint.
+	// Broad providers remain discovery/gap sources rather than replacing these
+	// authoritative employer feeds.
 
 	brightDataEnabled := strings.EqualFold(getenv("BRIGHTDATA_ENABLED", "false"), "true")
 	brightDataShards := []string{"us-single-user-core-24h"}

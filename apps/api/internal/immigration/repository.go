@@ -267,3 +267,54 @@ func (r *Repository) GetForCompany(ctx context.Context, companyID uuid.UUID, com
 	evidence.MatchedEmployers = employers
 	return evidence, nil
 }
+
+type SponsorWatchlistSummary struct {
+	Total           int `json:"total"`
+	Hot             int `json:"hot"`
+	Warm            int `json:"warm"`
+	Cool            int `json:"cool"`
+	Cold            int `json:"cold"`
+	ResolvedSources int `json:"resolved_sources"`
+	PartialSources  int `json:"partial_sources"`
+	PendingSources  int `json:"pending_sources"`
+	FailedSources   int `json:"failed_sources"`
+}
+
+func (r *Repository) RefreshSponsorWatchlist(ctx context.Context, limit int) (int, error) {
+	if limit < 1 || limit > 50000 {
+		return 0, fmt.Errorf("watchlist limit must be between 1 and 50000")
+	}
+	var count int
+	if err := r.pool.QueryRow(ctx, "SELECT refresh_company_sponsor_watchlist($1)", limit).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *Repository) GetSponsorWatchlistSummary(ctx context.Context) (SponsorWatchlistSummary, error) {
+	var out SponsorWatchlistSummary
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			count(*)::int,
+			count(*) FILTER (WHERE tier = 'HOT')::int,
+			count(*) FILTER (WHERE tier = 'WARM')::int,
+			count(*) FILTER (WHERE tier = 'COOL')::int,
+			count(*) FILTER (WHERE tier = 'COLD')::int,
+			count(*) FILTER (WHERE source_discovery_status = 'RESOLVED')::int,
+			count(*) FILTER (WHERE source_discovery_status = 'PARTIAL')::int,
+			count(*) FILTER (WHERE source_discovery_status = 'PENDING')::int,
+			count(*) FILTER (WHERE source_discovery_status = 'FAILED')::int
+		FROM company_sponsor_watchlist
+	`).Scan(
+		&out.Total,
+		&out.Hot,
+		&out.Warm,
+		&out.Cool,
+		&out.Cold,
+		&out.ResolvedSources,
+		&out.PartialSources,
+		&out.PendingSources,
+		&out.FailedSources,
+	)
+	return out, err
+}

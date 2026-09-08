@@ -25,6 +25,8 @@ func (h *Handlers) Mount(r chi.Router) {
 		return
 	}
 	r.Post("/admin/immigration/evidence/import", h.handleImport)
+	r.Post("/admin/immigration/watchlist/refresh", h.handleWatchlistRefresh)
+	r.Get("/admin/immigration/watchlist/summary", h.handleWatchlistSummary)
 }
 
 func (h *Handlers) authorized(r *http.Request) bool {
@@ -54,4 +56,47 @@ func (h *Handlers) handleImport(w http.ResponseWriter, r *http.Request) {
 		"rows_received":  len(batch.Rows),
 		"max_batch_size": strconv.Itoa(2000),
 	})
+}
+
+func (h *Handlers) handleWatchlistRefresh(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
+
+	limit := 10000
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 50000 {
+			httpx.WriteError(w, http.StatusBadRequest, "limit must be an integer between 1 and 50000")
+			return
+		}
+		limit = parsed
+	}
+
+	count, err := h.repo.RefreshSponsorWatchlist(r.Context(), limit)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"watchlist_companies": count,
+		"requested_limit":     limit,
+		"primary_signal":      "recent certified H-1B LCA activity",
+		"secondary_signal":    "recent PERM activity (ranking metadata only)",
+	})
+}
+
+func (h *Handlers) handleWatchlistSummary(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(r) {
+		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
+		return
+	}
+
+	summary, err := h.repo.GetSponsorWatchlistSummary(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, summary)
 }
