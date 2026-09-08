@@ -45,3 +45,15 @@ Ashby — all public, unauthenticated APIs), title/company normalization, idempo
 (hourly ticker by default, `JOB_POLL_INTERVAL_MINUTES` env override). An admin endpoint
 (`POST /api/v1/admin/job-sources/sync`) allows a manual trigger without waiting for the schedule. Job
 sources to poll are configured via the `job_sources` table (seeded with one real board per connector type).
+
+## Local development bootstrap
+
+Production remains sponsor-first: direct employer ATS polling is enabled from the H-1B sponsor
+watchlist and discovered source registry.
+
+In non-production only, ApplyForge re-enables verified public direct ATS rows
+(Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday) for companies already present on the H-1B
+sponsor watchlist. If a fresh local database has no DOL evidence/watchlist yet, the verified seed rows
+are used temporarily so the initial scheduler run can populate real jobs and the U.S.-only Jobs page
+is not empty. Paid providers remain disabled unless explicitly configured.
+

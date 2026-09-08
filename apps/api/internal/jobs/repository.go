@@ -625,6 +625,47 @@ func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string
 	return err
 }
 
+// EnableDevelopmentBootstrapSources restores verified public direct-ATS rows
+// in local/dev so the app can ingest real U.S. jobs without paid providers.
+// When sponsor evidence exists, only companies already on the sponsor watchlist
+// are enabled. When the watchlist is empty, verified seed rows are used as a
+// temporary bootstrap. Production never calls this method.
+func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int64, error) {
+	if r.pool == nil {
+		return 0, errors.New("development source bootstrap requires a repository backed by a database pool")
+	}
+
+	var watchlistCount int64
+	if err := r.pool.QueryRow(ctx, "SELECT count(*)::bigint FROM company_sponsor_watchlist").Scan(&watchlistCount); err != nil {
+		return 0, err
+	}
+
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE job_sources js
+		SET enabled = true
+		WHERE js.source_type IN (
+			'GREENHOUSE',
+			'LEVER',
+			'ASHBY',
+			'SMARTRECRUITERS',
+			'WORKABLE',
+			'WORKDAY'
+		)
+		  AND (
+		      $1::bigint = 0
+		      OR EXISTS (
+		          SELECT 1
+		          FROM company_sponsor_watchlist w
+		          WHERE w.company_id = js.company_id
+		      )
+		  )
+	`, watchlistCount)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ConfigureSourceShards disables every shard for sourceType, then enables only
 // the requested board tokens at the requested cadence. This prevents optional
 // paid broad-discovery providers from accidentally enabling every historical
