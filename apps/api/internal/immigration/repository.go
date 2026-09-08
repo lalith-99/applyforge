@@ -268,7 +268,6 @@ func (r *Repository) GetForCompany(ctx context.Context, companyID uuid.UUID, com
 	return evidence, nil
 }
 
-
 type SponsorWatchlistSummary struct {
 	Total            int `json:"total"`
 	Hot              int `json:"hot"`
