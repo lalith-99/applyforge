@@ -302,7 +302,8 @@ func run() error {
 		companySourceInspectionScheduler *jobs.CompanySourceInspectionScheduler
 		companySourceInspectionInterval  time.Duration
 	)
-	if strings.EqualFold(getenv("CAREER_PAGE_INSPECTION_ENABLED", "false"), "true") {
+	careerPageInspectionEnabled := strings.EqualFold(getenv("CAREER_PAGE_INSPECTION_ENABLED", "false"), "true")
+	if careerPageInspectionEnabled {
 		batchSize := 100
 		if raw := strings.TrimSpace(os.Getenv("CAREER_PAGE_INSPECTION_BATCH_SIZE")); raw != "" {
 			parsed, err := strconv.Atoi(raw)
@@ -335,6 +336,12 @@ func run() error {
 			"interval_minutes", intervalMinutes,
 		)
 	}
+
+	immigrationHandlers.WithSourceResolutionRuntime(immigration.SourceResolutionRuntime{
+		ProactiveDiscoveryEnabled:   sourceDiscoveryEnabled,
+		DiscoveryProvider:           conditionalString(sourceDiscoveryEnabled, "DATAFORSEO"),
+		CareerPageInspectionEnabled: careerPageInspectionEnabled,
+	})
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
@@ -522,6 +529,13 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+func conditionalString(enabled bool, value string) string {
+	if !enabled {
+		return ""
+	}
+	return value
 }
 
 func getenv(key, fallback string) string {
