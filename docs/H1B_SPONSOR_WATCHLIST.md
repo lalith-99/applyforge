@@ -112,6 +112,58 @@ That is intentional for the current H-1B transfer goal. A later importer/schema 
 SOC/software relevance and worker-position signals without changing the watchlist/source-discovery
 architecture.
 
+## Free HOT-source bootstrap (local MVP)
+
+For the single-user local Docker MVP, ApplyForge can bootstrap career/ATS URLs
+without a paid search provider. When `FREE_HOT_SOURCE_BOOTSTRAP_ENABLED=true`
+(the non-production default), a best-effort background pass reads the public
+MIT-licensed `kalil0321/ats-scrapers` company inventories and considers only
+`HOT` sponsors.
+
+The bootstrap deliberately uses conservative identity rules:
+
+- only exact normalized employer-name matches are accepted automatically;
+- Greenhouse, Lever, Ashby, Workable, and non-secondary Workday boards may be
+  promoted to direct polling;
+- SmartRecruiters candidates are retained for review rather than auto-enabled;
+- iCIMS, Oracle, SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP,
+  Cornerstone, UKG, and Jobvite URLs are retained as registry-only candidates;
+- obvious secondary Workday sites such as internal, campus, student, contractor,
+  redeployment, APAC/India, or parenthesized subsidiary boards are not treated
+  as the employer's primary feed;
+- a small set of large first-party employers (for example Amazon, Apple, Google,
+  Netflix, Salesforce, Starbucks, Tesla, and Walmart) use their official career
+  search page as a registry fallback.
+
+This pass runs asynchronously and never blocks API startup. Existing source
+knowledge is refreshed at most weekly by default. After it enables a direct
+source, ApplyForge immediately enqueues a source sync so newly discovered jobs
+do not have to wait for the next hourly scheduler tick.
+
+The upstream project is MIT licensed. Its directory is a discovery accelerator,
+not authoritative employment/immigration evidence; ApplyForge still keeps
+confidence and monitorability separate and does not infer job-level sponsorship
+from the source URL.
+
+A useful local export after bootstrap is:
+
+```sql
+SELECT
+    w.watchlist_rank,
+    c.name AS sponsor_name,
+    csr.source_type,
+    csr.board_token,
+    csr.source_url,
+    csr.confidence,
+    csr.monitorable,
+    csr.last_verified_at
+FROM company_sponsor_watchlist w
+JOIN companies c ON c.id = w.company_id
+LEFT JOIN company_source_registry csr ON csr.company_id = w.company_id
+WHERE w.tier = 'HOT'
+ORDER BY w.watchlist_rank, csr.monitorable DESC, csr.confidence DESC;
+```
+
 ## Proactive source resolution
 
 The watchlist gives ApplyForge the company universe, but an employer name alone does not reveal its
