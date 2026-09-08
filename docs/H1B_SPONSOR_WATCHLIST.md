@@ -14,7 +14,9 @@ Migration `00052_h1b_sponsor_watchlist.sql` creates the watchlist and immediatel
 when DOL evidence already exists. The DOL importer also refreshes it automatically after a
 successful LCA import.
 
-Manual refresh:
+Manual refresh is asynchronous. The POST validates the request, enqueues a
+`refresh_sponsor_watchlist` background job, and returns `202 Accepted`
+immediately instead of holding the HTTP connection open for the database rebuild:
 
 ```bash
 curl -X POST \
@@ -22,7 +24,13 @@ curl -X POST \
   "http://localhost:8080/api/v1/admin/immigration/watchlist/refresh?limit=10000"
 ```
 
-Summary:
+Expected response:
+
+```json
+{"status":"queued","requested_limit":10000}
+```
+
+Use the summary endpoint after the background job completes:
 
 ```bash
 curl \
@@ -56,6 +64,11 @@ Default cadence by rank:
 | COLD | 5501-10000 | 1440 minutes |
 
 These intervals are copied onto direct ATS sources when they are discovered.
+
+Migration `00056_watchlist_refresh_performance.sql` keeps that cadence synchronized
+with statement-level transition-table triggers. A 10,000-company refresh therefore
+updates direct source cadence in set-based statements rather than firing 10,000
+per-company `UPDATE job_sources` operations.
 
 ## Direct source discovery
 

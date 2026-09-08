@@ -1,6 +1,7 @@
 package immigration
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 	"strconv"
@@ -11,13 +12,23 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
 )
 
+type jobEnqueuer interface {
+	Enqueue(ctx context.Context, jobType string, payload any, maxAttempts int32) error
+}
+
 type Handlers struct {
 	repo       *Repository
+	queue      jobEnqueuer
 	adminToken string
 }
 
 func NewHandlers(repo *Repository, adminToken string) *Handlers {
 	return &Handlers{repo: repo, adminToken: strings.TrimSpace(adminToken)}
+}
+
+func (h *Handlers) WithQueue(queue jobEnqueuer) *Handlers {
+	h.queue = queue
+	return h
 }
 
 func (h *Handlers) Mount(r chi.Router) {
@@ -74,16 +85,24 @@ func (h *Handlers) handleWatchlistRefresh(w http.ResponseWriter, r *http.Request
 		limit = parsed
 	}
 
-	count, err := h.repo.RefreshSponsorWatchlist(r.Context(), limit)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+	if h.queue == nil {
+		httpx.WriteError(w, http.StatusServiceUnavailable, "watchlist refresh queue is unavailable")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"watchlist_companies": count,
-		"requested_limit":     limit,
-		"primary_signal":      "recent certified H-1B LCA activity",
-		"secondary_signal":    "recent PERM activity (ranking metadata only)",
+	if err := h.queue.Enqueue(
+		r.Context(),
+		JobTypeRefreshSponsorWatchlist,
+		RefreshSponsorWatchlistPayload{Limit: limit},
+		3,
+	); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not queue watchlist refresh")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
+		"status":           "queued",
+		"requested_limit":  limit,
+		"primary_signal":   "recent certified H-1B LCA activity",
+		"secondary_signal": "recent PERM activity (ranking metadata only)",
 	})
 }
 
