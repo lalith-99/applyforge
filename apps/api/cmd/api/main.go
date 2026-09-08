@@ -296,6 +296,45 @@ func run() error {
 		)
 	}
 
+	var (
+		companySourceInspectionWorker    *jobs.CompanySourceInspectionWorker
+		companySourceInspectionScheduler *jobs.CompanySourceInspectionScheduler
+		companySourceInspectionInterval  time.Duration
+	)
+	if strings.EqualFold(getenv("CAREER_PAGE_INSPECTION_ENABLED", "false"), "true") {
+		batchSize := 100
+		if raw := strings.TrimSpace(os.Getenv("CAREER_PAGE_INSPECTION_BATCH_SIZE")); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed < 1 || parsed > 500 {
+				return errors.New("CAREER_PAGE_INSPECTION_BATCH_SIZE must be between 1 and 500")
+			}
+			batchSize = parsed
+		}
+
+		intervalMinutes := 30
+		if raw := strings.TrimSpace(os.Getenv("CAREER_PAGE_INSPECTION_INTERVAL_MINUTES")); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed < 1 || parsed > 1440 {
+				return errors.New("CAREER_PAGE_INSPECTION_INTERVAL_MINUTES must be between 1 and 1440")
+			}
+			intervalMinutes = parsed
+		}
+
+		inspector := jobs.NewCareerPageInspector()
+		companySourceInspectionWorker = jobs.NewCompanySourceInspectionWorker(jobsRepo, inspector)
+		companySourceInspectionScheduler = jobs.NewCompanySourceInspectionScheduler(
+			jobsRepo,
+			jobQueue,
+			batchSize,
+			time.Hour,
+		)
+		companySourceInspectionInterval = time.Duration(intervalMinutes) * time.Minute
+		slog.Info("structured career-page inspection configured",
+			"batch_size", batchSize,
+			"interval_minutes", intervalMinutes,
+		)
+	}
+
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
 	roleWorker := jobs.NewClassifyRoleWorker(jobsRepo, aiWorkerClient, jobQueue)
 	catalogBackfillWorker := jobs.NewCatalogBackfillWorker(jobsRepo, jobQueue)
@@ -350,6 +389,9 @@ func run() error {
 		if companySourceDiscoveryWorker != nil {
 			w.Register(jobs.JobTypeResolveCompanySource, companySourceDiscoveryWorker.Handle)
 		}
+		if companySourceInspectionWorker != nil {
+			w.Register(jobs.JobTypeInspectCompanySource, companySourceInspectionWorker.Handle)
+		}
 		w.Register(jobs.JobTypeClassifyRole, roleWorker.Handle)
 		w.Register(jobs.JobTypeCatalogBackfill, catalogBackfillWorker.Handle)
 		w.Register(jobs.JobTypeEnrich, enrichWorker.Handle)
@@ -372,6 +414,10 @@ func run() error {
 
 	if companySourceDiscoveryScheduler != nil {
 		go companySourceDiscoveryScheduler.Run(schedulerCtx, companySourceDiscoveryInterval)
+	}
+
+	if companySourceInspectionScheduler != nil {
+		go companySourceInspectionScheduler.Run(schedulerCtx, companySourceInspectionInterval)
 	}
 
 	recommendationRefreshMinutes := 60
