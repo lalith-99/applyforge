@@ -139,12 +139,19 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 	}
 
 	pollMinutes := 60
+	watchlisted := false
 	if err := r.pool.QueryRow(ctx, `
-		SELECT COALESCE(
-			(SELECT poll_interval_minutes FROM company_sponsor_watchlist WHERE company_id = $1),
-			60
-		)
-	`, companyID).Scan(&pollMinutes); err != nil {
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM company_sponsor_watchlist
+				WHERE company_id = $1
+			),
+			COALESCE(
+				(SELECT poll_interval_minutes FROM company_sponsor_watchlist WHERE company_id = $1),
+				60
+			)
+	`, companyID).Scan(&watchlisted, &pollMinutes); err != nil {
 		return fmt.Errorf("load sponsor watchlist cadence: %w", err)
 	}
 
@@ -165,7 +172,7 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 			return fmt.Errorf("record discovered %s source: %w", d.SourceType, err)
 		}
 
-		if d.Monitorable && d.BoardToken != "" {
+		if d.Monitorable && d.BoardToken != "" && watchlisted {
 			if _, err := r.pool.Exec(ctx, `
 				INSERT INTO job_sources (
 					source_type, company_id, board_token, enabled, poll_interval_minutes
@@ -178,6 +185,10 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 			`, d.SourceType, companyID, d.BoardToken, pollMinutes); err != nil {
 				return fmt.Errorf("enable discovered %s source: %w", d.SourceType, err)
 			}
+			resolved = true
+		} else if d.Monitorable {
+			// Keep the endpoint in the registry, but do not spend polling
+			// capacity on companies outside the H-1B sponsor watchlist.
 			resolved = true
 		} else {
 			partial = true
