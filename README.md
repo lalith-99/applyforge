@@ -49,11 +49,9 @@ infra/         Deployment configuration (Docker/Railway/Cloudflare)
 ```bash
 cp .env.example .env
 
-# Postgres + MinIO + Go API + Python AI worker
+# Postgres + MinIO + migrations + Go API + Python AI worker.
+# Docker Compose waits for migrations to finish before starting the API.
 make docker-up
-
-# Apply database migrations (first time, or after pulling new migrations)
-make migrate
 
 # Frontend (run separately for fast HMR)
 cd apps/web && pnpm install && pnpm dev
@@ -85,7 +83,7 @@ Stop the backing services with `make docker-down`.
 | Command            | Description                                              |
 |---------------------|-----------------------------------------------------------|
 | `make dev`           | Start Postgres + api + ai-worker via Docker Compose        |
-| `make docker-up`     | Same as above                                              |
+| `make docker-up`     | Start backing services, run migrations, then API/AI worker |
 | `make docker-down`   | Stop and remove the Docker Compose stack                   |
 | `make build`         | Build all three services                                   |
 | `make lint`          | Lint Go, Python, and web code                               |
