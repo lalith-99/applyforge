@@ -4,9 +4,9 @@ import "testing"
 
 func TestDetectCompanySources(t *testing.T) {
 	cases := []struct {
-		url string
-		sourceType string
-		token string
+		url         string
+		sourceType  string
+		token       string
 		monitorable bool
 	}{
 		{"https://boards.greenhouse.io/acme/jobs/123", "GREENHOUSE", "acme", true},
