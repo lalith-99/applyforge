@@ -221,6 +221,7 @@ func run() error {
 	var (
 		companySourceDiscoveryWorker    *jobs.CompanySourceDiscoveryWorker
 		companySourceDiscoveryScheduler *jobs.CompanySourceDiscoveryScheduler
+		companySourceDiscoveryInterval  time.Duration
 	)
 	sourceDiscoveryEnabled := strings.EqualFold(getenv("DATAFORSEO_SOURCE_DISCOVERY_ENABLED", "false"), "true")
 	if sourceDiscoveryEnabled {
@@ -261,6 +262,9 @@ func run() error {
 			}
 			maxPerMonth = parsed
 		}
+		if maxPerDay > maxPerMonth {
+			return errors.New("DATAFORSEO_SOURCE_DISCOVERY_MAX_REQUESTS_PER_DAY cannot exceed monthly limit")
+		}
 		estimatedCostUSD := 0.002
 		if raw := strings.TrimSpace(os.Getenv("DATAFORSEO_SOURCE_DISCOVERY_ESTIMATED_USD_PER_REQUEST")); raw != "" {
 			parsed, err := strconv.ParseFloat(raw, 64)
@@ -283,13 +287,13 @@ func run() error {
 			batchSize,
 			2*time.Hour,
 		)
+		companySourceDiscoveryInterval = time.Duration(intervalMinutes) * time.Minute
 		slog.Info("DataForSEO company source discovery configured",
 			"batch_size", batchSize,
 			"interval_minutes", intervalMinutes,
 			"max_requests_per_day", maxPerDay,
 			"max_requests_per_month", maxPerMonth,
 		)
-		_ = intervalMinutes
 	}
 
 	syncSourceWorker := jobs.NewSyncSourceWorker(jobsRepo, ingestionService)
@@ -367,13 +371,7 @@ func run() error {
 	go scheduler.Run(schedulerCtx, ingestionService, time.Duration(pollMinutes)*time.Minute)
 
 	if companySourceDiscoveryScheduler != nil {
-		intervalMinutes := 15
-		if raw := strings.TrimSpace(os.Getenv("DATAFORSEO_SOURCE_DISCOVERY_INTERVAL_MINUTES")); raw != "" {
-			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 1440 {
-				intervalMinutes = parsed
-			}
-		}
-		go companySourceDiscoveryScheduler.Run(schedulerCtx, time.Duration(intervalMinutes)*time.Minute)
+		go companySourceDiscoveryScheduler.Run(schedulerCtx, companySourceDiscoveryInterval)
 	}
 
 	recommendationRefreshMinutes := 60
