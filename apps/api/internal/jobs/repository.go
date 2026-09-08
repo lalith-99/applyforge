@@ -625,11 +625,14 @@ func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string
 	return err
 }
 
-// EnableDevelopmentBootstrapSources restores verified public direct-ATS rows
-// in local/dev so the app can ingest real U.S. jobs without paid providers.
-// When sponsor evidence exists, only companies already on the sponsor watchlist
-// are enabled. When the watchlist is empty, verified seed rows are used as a
-// temporary bootstrap. Production never calls this method.
+// EnableDevelopmentBootstrapSources recreates the historically live-verified
+// public direct-ATS seeds in local/dev. Migration 00050 deliberately removed
+// these rows from production, but a local install otherwise has no U.S. feed
+// unless a paid provider/source resolver has already populated job_sources.
+//
+// If H-1B sponsor evidence exists, only seed companies present on the sponsor
+// watchlist are enabled. With an empty watchlist, all verified seeds are
+// enabled so a fresh checkout can still demonstrate ingestion.
 func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int64, error) {
 	if r.pool == nil {
 		return 0, errors.New("development source bootstrap requires a repository backed by a database pool")
@@ -640,27 +643,140 @@ func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int
 		return 0, err
 	}
 
-	tag, err := r.pool.Exec(ctx, `
-		UPDATE job_sources js
-		SET enabled = true
-		WHERE js.source_type IN (
-			'GREENHOUSE',
-			'LEVER',
-			'ASHBY',
-			'SMARTRECRUITERS',
-			'WORKABLE',
-			'WORKDAY'
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// These board tokens were previously live-verified and successfully
+	// ingested in migrations 00013/00026/00027 before production source
+	// discovery moved to sponsor-first market coverage.
+	if _, err := tx.Exec(ctx, `
+		WITH seeds(name, normalized_name, source_type, board_token) AS (
+			VALUES
+				('Robinhood', 'robinhood', 'GREENHOUSE', 'robinhood'),
+				('Ramp', 'ramp', 'ASHBY', 'ramp'),
+				('Stripe', 'stripe', 'GREENHOUSE', 'stripe'),
+				('Airbnb', 'airbnb', 'GREENHOUSE', 'airbnb'),
+				('Coinbase', 'coinbase', 'GREENHOUSE', 'coinbase'),
+				('Affirm', 'affirm', 'GREENHOUSE', 'affirm'),
+				('GitLab', 'gitlab', 'GREENHOUSE', 'gitlab'),
+				('Figma', 'figma', 'GREENHOUSE', 'figma'),
+				('Tala', 'tala', 'LEVER', 'tala'),
+				('Wealthfront', 'wealthfront', 'LEVER', 'wealthfront'),
+				('Linear', 'linear', 'ASHBY', 'linear'),
+				('Watershed', 'watershed', 'ASHBY', 'watershed'),
+				('Vanta', 'vanta', 'ASHBY', 'vanta'),
+				('Datadog', 'datadog', 'GREENHOUSE', 'datadog'),
+				('Cloudflare', 'cloudflare', 'GREENHOUSE', 'cloudflare'),
+				('Twilio', 'twilio', 'GREENHOUSE', 'twilio'),
+				('Okta', 'okta', 'GREENHOUSE', 'okta'),
+				('Asana', 'asana', 'GREENHOUSE', 'asana'),
+				('Dropbox', 'dropbox', 'GREENHOUSE', 'dropbox'),
+				('Squarespace', 'squarespace', 'GREENHOUSE', 'squarespace'),
+				('Elastic', 'elastic', 'GREENHOUSE', 'elastic'),
+				('MongoDB', 'mongodb', 'GREENHOUSE', 'mongodb'),
+				('PagerDuty', 'pagerduty', 'GREENHOUSE', 'pagerduty'),
+				('New Relic', 'newrelic', 'GREENHOUSE', 'newrelic'),
+				('Pinterest', 'pinterest', 'GREENHOUSE', 'pinterest'),
+				('Lyft', 'lyft', 'GREENHOUSE', 'lyft'),
+				('Instacart', 'instacart', 'GREENHOUSE', 'instacart'),
+				('Databricks', 'databricks', 'GREENHOUSE', 'databricks'),
+				('Intercom', 'intercom', 'GREENHOUSE', 'intercom'),
+				('Amplitude', 'amplitude', 'GREENHOUSE', 'amplitude'),
+				('Braze', 'braze', 'GREENHOUSE', 'braze'),
+				('Ro', 'ro', 'LEVER', 'ro'),
+				('Vevo', 'vevo', 'LEVER', 'vevo'),
+				('Imprint', 'imprint', 'ASHBY', 'imprint'),
+				('Speak', 'speak', 'ASHBY', 'speak'),
+				('Multiverse', 'multiverse', 'ASHBY', 'multiverse')
 		)
-		  AND (
-		      $1::bigint = 0
-		      OR EXISTS (
-		          SELECT 1
-		          FROM company_sponsor_watchlist w
-		          WHERE w.company_id = js.company_id
-		      )
-		  )
+		INSERT INTO companies (name, normalized_name)
+		SELECT DISTINCT name, normalized_name
+		FROM seeds
+		ON CONFLICT (normalized_name) DO UPDATE SET name = EXCLUDED.name
+	`); err != nil {
+		return 0, err
+	}
+
+	tag, err := tx.Exec(ctx, `
+		WITH seeds(normalized_name, source_type, board_token) AS (
+			VALUES
+				('robinhood', 'GREENHOUSE', 'robinhood'),
+				('ramp', 'ASHBY', 'ramp'),
+				('stripe', 'GREENHOUSE', 'stripe'),
+				('airbnb', 'GREENHOUSE', 'airbnb'),
+				('coinbase', 'GREENHOUSE', 'coinbase'),
+				('affirm', 'GREENHOUSE', 'affirm'),
+				('gitlab', 'GREENHOUSE', 'gitlab'),
+				('figma', 'GREENHOUSE', 'figma'),
+				('tala', 'LEVER', 'tala'),
+				('wealthfront', 'LEVER', 'wealthfront'),
+				('linear', 'ASHBY', 'linear'),
+				('watershed', 'ASHBY', 'watershed'),
+				('vanta', 'ASHBY', 'vanta'),
+				('datadog', 'GREENHOUSE', 'datadog'),
+				('cloudflare', 'GREENHOUSE', 'cloudflare'),
+				('twilio', 'GREENHOUSE', 'twilio'),
+				('okta', 'GREENHOUSE', 'okta'),
+				('asana', 'GREENHOUSE', 'asana'),
+				('dropbox', 'GREENHOUSE', 'dropbox'),
+				('squarespace', 'GREENHOUSE', 'squarespace'),
+				('elastic', 'GREENHOUSE', 'elastic'),
+				('mongodb', 'GREENHOUSE', 'mongodb'),
+				('pagerduty', 'GREENHOUSE', 'pagerduty'),
+				('newrelic', 'GREENHOUSE', 'newrelic'),
+				('pinterest', 'GREENHOUSE', 'pinterest'),
+				('lyft', 'GREENHOUSE', 'lyft'),
+				('instacart', 'GREENHOUSE', 'instacart'),
+				('databricks', 'GREENHOUSE', 'databricks'),
+				('intercom', 'GREENHOUSE', 'intercom'),
+				('amplitude', 'GREENHOUSE', 'amplitude'),
+				('braze', 'GREENHOUSE', 'braze'),
+				('ro', 'LEVER', 'ro'),
+				('vevo', 'LEVER', 'vevo'),
+				('imprint', 'ASHBY', 'imprint'),
+				('speak', 'ASHBY', 'speak'),
+				('multiverse', 'ASHBY', 'multiverse')
+		),
+		desired AS (
+			SELECT
+				s.source_type,
+				c.id AS company_id,
+				s.board_token,
+				CASE
+					WHEN $1::bigint = 0 THEN true
+					ELSE EXISTS (
+						SELECT 1
+						FROM company_sponsor_watchlist w
+						WHERE w.company_id = c.id
+					)
+				END AS enabled,
+				COALESCE(
+					(SELECT w.poll_interval_minutes
+					 FROM company_sponsor_watchlist w
+					 WHERE w.company_id = c.id),
+					60
+				) AS poll_interval_minutes
+			FROM seeds s
+			JOIN companies c ON c.normalized_name = s.normalized_name
+		)
+		INSERT INTO job_sources (
+			source_type, company_id, board_token, enabled, poll_interval_minutes
+		)
+		SELECT source_type, company_id, board_token, enabled, poll_interval_minutes
+		FROM desired
+		ON CONFLICT (source_type, board_token) DO UPDATE SET
+			company_id = EXCLUDED.company_id,
+			enabled = EXCLUDED.enabled,
+			poll_interval_minutes = EXCLUDED.poll_interval_minutes
 	`, watchlistCount)
 	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
