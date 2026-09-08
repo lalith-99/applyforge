@@ -42,7 +42,6 @@ func TestDetectCompanySourcesIgnoresGenericAndDeduplicates(t *testing.T) {
 	}
 }
 
-
 func TestDetectCompanySourcesPreservesRegistryURL(t *testing.T) {
 	cases := []struct {
 		raw        string
