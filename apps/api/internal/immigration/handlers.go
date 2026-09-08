@@ -58,7 +58,6 @@ func (h *Handlers) handleImport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 func (h *Handlers) handleWatchlistRefresh(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		httpx.WriteError(w, http.StatusForbidden, "admin authorization required")
