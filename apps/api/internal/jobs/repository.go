@@ -574,12 +574,22 @@ func (r *Repository) CloseRetiredManualSourceJobs(ctx context.Context) (int64, e
 	if r.pool == nil {
 		return 0, errors.New("retired source cleanup requires a repository backed by a database pool")
 	}
+	// Direct ATS polling is active again for dynamically discovered companies.
+	// Only close legacy rows whose company no longer has an enabled source of
+	// the same type; monitored boards own their own closure detection.
 	tag, err := r.pool.Exec(ctx, `
-		UPDATE jobs
+		UPDATE jobs j
 		SET status = 'CLOSED', updated_at = now()
-		WHERE status = 'ACTIVE'
-		  AND source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
-		  AND last_seen_at < now() - INTERVAL '48 hours'
+		WHERE j.status = 'ACTIVE'
+		  AND j.source IN ('GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS', 'WORKABLE')
+		  AND j.last_seen_at < now() - INTERVAL '48 hours'
+		  AND NOT EXISTS (
+		      SELECT 1
+		      FROM job_sources js
+		      WHERE js.company_id = j.company_id
+		        AND js.source_type = j.source
+		        AND js.enabled = true
+		  )
 	`)
 	if err != nil {
 		return 0, err
