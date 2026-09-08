@@ -14,9 +14,9 @@ import (
 // job_sources automatically; unsupported ATSs remain in the registry so a
 // future connector/crawler can take over without rediscovering the company.
 type DiscoveredCompanySource struct {
-	SourceType string
-	BoardToken string
-	SourceURL  string
+	SourceType  string
+	BoardToken  string
+	SourceURL   string
 	Confidence float32
 	Monitorable bool
 }
@@ -60,7 +60,7 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 			if first != "" {
 				add(DiscoveredCompanySource{
 					SourceType: "GREENHOUSE", BoardToken: first,
-					SourceURL: "https://" + host + "/" + first,
+					SourceURL:  "https://" + host + "/" + first,
 					Confidence: 1, Monitorable: true,
 				})
 			}
@@ -68,7 +68,7 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 			if first != "" {
 				add(DiscoveredCompanySource{
 					SourceType: "LEVER", BoardToken: first,
-					SourceURL: "https://" + host + "/" + first,
+					SourceURL:  "https://" + host + "/" + first,
 					Confidence: 1, Monitorable: true,
 				})
 			}
@@ -76,7 +76,7 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 			if first != "" {
 				add(DiscoveredCompanySource{
 					SourceType: "ASHBY", BoardToken: first,
-					SourceURL: "https://" + host + "/" + first,
+					SourceURL:  "https://" + host + "/" + first,
 					Confidence: 1, Monitorable: true,
 				})
 			}
@@ -84,7 +84,7 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 			if first != "" {
 				add(DiscoveredCompanySource{
 					SourceType: "SMARTRECRUITERS", BoardToken: first,
-					SourceURL: "https://" + host + "/" + first,
+					SourceURL:  "https://" + host + "/" + first,
 					Confidence: 1, Monitorable: true,
 				})
 			}
@@ -92,26 +92,26 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 			if first != "" {
 				add(DiscoveredCompanySource{
 					SourceType: "WORKABLE", BoardToken: first,
-					SourceURL: "https://" + host + "/" + first,
+					SourceURL:  "https://" + host + "/" + first,
 					Confidence: 1, Monitorable: true,
 				})
 			}
 		case strings.HasSuffix(host, ".myworkdayjobs.com") || host == "myworkdayjobs.com":
 			add(DiscoveredCompanySource{
 				SourceType: "WORKDAY", BoardToken: host,
-				SourceURL: "https://" + host,
+				SourceURL:  "https://" + host,
 				Confidence: 0.95, Monitorable: false,
 			})
 		case strings.HasSuffix(host, ".icims.com") || host == "icims.com":
 			add(DiscoveredCompanySource{
 				SourceType: "ICIMS", BoardToken: host,
-				SourceURL: "https://" + host,
+				SourceURL:  "https://" + host,
 				Confidence: 0.95, Monitorable: false,
 			})
 		case strings.HasSuffix(host, ".oraclecloud.com"):
 			add(DiscoveredCompanySource{
 				SourceType: "ORACLE", BoardToken: host,
-				SourceURL: "https://" + host,
+				SourceURL:  "https://" + host,
 				Confidence: 0.95, Monitorable: false,
 			})
 		}
@@ -214,7 +214,6 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 
 	return nil
 }
-
 
 // BackfillDiscoveredCompanySources rebuilds direct ATS knowledge from URLs
 // already stored in the catalog. This makes upgrades useful immediately even
