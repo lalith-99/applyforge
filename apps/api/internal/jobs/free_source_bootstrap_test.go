@@ -28,7 +28,6 @@ func TestSourceCompanyKey(t *testing.T) {
 	}
 }
 
-
 func TestSourceCompanyExactKeysIncludesBrandOverride(t *testing.T) {
 	keys := sourceCompanyExactKeys("Goldman Sachs Services LLC")
 	found := false
