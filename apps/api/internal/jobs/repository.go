@@ -625,10 +625,11 @@ func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string
 	return err
 }
 
-// EnableDevelopmentBootstrapSources restores the verified public direct-ATS
-// seed rows only when the sponsor watchlist is empty. This is a local/dev
-// bootstrap so a fresh checkout can ingest real U.S. jobs before DOL evidence
-// has been imported. Production never calls this method.
+// EnableDevelopmentBootstrapSources restores verified public direct-ATS rows
+// in local/dev so the app can ingest real U.S. jobs without paid providers.
+// When sponsor evidence exists, only companies already on the sponsor watchlist
+// are enabled. When the watchlist is empty, verified seed rows are used as a
+// temporary bootstrap. Production never calls this method.
 func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int64, error) {
 	if r.pool == nil {
 		return 0, errors.New("development source bootstrap requires a repository backed by a database pool")
@@ -638,14 +639,11 @@ func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int
 	if err := r.pool.QueryRow(ctx, "SELECT count(*)::bigint FROM company_sponsor_watchlist").Scan(&watchlistCount); err != nil {
 		return 0, err
 	}
-	if watchlistCount > 0 {
-		return 0, nil
-	}
 
 	tag, err := r.pool.Exec(ctx, `
-		UPDATE job_sources
+		UPDATE job_sources js
 		SET enabled = true
-		WHERE source_type IN (
+		WHERE js.source_type IN (
 			'GREENHOUSE',
 			'LEVER',
 			'ASHBY',
@@ -653,7 +651,15 @@ func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int
 			'WORKABLE',
 			'WORKDAY'
 		)
-	`)
+		  AND (
+		      $1::bigint = 0
+		      OR EXISTS (
+		          SELECT 1
+		          FROM company_sponsor_watchlist w
+		          WHERE w.company_id = js.company_id
+		      )
+		  )
+	`, watchlistCount)
 	if err != nil {
 		return 0, err
 	}
