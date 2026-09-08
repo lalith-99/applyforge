@@ -165,7 +165,7 @@ func parseCareerPageDocument(baseURL *url.URL, body []byte) (CareerPageInspectio
 				}
 			case "script":
 				if strings.EqualFold(strings.TrimSpace(htmlAttr(node, "type")), "application/ld+json") {
-					if text := nodeText(node); strings.TrimSpace(text) != "" {
+					if text := rawNodeText(node); strings.TrimSpace(text) != "" {
 						jsonLDScripts = append(jsonLDScripts, text)
 					}
 				}
@@ -204,7 +204,7 @@ func htmlAttr(node *xhtml.Node, key string) string {
 	return ""
 }
 
-func nodeText(node *xhtml.Node) string {
+func rawNodeText(node *xhtml.Node) string {
 	var builder strings.Builder
 	var walk func(*xhtml.Node)
 	walk = func(current *xhtml.Node) {
