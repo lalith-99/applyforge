@@ -32,16 +32,6 @@ func NewHandlers(repo *Repository, svc *IngestionService, requirements *jobrequi
 	return &Handlers{repo: repo, svc: svc, requirements: requirements}
 }
 
-// AdminHandlers mounts machine-admin job operations outside browser auth.
-// Every handler still requires the constant-time admin-token check.
-type AdminHandlers struct {
-	base *Handlers
-}
-
-func NewAdminHandlers(base *Handlers) *AdminHandlers {
-	return &AdminHandlers{base: base}
-}
-
 // WithAdminSyncToken enables the manual global source-sync endpoint. When the
 // token is empty the route is not mounted at all; normal scheduled ingestion
 // is unaffected.
@@ -62,15 +52,11 @@ func (h *Handlers) WithPreferences(repo *preferences.Repository) *Handlers {
 func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/jobs", h.handleList)
 	r.Get("/jobs/{id}", h.handleGet)
-}
-
-func (h *AdminHandlers) Mount(r chi.Router) {
-	if h == nil || h.base == nil || h.base.adminSyncToken == "" {
-		return
+	if h.adminSyncToken != "" {
+		r.Post("/admin/job-sources/sync", h.handleSync)
+		r.Post("/admin/jobs/backfill", h.handleCatalogBackfill)
+		r.Get("/admin/job-sources/health", h.handleSourceHealth)
 	}
-	r.Post("/admin/job-sources/sync", h.base.handleSync)
-	r.Post("/admin/jobs/backfill", h.base.handleCatalogBackfill)
-	r.Get("/admin/job-sources/health", h.base.handleSourceHealth)
 }
 
 func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
