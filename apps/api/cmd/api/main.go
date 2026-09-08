@@ -154,6 +154,11 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
+	if discovered, err := jobsRepo.BackfillDiscoveredCompanySources(ctx); err != nil {
+		return fmt.Errorf("backfill discovered company job sources: %w", err)
+	} else if discovered > 0 {
+		slog.Info("restored direct ATS sources from existing catalog", "sources", discovered)
+	}
 	// Direct ATS sources are enabled dynamically when ApplyForge learns a
 	// company's public Greenhouse/Lever/Ashby/SmartRecruiters/Workable endpoint.
 	// Broad providers remain discovery/gap sources rather than replacing these
