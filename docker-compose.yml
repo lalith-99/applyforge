@@ -46,6 +46,7 @@ services:
       S3_ACCESS_KEY: "applyforge"
       S3_SECRET_KEY: "applyforge123"
       S3_USE_SSL: "false"
+      ADMIN_SYNC_TOKEN: "${ADMIN_SYNC_TOKEN:-}"
     ports:
       - "8080:8080"
     depends_on:

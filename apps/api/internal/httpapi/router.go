@@ -29,11 +29,13 @@ type Mounter interface {
 // main.go doesn't need to know internal package import paths directly cause
 // cyclic-import risk between httpapi and the domain packages.
 type Config struct {
-	DB             Pinger
-	WebBaseURL     string
-	RequireAuth    func(http.Handler) http.Handler
-	Auth           Mounter
-	Authed         []Mounter
+	DB          Pinger
+	WebBaseURL  string
+	RequireAuth func(http.Handler) http.Handler
+	Auth        Mounter
+	Authed      []Mounter
+	Admin       []Mounter
+
 	RateLimitStore RateLimitStore
 }
 
@@ -67,6 +69,7 @@ func NewRouter(cfg Config) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(protectBrowserMutations(cfg.WebBaseURL))
+
 		if cfg.Auth != nil {
 			r.Route("/auth", func(r chi.Router) {
 				r.Use(authRateLimiter.middleware)
@@ -74,11 +77,25 @@ func NewRouter(cfg Config) http.Handler {
 			})
 		}
 
+		// Machine-to-machine admin endpoints.
+		// These authenticate themselves using ADMIN_SYNC_TOKEN
+		// and do not require a user session cookie.
 		r.Group(func(r chi.Router) {
 			r.Use(apiRateLimiter.middleware)
+
+			for _, m := range cfg.Admin {
+				m.Mount(r)
+			}
+		})
+
+		// Normal user-facing authenticated API.
+		r.Group(func(r chi.Router) {
+			r.Use(apiRateLimiter.middleware)
+
 			if cfg.RequireAuth != nil {
 				r.Use(cfg.RequireAuth)
 			}
+
 			for _, m := range cfg.Authed {
 				m.Mount(r)
 			}

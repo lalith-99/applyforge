@@ -315,11 +315,28 @@ func run() error {
 	}
 
 	router := httpapi.NewRouter(httpapi.Config{
-		DB:             db,
-		WebBaseURL:     webBaseURL,
-		RequireAuth:    requireAuthMiddleware,
-		Auth:           authHandlers,
-		Authed:         []httpapi.Mounter{profileHandlers, preferencesHandlers, resumeHandlers, jobsHandlers, immigrationHandlers, matchingHandlers, tailoringHandlers, learningHandlers, resumeVersionHandlers, applicationsHandlers, analyticsHandlers, accountHandlers, jobRecommendationsHandlers},
+		DB:          db,
+		WebBaseURL:  webBaseURL,
+		RequireAuth: requireAuthMiddleware,
+		Auth:        authHandlers,
+		Admin: []httpapi.Mounter{
+			immigrationHandlers,
+		},
+
+		Authed: []httpapi.Mounter{
+			profileHandlers,
+			preferencesHandlers,
+			resumeHandlers,
+			jobsHandlers,
+			matchingHandlers,
+			tailoringHandlers,
+			learningHandlers,
+			resumeVersionHandlers,
+			applicationsHandlers,
+			analyticsHandlers,
+			accountHandlers,
+			jobRecommendationsHandlers,
+		},
 		RateLimitStore: httpapi.NewPostgresRateLimitStore(db),
 	})
 
