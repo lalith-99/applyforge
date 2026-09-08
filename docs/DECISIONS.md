@@ -735,3 +735,22 @@ confirming the `Tailor()`→`CreateQueuedRun`/`ProcessRun` refactor didn't break
 and `ai-worker` containers rebuilt together per the Phase I lesson.
 
 **All 12 phases (A-L) of the original architecture overhaul are now complete.**
+
+## Sponsor watchlist refresh: asynchronous admin command and set-based cadence sync
+
+1. **The admin refresh endpoint queues work instead of extending the global HTTP timeout.**
+   Rebuilding a 10,000-company sponsor watchlist is batch work and can legitimately outlive the
+   API's 30-second request timeout. `POST /api/v1/admin/immigration/watchlist/refresh` now returns
+   `202 Accepted` after enqueueing `refresh_sponsor_watchlist` on the existing PostgreSQL-backed
+   background queue. The worker executes the same repository operation with normal retry/dead-letter
+   behavior, while the summary endpoint remains the read-side status surface.
+
+2. **Sponsor-tier source cadence synchronization is statement-level, not row-level.** Workday support
+   originally added an `AFTER ... FOR EACH ROW` trigger on `company_sponsor_watchlist`. A 10,000-row
+   refresh therefore ran up to 10,000 separate `UPDATE job_sources` statements. Migration `00056`
+   replaces it with INSERT/UPDATE/DELETE statement triggers using PostgreSQL transition tables and
+   adds a partial `job_sources(company_id, source_type)` index for direct sources.
+
+3. **The DOL importer now reports that refresh was queued.** It no longer waits for a synchronous
+   company count or prints a misleading zero when the API returns an asynchronous response.
+
