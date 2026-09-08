@@ -30,6 +30,7 @@ type Input struct {
 	CandidateTargetSkills               map[string]bool // normalized skill name -> user-approved target skill
 	TransferableFromSkills              []TransferableSkill
 	CandidateSeniority                  string
+	CandidateDomains                    []string // preferred/target industries used for domain-fit scoring
 	PreferredRemote                     bool
 	PreferredHybrid                     bool
 	PreferredOnsite                     bool
@@ -63,6 +64,7 @@ type Input struct {
 	RequiredSkills                []SkillRequirement
 	PreferredSkills               []SkillRequirement
 	Responsibilities              []string
+	JobDomains                    []string
 	HasEducationReqs              bool
 	HasCertReqs                   bool
 	PostedAt                      *time.Time

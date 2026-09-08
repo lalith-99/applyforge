@@ -6,7 +6,7 @@ Job Match Score is always **deterministic**, computed in Go. An LLM is never ask
 directly. AI is only used upstream (JD parsing, transferable-skill reasoning) to produce structured inputs
 that the deterministic scorer consumes.
 
-## Job Match Score (planned, Phase 5)
+## Job Match Score
 
 | Component                  | Weight |
 |-----------------------------|-------:|
@@ -68,7 +68,9 @@ Golden tests (§55) cover: strong same-stack matches, weak cross-stack matches, 
 differences for Kafka→SQS and PostgreSQL→DynamoDB, wording-change stability, and excluded-company hard
 failures.
 
-**Known limitations:** domain alignment and education/certification cross-referencing use flat default
-partial credit (no domain extraction in the heuristic JD parser, no resume-education cross-reference yet) —
-see IMPLEMENTATION_PLAN.md for the full list. The Immigration-Aware Job Matching sub-system (§ in
-MASTER_REQUIREMENTS.md) is not implemented.
+**Current limitations:** domain alignment is deterministic and compares extracted JD domains against the
+user's configured preferred industries/target domains. When the JD contains no explicit domain signal it does
+not penalize the candidate; when the candidate has no configured domain signal it uses neutral partial credit.
+The heuristic JD parser still emits no domains, so real domain scoring is strongest when AI extraction is
+enabled. Education/certification cross-referencing still uses neutral partial credit when a requirement exists
+and is tracked as follow-up work. Immigration-aware matching and historical DOL evidence are implemented.
