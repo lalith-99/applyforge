@@ -295,7 +295,6 @@ func contains(list []string, target string) bool {
 	return false
 }
 
-
 func TestGolden_CanonicalComponentWeightsSumTo100(t *testing.T) {
 	input := Input{
 		CompanyName:        "Acme",
