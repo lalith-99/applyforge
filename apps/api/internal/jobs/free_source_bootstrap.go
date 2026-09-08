@@ -98,7 +98,8 @@ var sourceCompanyLegalSuffixes = map[string]bool{
 
 var workdayReviewOnlyTokens = []string{
 	"internal", "campus", "student", "contractor", "restricted", "redeployment",
-	"apac", "india", "university", "early_career", "early-career",
+	"apac", "india", "global_in", "emea", "europe", "exteu",
+	"university", "early_career", "early-career",
 }
 
 // BootstrapFreeHotCompanySources uses the public MIT-licensed ats-scrapers
@@ -369,13 +370,13 @@ func fetchFreeSourceInventory(ctx context.Context, cfg FreeSourceBootstrapConfig
 			Slug:       slug,
 			URL:        sourceURL,
 			CompanyKey: key,
-			Score:      freeSourceEntryScore(inventory, sourceURL),
+			Score:      freeSourceEntryScore(inventory, name, sourceURL),
 		})
 	}
 	return entries, nil
 }
 
-func freeSourceEntryScore(inventory freeSourceInventory, sourceURL string) int {
+func freeSourceEntryScore(inventory freeSourceInventory, companyName, sourceURL string) int {
 	score := 50
 	switch inventory.Name {
 	case "greenhouse":
@@ -395,6 +396,12 @@ func freeSourceEntryScore(inventory freeSourceInventory, sourceURL string) int {
 	}
 	lowerURL := strings.ToLower(sourceURL)
 	if inventory.Name == "workday" {
+		// Parenthesized Workday directory names typically represent a
+		// secondary site (campus, regional, subsidiary, etc.), not the
+		// employer's complete external board.
+		if strings.Contains(companyName, "(") {
+			score -= 30
+		}
 		for _, token := range workdayReviewOnlyTokens {
 			if strings.Contains(lowerURL, token) {
 				score -= 35
