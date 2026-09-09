@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501,I001
 """Regression tests for source-faithful resume parsing."""
 
 from app.resume.faithful import parse_resume_text_faithful, reconcile_ai_profile
