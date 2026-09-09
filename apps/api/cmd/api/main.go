@@ -218,9 +218,14 @@ func run() error {
 		return fmt.Errorf("configure Google Jobs discovery sources: %w", err)
 	}
 
-	embeddingsEnabled := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
-	if !embeddingsEnabled {
-		slog.Info("semantic embeddings disabled", "reason", "OPENAI_API_KEY is not configured")
+	// The Go API never calls OpenAI directly. Embeddings are produced by the
+	// AI worker, so do not incorrectly gate embedding jobs on an API-container
+	// OPENAI_API_KEY. Operators can explicitly disable embedding work if needed.
+	embeddingsEnabled := strings.EqualFold(getenv("AI_EMBEDDINGS_ENABLED", "true"), "true")
+	if embeddingsEnabled {
+		slog.Info("semantic embedding jobs enabled", "provider", "ai-worker")
+	} else {
+		slog.Info("semantic embedding jobs disabled", "reason", "AI_EMBEDDINGS_ENABLED=false")
 	}
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue).
 		WithEmbeddingsEnabled(embeddingsEnabled)
@@ -488,6 +493,13 @@ func run() error {
 	recommendationRefreshCtx, stopRecommendationRefresh := context.WithCancel(context.Background())
 	defer stopRecommendationRefresh()
 	go func() {
+		// Recompute once immediately on startup so a Docker restart repairs
+		// recommendations after new jobs, profile changes, or prior AI outages
+		// instead of waiting for the first periodic tick.
+		if err := jobrecommendations.EnqueueForActiveUsers(recommendationRefreshCtx, jobQueue, candidateProfileRepo); err != nil {
+			slog.Error("initial recommendation refresh failed", "error", err)
+		}
+
 		ticker := time.NewTicker(time.Duration(recommendationRefreshMinutes) * time.Minute)
 		defer ticker.Stop()
 		for {

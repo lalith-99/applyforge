@@ -2,6 +2,7 @@ package matching
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sort"
 	"strings"
@@ -225,17 +226,23 @@ type RankedJob struct {
 
 // Recommend runs the multi-stage funnel (Phase G): hard filters -> semantic
 // retrieval -> deterministic scoring. Returns up to limit ELIGIBLE jobs for
-// userID, ranked by Result.TotalScore. Returns candidateprofile.ErrNotFound
-// if the user has no generated (embedded) profile yet - callers should fall
-// back to plain List()-based browsing in that case.
+// userID, ranked by Result.TotalScore. Semantic retrieval is optional: when a
+// candidate embedding is unavailable, the funnel still uses target-role/skill
+// lexical retrieval. ErrNotFound now means there is no generated candidate
+// profile at all.
 func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([]RankedJob, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 
-	embedding, err := s.candidateProfiles.GetLatestEmbedding(ctx, userID)
+	candidateProfile, err := s.candidateProfiles.GetLatest(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	embedding, embeddingErr := s.candidateProfiles.GetLatestEmbedding(ctx, userID)
+	if embeddingErr != nil && !errors.Is(embeddingErr, candidateprofile.ErrNotFound) {
+		return nil, embeddingErr
 	}
 
 	candidateCtx, err := s.loadCandidateMatchContext(ctx, userID)
@@ -253,6 +260,9 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		ExcludeSponsorshipDenied: requiresH1BSupport,
 		RequireRecentH1BHistory:  requiresH1BSupport,
 	}
+	if len(prefs.EmploymentTypes) == 1 && normalizeEmploymentType(prefs.EmploymentTypes[0]) == "full_time" {
+		filter.EmploymentType = "FullTime"
+	}
 	if prefs.Remote && !prefs.Hybrid && !prefs.Onsite {
 		filter.RemoteType = "remote"
 	}
@@ -265,9 +275,14 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	if poolSize < 200 {
 		poolSize = 200
 	}
-	matches, err := s.jobsRepo.SearchByEmbedding(ctx, embedding, poolSize, filter)
-	if err != nil {
-		return nil, err
+	var matches []jobs.JobMatch
+	if embeddingErr == nil {
+		matches, err = s.jobsRepo.SearchByEmbedding(ctx, embedding, poolSize, filter)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		slog.Info("candidate embedding unavailable; using lexical recommendation fallback", "user_id", userID)
 	}
 
 	candidateByID := make(map[uuid.UUID]jobs.Job, int(poolSize)+200)
@@ -288,10 +303,10 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	// crowded out in a large catalog. Union a bounded lexical pool so titles
 	// such as Java Full Stack Developer or Golang Developer always get a
 	// chance to be deterministically scored.
-	candidateProfile, profileErr := s.candidateProfiles.GetLatest(ctx, userID)
-	if profileErr == nil {
+	{
 		lexicalFilter := jobs.ListFilter{
 			RemoteType:               filter.RemoteType,
+			EmploymentType:           filter.EmploymentType,
 			PostedAfter:              filter.PostedAfter,
 			CountryCode:              filter.CountryCode,
 			ExcludeSponsorshipDenied: filter.ExcludeSponsorshipDenied,
