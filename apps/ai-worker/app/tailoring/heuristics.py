@@ -17,19 +17,43 @@ from app.tailoring.models import (
 )
 
 
+def _skill_key(value: str) -> str:
+    key = value.strip().lower()
+    aliases = {
+        "react.js": "react",
+        "reactjs": "react",
+        "node.js": "nodejs",
+        "node js": "nodejs",
+        "golang": "go",
+        "postgres": "postgresql",
+        "amazon web services": "aws",
+    }
+    if key in aliases:
+        return aliases[key]
+
+    # Treat common language/framework version labels as the same underlying
+    # skill for coverage purposes (e.g. Java 21 satisfies "Java").
+    for prefix in ("java", "spring boot", "angular", "python"):
+        if key.startswith(prefix + " "):
+            suffix = key[len(prefix) + 1 :]
+            if suffix.replace(".", "").isdigit():
+                return prefix
+    return key
+
+
 def _lower_set(values: list[str]) -> set[str]:
-    return {v.lower() for v in values}
+    return {_skill_key(v) for v in values}
 
 
 def _missing(requirements: list[str], have: set[str]) -> list[str]:
-    return [r for r in requirements if r.lower() not in have]
+    return [r for r in requirements if _skill_key(r) not in have]
 
 
 def _transfer_for(
     skill: str, transfers: list[TransferableMatchInput]
 ) -> TransferableMatchInput | None:
     for t in transfers:
-        if t.target_skill.lower() == skill.lower():
+        if _skill_key(t.target_skill) == _skill_key(skill):
             return t
     return None
 
@@ -96,9 +120,9 @@ def _summary_suggestion(
 def _find_experience_by_skill(
     skill: str, experiences: list[ExperienceInput]
 ) -> ExperienceInput | None:
-    skill_lower = skill.lower()
+    skill_key = _skill_key(skill)
     for exp in experiences:
-        if exp.bullets and skill_lower in _lower_set(exp.detected_skills):
+        if exp.bullets and skill_key in _lower_set(exp.detected_skills):
             return exp
     return None
 
@@ -200,8 +224,8 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     required_missing = _missing(request.required_skills, have)
     preferred_missing = _missing(request.preferred_skills, have)
 
-    required_matched = [s for s in request.required_skills if s.lower() in have]
-    preferred_matched = [s for s in request.preferred_skills if s.lower() in have]
+    required_matched = [s for s in request.required_skills if _skill_key(s) in have]
+    preferred_matched = [s for s in request.preferred_skills if _skill_key(s) in have]
 
     relevant = _lower_set(request.required_skills) | _lower_set(request.preferred_skills)
     # MAX_MATCH: skills with no transferable evidence still need to land
