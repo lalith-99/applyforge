@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -26,7 +28,12 @@ type ComputePayload struct {
 // PoolSize is how many candidates the funnel considers before AI reranking
 // and the final cut - generous enough that the true top results are almost
 // certainly included, small enough to keep AI reranking costs bounded.
-const PoolSize = 50
+const PoolSize = 60
+
+const (
+	DailyRecommendationLimit    = 20
+	MinDailyRecommendationScore = 65
+)
 
 // ComputeWorker runs the full funnel (Phase G's Recommend + Phase H's
 // airank.Rank) for a user and materializes the result.
@@ -82,20 +89,35 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 	return w.repo.ReplaceForUser(ctx, userID, recs)
 }
 
-// toRecommendations converts ranked candidates into persisted
-// Recommendations, dropping any job the AI explicitly judged SKIP - fit_score
-// alone doesn't capture that judgment, only the recommendation label does,
-// so "Recommended" must never surface a job the AI itself said to skip.
+// toRecommendations converts the reranked candidate pool into the user's
+// daily shortlist. We deliberately prefer fewer strong jobs over padding the
+// list with weak opportunities: explicit AI SKIPs, weak fit/career/interview
+// signals, and low composite scores are dropped. The final list is capped at
+// 20 fresh opportunities.
 func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendation {
-	recs := make([]Recommendation, 0, len(ranked))
+	recs := make([]Recommendation, 0, minInt(len(ranked), DailyRecommendationLimit))
 	for _, r := range ranked {
-		if r.HasJudgment && r.Judgment.Recommendation == "SKIP" {
+		if r.HasJudgment {
+			if r.Judgment.Recommendation == "SKIP" ||
+				r.Judgment.FitScore < 60 ||
+				r.Judgment.CareerAlignment < 50 ||
+				r.Judgment.InterviewProbabilityScore < 50 {
+				continue
+			}
+		} else if r.Result.TotalScore < MinDailyRecommendationScore {
 			continue
 		}
+
+		freshness := dailyFreshnessScore(r.Job.PostedAt, r.Job.FirstSeenAt)
+		finalScore := dailyPriorityScore(r, freshness)
+		if finalScore < MinDailyRecommendationScore {
+			continue
+		}
+
 		rec := Recommendation{
 			JobID:                    r.Job.ID,
 			DeterministicScore:       int32(r.Result.TotalScore),
-			FinalScore:               int32(r.Result.TotalScore),
+			FinalScore:               int32(finalScore),
 			CandidateProfileVersion:  &version,
 			ImmigrationStatus:        r.Result.Eligibility.Immigration.Status,
 			ImmigrationConfidence:    r.Result.Eligibility.Immigration.Confidence,
@@ -108,23 +130,77 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			rec.AIFitScore = &fitScore
 			rec.AIRecommendation = &recommendation
 			rec.AIReason = r.Judgment.Reason
-			rec.FinalScore = fitScore
 		}
-		rec.FinalScore = int32(blendImmigrationPriority(int(rec.FinalScore), r.Result))
 		recs = append(recs, rec)
+	}
+
+	sort.SliceStable(recs, func(i, j int) bool {
+		if recs[i].FinalScore == recs[j].FinalScore {
+			return recs[i].DeterministicScore > recs[j].DeterministicScore
+		}
+		return recs[i].FinalScore > recs[j].FinalScore
+	})
+	if len(recs) > DailyRecommendationLimit {
+		recs = recs[:DailyRecommendationLimit]
 	}
 	return recs
 }
 
-func blendImmigrationPriority(baseScore int, result matching.Result) int {
-	if !result.ImmigrationRelevant {
-		return baseScore
+// dailyPriorityScore is intentionally separate from matching.Score. The
+// deterministic Job Match score remains auditable and unchanged; this score
+// answers a different product question: "which fresh jobs should I apply to
+// first today?"
+func dailyPriorityScore(r airank.RankedJob, freshness int) int {
+	fit := r.Result.TotalScore
+	career := r.Result.TotalScore
+	interview := r.Result.TotalScore
+	if r.HasJudgment {
+		fit = r.Judgment.FitScore
+		career = r.Judgment.CareerAlignment
+		interview = r.Judgment.InterviewProbabilityScore
 	}
-	// Technical/AI fit remains the majority signal. Immigration compatibility
-	// is large enough to materially reorder otherwise similar opportunities
-	// for candidates who require H-1B support, without allowing a weak
-	// technical match to jump to the top solely because sponsorship is known.
-	score := 0.80*float64(baseScore) + 0.20*float64(result.ImmigrationPriorityScore)
+
+	var score float64
+	if r.Result.ImmigrationRelevant {
+		score =
+			0.30*float64(fit) +
+				0.20*float64(r.Result.TotalScore) +
+				0.15*float64(career) +
+				0.10*float64(interview) +
+				0.10*float64(freshness) +
+				0.15*float64(r.Result.ImmigrationPriorityScore)
+	} else {
+		score =
+			0.35*float64(fit) +
+				0.25*float64(r.Result.TotalScore) +
+				0.15*float64(career) +
+				0.10*float64(interview) +
+				0.15*float64(freshness)
+	}
+	return clampDailyScore(score)
+}
+
+func dailyFreshnessScore(postedAt *time.Time, firstSeenAt time.Time) int {
+	reference := firstSeenAt
+	if postedAt != nil {
+		reference = *postedAt
+	}
+	age := time.Since(reference)
+	switch {
+	case age <= time.Hour:
+		return 100
+	case age <= 6*time.Hour:
+		return 95
+	case age <= 12*time.Hour:
+		return 90
+	case age <= 24*time.Hour:
+		return 80
+	default:
+		return 0
+	}
+}
+
+func clampDailyScore(score float64) int {
 	if score < 0 {
 		return 0
 	}
@@ -132,4 +208,11 @@ func blendImmigrationPriority(baseScore int, result matching.Result) int {
 		return 100
 	}
 	return int(score + 0.5)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
