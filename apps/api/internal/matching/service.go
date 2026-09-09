@@ -569,7 +569,6 @@ func recommendationSeniorityRank(value string) (int, bool) {
 	}
 }
 
-
 func diversifyPreAICandidates(ranked []RankedJob, limit, maxPerCompany int) []RankedJob {
 	if limit <= 0 || len(ranked) == 0 {
 		return nil
