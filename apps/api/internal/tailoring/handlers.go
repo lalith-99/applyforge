@@ -111,6 +111,7 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 type updateSuggestionRequest struct {
 	Status     string  `json:"status"`
 	EditedText *string `json:"edited_text"`
+	Attested   bool    `json:"attested"`
 }
 
 func (h *Handlers) handleUpdateSuggestion(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +146,20 @@ func (h *Handlers) handleUpdateSuggestion(w http.ResponseWriter, r *http.Request
 	case StatusApproved, StatusEdited, StatusRejected, StatusPending:
 	default:
 		httpx.WriteError(w, http.StatusBadRequest, "status must be PENDING, APPROVED, EDITED, or REJECTED")
+		return
+	}
+
+	suggestion, err := h.repo.GetSuggestion(r.Context(), suggestionID, runID)
+	if err != nil {
+		httpx.WriteError(w, http.StatusNotFound, "tailoring suggestion not found")
+		return
+	}
+	if updateNeedsAttestation(suggestion, req.Status, req.Attested) {
+		httpx.WriteError(
+			w,
+			http.StatusConflict,
+			"candidate attestation is required before this AI-suggested claim can be approved",
+		)
 		return
 	}
 
@@ -202,4 +217,11 @@ func toRunDetail(run Run, suggestions []Suggestion) map[string]any {
 		"completed_at":           run.CompletedAt,
 		"suggestions":            suggestions,
 	}
+}
+
+func updateNeedsAttestation(suggestion Suggestion, status string, attested bool) bool {
+	if status != StatusApproved && status != StatusEdited {
+		return false
+	}
+	return suggestion.RequiresAttestation && !attested
 }
