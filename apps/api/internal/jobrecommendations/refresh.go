@@ -32,7 +32,6 @@ func EnqueueForActiveUsers(ctx context.Context, queue *background.Queue, profile
 	return nil
 }
 
-
 // RunCatalogRefreshDebouncer coalesces bursts of catalog-change signals and
 // invokes refresh once the catalog has been quiet for quietPeriod. This keeps
 // a large source-sync wave from triggering repeated expensive AI reranks.
