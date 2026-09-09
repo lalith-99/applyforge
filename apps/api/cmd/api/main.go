@@ -230,23 +230,31 @@ func run() error {
 	ingestionService := jobs.NewIngestionService(jobsRepo, jobQueue).
 		WithEmbeddingsEnabled(embeddingsEnabled)
 
-	freeHotSourceBootstrapEnabled := !strings.EqualFold(environment, "production") &&
-		strings.EqualFold(getenv("FREE_HOT_SOURCE_BOOTSTRAP_ENABLED", "true"), "true")
-	if freeHotSourceBootstrapEnabled {
+	freeSponsorSourceBootstrapEnabled := !strings.EqualFold(environment, "production") &&
+		strings.EqualFold(
+			getenv("FREE_SPONSOR_SOURCE_BOOTSTRAP_ENABLED", getenv("FREE_HOT_SOURCE_BOOTSTRAP_ENABLED", "true")),
+			"true",
+		)
+	if freeSponsorSourceBootstrapEnabled {
 		go func() {
-			bootstrapCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			// HOT+WARM can touch hundreds of matched sponsors on the first pass.
+			// Keep this best-effort and off the API startup critical path, but give
+			// local DB writes enough time to finish.
+			bootstrapCtx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			defer cancel()
 
-			result, err := jobsRepo.BootstrapFreeHotCompanySources(
+			result, err := jobsRepo.BootstrapFreePriorityCompanySources(
 				bootstrapCtx,
 				jobs.FreeSourceBootstrapConfig{},
 			)
 			if err != nil {
-				slog.Warn("free HOT sponsor source bootstrap failed", "error", err)
+				slog.Warn("free HOT+WARM sponsor source bootstrap failed", "error", err)
 				return
 			}
-			slog.Info("free HOT sponsor source bootstrap completed",
+			slog.Info("free HOT+WARM sponsor source bootstrap completed",
+				"priority_companies_due", result.PriorityCompanies,
 				"hot_companies_due", result.HotCompanies,
+				"warm_companies_due", result.WarmCompanies,
 				"directory_entries", result.DirectoryEntries,
 				"matched_companies", result.MatchedCompanies,
 				"resolved_companies", result.ResolvedCompanies,
@@ -257,7 +265,7 @@ func run() error {
 			)
 			if result.EnabledJobSources > 0 {
 				if err := ingestionService.EnqueueSyncTasks(bootstrapCtx); err != nil {
-					slog.Warn("enqueue newly bootstrapped HOT job sources failed", "error", err)
+					slog.Warn("enqueue newly bootstrapped HOT+WARM job sources failed", "error", err)
 				}
 			}
 		}()

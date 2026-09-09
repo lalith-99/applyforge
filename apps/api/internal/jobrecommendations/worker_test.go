@@ -15,7 +15,7 @@ func rankedJobStub(recommendation string, hasJudgment bool, totalScore int) aira
 	postedAt := time.Now().Add(-2 * time.Hour)
 	return airank.RankedJob{
 		RankedJob: matching.RankedJob{
-			Job: jobs.Job{ID: uuid.New(), PostedAt: &postedAt, FirstSeenAt: postedAt},
+			Job: jobs.Job{ID: uuid.New(), CompanyID: uuid.New(), PostedAt: &postedAt, FirstSeenAt: postedAt},
 			Result: matching.Result{
 				TotalScore:       totalScore,
 				OpportunityScore: totalScore,
@@ -127,5 +127,39 @@ func TestToRecommendations_CapsDailyShortlistAt20(t *testing.T) {
 	recs := toRecommendations(ranked, 1)
 	if len(recs) != DailyRecommendationLimit {
 		t.Fatalf("expected daily shortlist cap %d, got %d", DailyRecommendationLimit, len(recs))
+	}
+}
+
+func TestToRecommendations_CapsSameCompanyAtTwo(t *testing.T) {
+	companyID := uuid.New()
+	ranked := make([]airank.RankedJob, 0, 8)
+	for i := 0; i < 5; i++ {
+		job := rankedJobStub("APPLY_NOW", true, 90-i)
+		job.Job.CompanyID = companyID
+		ranked = append(ranked, job)
+	}
+	for i := 0; i < 3; i++ {
+		ranked = append(ranked, rankedJobStub("APPLY_NOW", true, 80-i))
+	}
+
+	recs := toRecommendations(ranked, 1)
+	if len(recs) != 5 {
+		t.Fatalf("expected 2 jobs from dominant company plus 3 other employers, got %d", len(recs))
+	}
+
+	dominantCount := 0
+	jobIDs := map[uuid.UUID]bool{}
+	for _, rankedJob := range ranked {
+		if rankedJob.Job.CompanyID == companyID {
+			jobIDs[rankedJob.Job.ID] = true
+		}
+	}
+	for _, rec := range recs {
+		if jobIDs[rec.JobID] {
+			dominantCount++
+		}
+	}
+	if dominantCount != DailyRecommendationMaxPerCompany {
+		t.Fatalf("expected %d recommendations from dominant company, got %d", DailyRecommendationMaxPerCompany, dominantCount)
 	}
 }

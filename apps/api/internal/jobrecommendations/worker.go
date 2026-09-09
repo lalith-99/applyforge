@@ -33,6 +33,7 @@ const PoolSize = 60
 const (
 	DailyRecommendationLimit          = 20
 	DailyRecommendationTargetMinimum  = 10
+	DailyRecommendationMaxPerCompany  = 2
 	MinStrongDailyRecommendationScore = 65
 	MinBackfillDailyScore             = 60
 )
@@ -91,14 +92,22 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 	return w.repo.ReplaceForUser(ctx, userID, recs)
 }
 
+// dailyRecommendationCandidate carries company identity until the final
+// diversity cut. Recommendation intentionally remains persistence-focused and
+// does not need company metadata.
+type dailyRecommendationCandidate struct {
+	recommendation Recommendation
+	companyID      uuid.UUID
+}
+
 // toRecommendations converts the reranked candidate pool into the user's
 // daily shortlist. Strong APPLY_NOW / STRONG_CONSIDER opportunities lead the
 // list. If fewer than 10 survive, we backfill with the best reasonable
-// CONSIDER/fallback jobs rather than returning an unusably tiny list. SKIP is
-// always excluded and we never backfill below the minimum quality floor.
+// CONSIDER/fallback jobs. To avoid one large employer dominating the user's
+// day, at most two jobs from the same company are selected.
 func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendation {
-	strong := make([]Recommendation, 0, DailyRecommendationLimit)
-	backfill := make([]Recommendation, 0, DailyRecommendationLimit)
+	strong := make([]dailyRecommendationCandidate, 0, DailyRecommendationLimit)
+	backfill := make([]dailyRecommendationCandidate, 0, DailyRecommendationLimit)
 
 	for _, r := range ranked {
 		if r.HasJudgment && r.Judgment.Recommendation == "SKIP" {
@@ -134,39 +143,67 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			strongCandidate = strongCandidate && r.Result.TotalScore >= MinStrongDailyRecommendationScore
 		}
 
+		candidate := dailyRecommendationCandidate{
+			recommendation: rec,
+			companyID:      r.Job.CompanyID,
+		}
 		if strongCandidate {
-			strong = append(strong, rec)
+			strong = append(strong, candidate)
 		} else {
-			backfill = append(backfill, rec)
+			backfill = append(backfill, candidate)
 		}
 	}
 
-	sortRecommendations(strong)
-	sortRecommendations(backfill)
+	sortRecommendationCandidates(strong)
+	sortRecommendationCandidates(backfill)
 
-	if len(strong) >= DailyRecommendationLimit {
-		return strong[:DailyRecommendationLimit]
-	}
+	companyCounts := make(map[uuid.UUID]int)
+	recs := make([]Recommendation, 0, DailyRecommendationLimit)
+	recs = appendDiverseRecommendations(
+		recs,
+		strong,
+		companyCounts,
+		DailyRecommendationLimit,
+	)
 
-	recs := append([]Recommendation{}, strong...)
-	// Once we already have 10+ strong jobs, do not dilute the shortlist just
-	// to reach 20. If we have fewer than 10, add the highest-quality reasonable
-	// alternatives until the list is useful or the backfill pool is exhausted.
-	for _, rec := range backfill {
-		if len(recs) >= DailyRecommendationTargetMinimum {
-			break
-		}
-		recs = append(recs, rec)
+	// If diversity leaves us with fewer than 10 strong jobs, add the best
+	// reasonable alternatives from other employers (still max two/company).
+	if len(recs) < DailyRecommendationTargetMinimum {
+		recs = appendDiverseRecommendations(
+			recs,
+			backfill,
+			companyCounts,
+			DailyRecommendationTargetMinimum,
+		)
 	}
 	return recs
 }
 
-func sortRecommendations(recs []Recommendation) {
-	sort.SliceStable(recs, func(i, j int) bool {
-		if recs[i].FinalScore == recs[j].FinalScore {
-			return recs[i].DeterministicScore > recs[j].DeterministicScore
+func appendDiverseRecommendations(
+	dst []Recommendation,
+	candidates []dailyRecommendationCandidate,
+	companyCounts map[uuid.UUID]int,
+	limit int,
+) []Recommendation {
+	for _, candidate := range candidates {
+		if len(dst) >= limit {
+			break
 		}
-		return recs[i].FinalScore > recs[j].FinalScore
+		if companyCounts[candidate.companyID] >= DailyRecommendationMaxPerCompany {
+			continue
+		}
+		dst = append(dst, candidate.recommendation)
+		companyCounts[candidate.companyID]++
+	}
+	return dst
+}
+
+func sortRecommendationCandidates(recs []dailyRecommendationCandidate) {
+	sort.SliceStable(recs, func(i, j int) bool {
+		if recs[i].recommendation.FinalScore == recs[j].recommendation.FinalScore {
+			return recs[i].recommendation.DeterministicScore > recs[j].recommendation.DeterministicScore
+		}
+		return recs[i].recommendation.FinalScore > recs[j].recommendation.FinalScore
 	})
 }
 
