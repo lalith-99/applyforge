@@ -341,7 +341,17 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "the value of every suggestion in reason. Set source='MASTER_RESUME' for evidence-only rewrites "
         "and source='AI_SUGGESTED' for additions. Compute keyword_coverage_before/after as the "
         "fraction (0.0-1.0) of required_skills+preferred_skills reflected in the resume before and "
-        "after suggestions; do not inflate coverage for unsupported experience claims."
+        "after suggestions; do not inflate coverage for unsupported experience claims. Preserve the "
+        "base resume's compact page budget: prefer replacing/rephrasing existing text rather than "
+        "making it longer. A summary rewrite should stay within roughly 10% of the original summary "
+        "word count, and an experience rewrite within roughly 20% of the original bullet. Do not add "
+        "new experience bullets; rewrite existing bullets and keep each suggestion concise enough for "
+        "a one-page resume when the source resume was already compact."
     )
     user = request.model_dump_json(indent=2)
-    return structured_completion(system, user, TailoringResponse)
+    return structured_completion(
+        system,
+        user,
+        TailoringResponse,
+        model_env_var="OPENAI_TAILORING_MODEL",
+    )
