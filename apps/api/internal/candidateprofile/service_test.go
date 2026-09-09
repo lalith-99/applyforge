@@ -30,10 +30,10 @@ func TestCandidateSourceHashChangesWhenRankingInputsChange(t *testing.T) {
 	years := 5
 	workAuth := "H-1B"
 	base := aiclient.CandidateProfileRequest{
-		TargetRoles:     []string{"Java Backend Engineer"},
-		Seniority:       &seniority,
-		YearsExperience: &years,
-		MasterSkills:    []string{"Java", "Spring Boot", "Kafka"},
+		TargetRoles:       []string{"Java Backend Engineer"},
+		Seniority:         &seniority,
+		YearsExperience:   &years,
+		MasterSkills:      []string{"Java", "Spring Boot", "Kafka"},
 		WorkAuthorization: &workAuth,
 	}
 
