@@ -49,7 +49,6 @@ func TestEnsureAddedSkillsReachABullet_SkipsSkillsAlreadyMentioned(t *testing.T)
 	}
 }
 
-
 func TestMasterResumeSkillInventoryUsesSelectedResume(t *testing.T) {
 	parsed, err := json.Marshal(aiclient.ResumeProfile{
 		Skills:  []string{"Java", "Kubernetes", "AWS"},
