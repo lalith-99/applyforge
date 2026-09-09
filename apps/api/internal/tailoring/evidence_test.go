@@ -4,11 +4,11 @@ import "testing"
 
 func TestSuggestionEvidenceStates(t *testing.T) {
 	tests := []struct {
-		name                string
-		section             string
-		source              string
-		wantStatus          string
-		wantAttestation     bool
+		name            string
+		section         string
+		source          string
+		wantStatus      string
+		wantAttestation bool
 	}{
 		{
 			name:            "verified master rewrite",
