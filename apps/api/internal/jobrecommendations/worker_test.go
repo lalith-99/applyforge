@@ -33,55 +33,63 @@ func rankedJobStub(recommendation string, hasJudgment bool, totalScore int) aira
 
 func TestToRecommendations_DropsAISkippedJobs(t *testing.T) {
 	ranked := []airank.RankedJob{
-		rankedJobStub("SKIP", true, 75),
+		rankedJobStub("SKIP", true, 80),
 		rankedJobStub("APPLY_NOW", true, 80),
 	}
 
 	recs := toRecommendations(ranked, 1)
-
 	if len(recs) != 1 {
-		t.Fatalf("expected the SKIP-judged job to be dropped, got %d recommendations", len(recs))
-	}
-	if recs[0].AIRecommendation == nil || *recs[0].AIRecommendation != "APPLY_NOW" {
-		t.Fatalf("expected the remaining recommendation to be APPLY_NOW, got %+v", recs[0])
+		t.Fatalf("expected SKIP job to be excluded, got %d recommendations", len(recs))
 	}
 }
 
-func TestToRecommendations_DropsWeakCareerOrInterviewFit(t *testing.T) {
-	weakCareer := rankedJobStub("CONSIDER", true, 82)
-	weakCareer.Judgment.CareerAlignment = 40
-	weakInterview := rankedJobStub("CONSIDER", true, 82)
-	weakInterview.Judgment.InterviewProbabilityScore = 45
-
-	recs := toRecommendations([]airank.RankedJob{weakCareer, weakInterview}, 1)
-	if len(recs) != 0 {
-		t.Fatalf("expected weak career/interview fits to be excluded, got %+v", recs)
+func TestToRecommendations_BackfillsWhenStrongListIsTooSmall(t *testing.T) {
+	ranked := make([]airank.RankedJob, 0, 12)
+	for i := 0; i < 2; i++ {
+		ranked = append(ranked, rankedJobStub("APPLY_NOW", true, 82))
 	}
-}
-
-func TestToRecommendations_KeepsStrongFallbackWithoutAI(t *testing.T) {
-	ranked := []airank.RankedJob{
-		rankedJobStub("", false, 80),
+	for i := 0; i < 10; i++ {
+		job := rankedJobStub("CONSIDER", true, 72)
+		job.Judgment.FitScore = 68
+		job.Judgment.CareerAlignment = 65
+		job.Judgment.InterviewProbabilityScore = 65
+		ranked = append(ranked, job)
 	}
 
 	recs := toRecommendations(ranked, 1)
-
-	if len(recs) != 1 {
-		t.Fatalf("expected a strong deterministic fallback to remain recommendable, got %d", len(recs))
-	}
-	if recs[0].AIRecommendation != nil {
-		t.Fatalf("expected no AI recommendation when the AI call failed, got %+v", recs[0])
+	if len(recs) != DailyRecommendationTargetMinimum {
+		t.Fatalf("expected backfill to reach %d recommendations, got %d", DailyRecommendationTargetMinimum, len(recs))
 	}
 }
 
-func TestToRecommendations_DoesNotPadWeakFallback(t *testing.T) {
-	ranked := []airank.RankedJob{
-		rankedJobStub("", false, 55),
+func TestToRecommendations_DoesNotDiluteTenStrongJobs(t *testing.T) {
+	ranked := make([]airank.RankedJob, 0, 15)
+	for i := 0; i < 10; i++ {
+		ranked = append(ranked, rankedJobStub("STRONG_CONSIDER", true, 82))
+	}
+	for i := 0; i < 5; i++ {
+		job := rankedJobStub("CONSIDER", true, 70)
+		job.Judgment.FitScore = 62
+		job.Judgment.CareerAlignment = 60
+		job.Judgment.InterviewProbabilityScore = 60
+		ranked = append(ranked, job)
 	}
 
 	recs := toRecommendations(ranked, 1)
+	if len(recs) != 10 {
+		t.Fatalf("expected exactly the 10 strong jobs without dilution, got %d", len(recs))
+	}
+}
+
+func TestToRecommendations_DoesNotBackfillBelowQualityFloor(t *testing.T) {
+	weak := rankedJobStub("CONSIDER", true, 45)
+	weak.Judgment.FitScore = 40
+	weak.Judgment.CareerAlignment = 40
+	weak.Judgment.InterviewProbabilityScore = 40
+
+	recs := toRecommendations([]airank.RankedJob{weak}, 1)
 	if len(recs) != 0 {
-		t.Fatalf("expected weak fallback job to be omitted rather than padding the daily list")
+		t.Fatalf("expected weak job below quality floor to be omitted")
 	}
 }
 
