@@ -43,7 +43,12 @@ def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
                 "AI tailoring generation failed, falling back to heuristic", exc_info=True
             )
 
-    return generate_tailoring(request)
+    fallback = generate_tailoring(request)
+    # The deterministic fallback cannot reliably rewrite prose with the same
+    # quality as the source resume. Preserve the original summary rather than
+    # appending awkward "Targeting <job title>" language when AI is unavailable.
+    fallback.summary_suggestion = None
+    return fallback
 
 
 @router.post("/critique", response_model=CritiqueResponse)
