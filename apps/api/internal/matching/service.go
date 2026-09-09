@@ -366,9 +366,8 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		return left > right
 	})
 	preAICandidates := len(ranked)
-	if len(ranked) > limit {
-		ranked = ranked[:limit]
-	}
+	ranked = diversifyPreAICandidates(ranked, limit, 5)
+	returnedCompanies := distinctRecommendationCompanies(ranked)
 	slog.Info("recommendation funnel completed",
 		"user_id", userID,
 		"retrieved_candidates", retrievedCandidates,
@@ -376,6 +375,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		"seniority_rejected", seniorityRejected,
 		"pre_ai_candidates", preAICandidates,
 		"returned_candidates", len(ranked),
+		"returned_companies", returnedCompanies,
 	)
 	return ranked, nil
 }
@@ -567,4 +567,43 @@ func recommendationSeniorityRank(value string) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+
+func diversifyPreAICandidates(ranked []RankedJob, limit, maxPerCompany int) []RankedJob {
+	if limit <= 0 || len(ranked) == 0 {
+		return nil
+	}
+	if maxPerCompany <= 0 {
+		maxPerCompany = 1
+	}
+
+	selected := make([]RankedJob, 0, minInt(limit, len(ranked)))
+	companyCounts := make(map[uuid.UUID]int)
+	for _, candidate := range ranked {
+		if len(selected) >= limit {
+			break
+		}
+		if companyCounts[candidate.Job.CompanyID] >= maxPerCompany {
+			continue
+		}
+		selected = append(selected, candidate)
+		companyCounts[candidate.Job.CompanyID]++
+	}
+	return selected
+}
+
+func distinctRecommendationCompanies(ranked []RankedJob) int {
+	companies := make(map[uuid.UUID]struct{}, len(ranked))
+	for _, candidate := range ranked {
+		companies[candidate.Job.CompanyID] = struct{}{}
+	}
+	return len(companies)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
