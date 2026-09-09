@@ -410,7 +410,6 @@ func recommendationLexicalTerms(candidate candidateprofile.Profile) []string {
 	return terms
 }
 
-
 var recommendationGenericRoleTokens = map[string]bool{
 	"software": true, "engineer": true, "engineering": true, "developer": true,
 	"development": true, "senior": true, "sr": true, "mid": true, "level": true,
