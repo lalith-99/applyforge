@@ -274,11 +274,14 @@ _MODE_POLICY = {
         "candidate already has to that missing skill. Do not suggest any skill without transfer support."
     ),
     "MAX_MATCH": (
-        "MAX_MATCH mode: suggest adding EVERY missing required and preferred skill to the skills "
-        "section so keyword coverage approaches 100%, but NEVER insert an unsupported skill into "
-        "Professional Experience or the professional summary. Missing skills without direct master-"
-        "resume evidence stay as skill suggestions only and must be marked as requiring user "
-        "verification before approval. Professional Experience must remain evidence-only."
+        "MAX_MATCH mode: aggressively optimize for the target job. Suggest every important missing "
+        "required/preferred skill in the skills section. For high-value missing technologies, also "
+        "draft a polished Professional Experience rewrite that shows a coherent, realistic way the "
+        "technology would have been used in the context of the closest existing bullet. These drafts "
+        "are review candidates only: set source='AI_SUGGESTED', risk_level='HIGH', and include every "
+        "new technology in skills_added so the application can require explicit candidate attestation "
+        "before the bullet is allowed into a final resume. Do not weaken the resume sentence with "
+        "learning, hypothetical, transferable, or verification language."
     ),
 }
 
@@ -316,10 +319,34 @@ def _experience_evidence_for_bullet(
     return None
 
 
+def _display_names_for_keys(request: TailoringRequest, keys: set[str]) -> list[str]:
+    candidates = (
+        request.required_skills
+        + request.preferred_skills
+        + request.master_skills
+        + canonical_skills()
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        key = _skill_key(value)
+        if key in keys and key not in seen:
+            out.append(value)
+            seen.add(key)
+    return out
+
+
 def _sanitize_ai_tailoring(
     request: TailoringRequest, result: TailoringResponse
 ) -> TailoringResponse:
-    """Reject AI rewrites that turn missing keywords into fake job experience."""
+    """Classify unsupported drafts for attestation without weakening resume prose.
+
+    Verified rewrites remain MASTER_RESUME suggestions. If an experience rewrite
+    introduces a technology that is not evidenced by the matched source bullet,
+    preserve the strong draft but mark it AI_SUGGESTED/HIGH and enumerate the
+    introduced technologies in skills_added. The Go/API layer uses that metadata
+    to require explicit candidate attestation before approval.
+    """
     verified_master = _lower_set(request.master_skills)
     verified_master.update(
         _skill_key(skill)
@@ -331,27 +358,53 @@ def _sanitize_ai_tailoring(
     if summary:
         introduced = _skills_in_text(summary.suggested_text) - verified_master
         if introduced:
+            # Keep the professional summary evidence-based; speculative content
+            # belongs in individually reviewable experience/skill cards.
             summary = None
+        else:
+            summary.source = "MASTER_RESUME"
+            summary.risk_level = "LOW"
 
-    grounded_experience: list[TailoringSuggestion] = []
+    classified_experience: list[TailoringSuggestion] = []
     for suggestion in result.experience_suggestions:
         if not suggestion.original_text:
             continue
+
         evidence = _experience_evidence_for_bullet(request, suggestion.original_text)
         if evidence is None:
             continue
 
         lowered = suggestion.suggested_text.lower()
         if any(phrase in lowered for phrase in _LEARNING_PHRASES):
+            # Weak "learning/proficiency" prose should never be shown as a
+            # resume bullet. The model gets one critic-driven regeneration pass.
             continue
 
         introduced = _skills_in_text(suggestion.suggested_text) - evidence
         if introduced:
-            continue
-        grounded_experience.append(suggestion)
+            introduced_names = _display_names_for_keys(request, introduced)
+            suggestion.source = "AI_SUGGESTED"
+            suggestion.risk_level = "HIGH"
+            suggestion.skills_added = list(
+                dict.fromkeys([*suggestion.skills_added, *introduced_names])
+            )
+            suggestion.keywords_added = list(
+                dict.fromkeys([*suggestion.keywords_added, *introduced_names])
+            )
+            if "candidate verification" not in suggestion.reason.lower():
+                suggestion.reason = (
+                    suggestion.reason.rstrip(".")
+                    + ". Drafted as a strong target-role bullet; candidate verification is "
+                    "required before it can be approved into the final resume."
+                )
+        else:
+            suggestion.source = "MASTER_RESUME"
+            suggestion.risk_level = "LOW"
+            suggestion.skills_added = []
+        classified_experience.append(suggestion)
 
     result.summary_suggestion = summary
-    result.experience_suggestions = grounded_experience
+    result.experience_suggestions = classified_experience
     return result
 
 
@@ -362,30 +415,37 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
     from app.providers.openai_provider import structured_completion
 
     system = (
-        "You are an expert resume writer and ATS optimization specialist. Tailor the candidate's "
-        "resume for the target job to maximize the chance of passing automated screening and earning "
-        "a human interview, without ever fabricating experience, metrics, tools, certifications, "
-        "scope, or outcomes. "
+        "You are an elite technical resume writer and ATS optimization specialist. Produce concise, "
+        "natural, human-written, interview-worthy resume suggestions tailored to the target job. "
+        "Separate writing quality from evidence classification: the application will gate unsupported "
+        "AI drafts behind explicit candidate attestation before they can enter a final resume. Never "
+        "invent numerical metrics, certifications, employers, dates, promotions, team sizes, or named "
+        "business outcomes that are absent from the master resume. "
         + _MODE_POLICY[request.mode]
-        + " Follow these priorities: (1) preserve truth and the candidate's strongest evidence; "
-        "(2) use the exact wording of supported required skills and responsibilities naturally, with "
-        "common synonyms only when they are accurate; (3) make bullets specific and interview-worthy "
-        "using action + work performed + outcome, but only reuse metrics or outcomes present in the "
-        "master resume; (4) remove filler, generic adjectives, first-person language, and keyword "
-        "stuffing. Keep suggestions concise and compatible with standard ATS parsing: plain text, "
+        + " Follow these priorities: (1) write like a strong human technical resume writer, not a "
+        "match-analysis tool; (2) use exact job technologies naturally when appropriate; (3) make "
+        "bullets concrete with action + technical implementation + engineering/business impact; "
+        "(4) only reuse numerical metrics or specific outcomes already present in the master resume; "
+        "(5) remove filler, generic adjectives, first-person language, and keyword stuffing. Never "
+        "write resume bullets containing phrases such as 'learning', 'building proficiency', "
+        "'gaining exposure', 'growth area', 'transferable to', 'applicable to this role', or "
+        "'candidate verification'. Evidence/verification belongs in metadata and UI, never inside "
+        "the resume sentence. Keep suggestions concise and compatible with standard ATS parsing: plain text, "
         "clear section semantics, no tables/columns/symbol-heavy formatting. Rewrite the summary (if "
         "one exists) to foreground the candidate's most relevant verified skills and experience for "
         "this role - section='summary' and original_text must be the exact existing summary. In STRICT "
-        "or GROWTH mode, suggest up to three high-value experience bullet rewrites; in MAX_MATCH mode, "
-        "you may rewrite more existing bullets, but every Professional Experience rewrite must remain "
-        "strictly evidence-based. Each rewrite must be grounded in an exact existing bullet and may "
-        "mention only technologies already present in that experience's detected_skills or original "
-        "bullet. For a missing skill, create section='skills', original_text=null, and list it in "
-        "skills_added only when the mode allows it. Transferability is useful for explaining why a "
-        "skill may be learnable, but it is NOT evidence that the candidate used the target skill in a "
-        "job. Never put phrases such as 'building proficiency', 'learning', 'growth area', 'directly "
-        "transferable to', or 'directly applicable to this role' inside Professional Experience. "
-        "Never invent a new professional-experience bullet merely to place a missing keyword. Always populate "
+        "or GROWTH mode, suggest up to three high-value evidence-based experience rewrites. In "
+        "MAX_MATCH mode, also draft strong experience rewrites for important missing technologies "
+        "when they can be integrated into a technically coherent scenario based on an existing bullet. "
+        "Every experience rewrite must use original_text equal to an exact existing bullet so the app "
+        "can replace it deterministically; do not create free-floating new employment rows. When a "
+        "rewrite introduces a technology not evidenced in that source experience, set "
+        "source='AI_SUGGESTED', risk_level='HIGH', and put the technology in skills_added. Write the "
+        "bullet itself as a clean completed-work accomplishment because the UI, not the resume text, "
+        "will carry the candidate-attestation warning. Do not invent metrics for such drafts. For a "
+        "missing skill, also create section='skills', original_text=null, when the mode allows it. "
+        "Prefer one coherent technical scenario over appending a keyword to an unrelated sentence. "
+        "Always populate "
         "requirements_addressed with the exact requirements or responsibilities addressed, and explain "
         "the value of every suggestion in reason. Set source='MASTER_RESUME' for evidence-only rewrites "
         "and source='AI_SUGGESTED' for additions. Compute keyword_coverage_before/after as the "
