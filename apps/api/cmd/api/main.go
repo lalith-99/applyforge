@@ -415,9 +415,12 @@ func run() error {
 	jobRecommendationsRepo := jobrecommendations.NewRepository(db)
 	jobRecommendationsHandlers := jobrecommendations.NewHandlers(jobRecommendationsRepo)
 	jobRecommendationsWorker := jobrecommendations.NewComputeWorker(matchingService, airankService, candidateProfileRepo, jobRecommendationsRepo)
-	syncSourceWorker.SetOnCatalogChanged(func(ctx context.Context) {
-		if err := jobrecommendations.EnqueueForActiveUsers(ctx, jobQueue, candidateProfileRepo); err != nil {
-			slog.Error("enqueue recommendation refresh after catalog change failed", "error", err)
+	catalogChanged := make(chan struct{}, 1)
+	syncSourceWorker.SetOnCatalogChanged(func(context.Context) {
+		select {
+		case catalogChanged <- struct{}{}:
+		default:
+			// A signal is already waiting; the quiet-period debouncer will coalesce it.
 		}
 	})
 	candidateProfileWorker.SetOnBuilt(func(ctx context.Context, userID uuid.UUID) {
@@ -505,6 +508,14 @@ func run() error {
 	}
 	recommendationRefreshCtx, stopRecommendationRefresh := context.WithCancel(context.Background())
 	defer stopRecommendationRefresh()
+	go jobrecommendations.RunCatalogRefreshDebouncer(
+		recommendationRefreshCtx,
+		catalogChanged,
+		2*time.Minute,
+		func(refreshCtx context.Context) error {
+			return jobrecommendations.EnqueueForActiveUsers(refreshCtx, jobQueue, candidateProfileRepo)
+		},
+	)
 	go func() {
 		// Startup is also a repair pass. Older builds could materialize a
 		// candidate profile before onboarding was complete, then keep recomputing
