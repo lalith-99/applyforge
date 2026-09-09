@@ -64,12 +64,16 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 
 	excludeSponsorshipDenied := false
 	requireRecentH1BHistory := false
+	preferenceEmploymentType := ""
 	if h.preferences != nil {
 		if user, ok := auth.UserFromContext(r.Context()); ok {
 			prefs, err := h.preferences.Get(r.Context(), user.ID)
 			if err == nil {
 				excludeSponsorshipDenied = preferences.RequiresH1BSupport(prefs)
 				requireRecentH1BHistory = excludeSponsorshipDenied
+				if len(prefs.EmploymentTypes) == 1 && normalizeEmploymentType(prefs.EmploymentTypes[0]) == "FullTime" {
+					preferenceEmploymentType = "FullTime"
+				}
 			} else if !errors.Is(err, preferences.ErrNotFound) {
 				httpx.WriteError(w, http.StatusInternalServerError, "could not load job preferences")
 				return
@@ -102,10 +106,15 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		offset = int32(o)
 	}
 
+	employmentType := normalizeEmploymentType(q.Get("employment_type"))
+	if employmentType == "" {
+		employmentType = preferenceEmploymentType
+	}
+
 	jobsList, total, err := h.repo.List(r.Context(), ListFilter{
 		Search:                   q.Get("search"),
 		RemoteType:               q.Get("remote_type"),
-		EmploymentType:           normalizeEmploymentType(q.Get("employment_type")),
+		EmploymentType:           employmentType,
 		PostedAfter:              postedAfter,
 		Location:                 location,
 		CountryCode:              countryCode,
