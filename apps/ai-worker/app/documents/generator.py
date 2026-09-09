@@ -16,7 +16,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from fpdf import FPDF
 
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
@@ -449,18 +449,13 @@ def _render_skill_groups(pdf: FPDF, skills: list[str], style: _PDFStyle) -> None
     groups = _group_skills(skills)
     content_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    # Size the label column from the actual longest category. The old fixed
-    # width was narrower than "Databases & Messaging:" and caused the first
-    # skill to collide with the label.
-    pdf.set_font(_PDF_FONT, "B", style.skill_size)
-    label_width = max(
-        31.5,
-        max((pdf.get_string_width(f"{label}:") for label, _ in groups), default=0) + 2.5,
-    )
-
     for label, values in groups:
         pdf.set_font(_PDF_FONT, "B", style.skill_size)
         pdf.set_text_color(*_TEXT_COLOR)
+        # Use the width of each label instead of reserving the width of the
+        # longest category for every row. This matches the source resume more
+        # closely and gives shorter labels more horizontal room.
+        label_width = pdf.get_string_width(f"{label}:") + 2.2
         pdf.cell(label_width, style.line_height, f"{label}:", new_x="RIGHT", new_y="TOP")
         pdf.set_font(_PDF_FONT, "", style.skill_size)
         pdf.multi_cell(
@@ -495,8 +490,8 @@ def _experience_heading(pdf: FPDF, exp: ExperienceEntry, style: _PDFStyle) -> No
     if pdf.get_string_width(left) <= left_width:
         pdf.cell(left_width, style.line_height + 0.2, left, new_x="RIGHT", new_y="TOP")
         if right:
-            pdf.set_font(_PDF_FONT, "I", style.meta_size)
-            pdf.set_text_color(*_MUTED_COLOR)
+            pdf.set_font(_PDF_FONT, "B", style.meta_size)
+            pdf.set_text_color(*_TEXT_COLOR)
             pdf.cell(
                 right_width,
                 style.line_height + 0.2,
@@ -518,8 +513,8 @@ def _experience_heading(pdf: FPDF, exp: ExperienceEntry, style: _PDFStyle) -> No
         new_y="NEXT",
     )
     if right:
-        pdf.set_font(_PDF_FONT, "I", style.meta_size)
-        pdf.set_text_color(*_MUTED_COLOR)
+        pdf.set_font(_PDF_FONT, "B", style.meta_size)
+        pdf.set_text_color(*_TEXT_COLOR)
         pdf.cell(
             content_width,
             style.line_height,
@@ -713,5 +708,4 @@ def _add_docx_title_with_trailing_date(doc: Document, title_text: str, date_text
 
     if date_text:
         date_run = para.add_run(f"\t{date_text}")
-        date_run.italic = True
-        date_run.font.color.rgb = RGBColor(*_MUTED_COLOR)
+        date_run.bold = True

@@ -119,3 +119,30 @@ def test_max_match_touches_summary_skills_and_experience() -> None:
     )
     assert total_touchpoints >= 5
     assert response.keyword_coverage_after == 1.0
+
+
+def test_equivalent_skill_labels_do_not_create_false_missing_skills() -> None:
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Frontend Engineer",
+        master_skills=["React.js", "Java 21", "Spring Boot 3.4", "PostgreSQL"],
+        master_summary="Full-stack engineer.",
+        experiences=[
+            ExperienceInput(
+                company="Acme",
+                title="Software Engineer",
+                bullets=["Built user interfaces with React.js and Java services."],
+                detected_skills=["React.js", "Java 21"],
+            )
+        ],
+        required_skills=["React", "Java", "Spring Boot", "Postgres"],
+        preferred_skills=[],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+
+    response = generate_tailoring(request)
+
+    assert response.skill_suggestions == []
+    assert response.keyword_coverage_before == 1.0
+    assert response.keyword_coverage_after == 1.0
