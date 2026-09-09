@@ -38,7 +38,7 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 
 	limit := int32(20)
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 100 {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= DailyRecommendationLimit {
 			limit = int32(parsed)
 		}
 	}

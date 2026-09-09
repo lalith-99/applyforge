@@ -46,7 +46,7 @@ export default function JobsPage() {
 
   const recommendationsQuery = useQuery({
     queryKey: ["recommendations"],
-    queryFn: () => api.get<RecommendationsResponse>("/recommendations?limit=50"),
+    queryFn: () => api.get<RecommendationsResponse>("/recommendations?limit=20"),
     enabled: tab === "recommended",
   });
 
@@ -74,7 +74,7 @@ export default function JobsPage() {
           <p className="text-sm text-black/60 dark:text-white/60">
             {tab === "recommended"
               ? recommendationsQuery.data
-                ? `${recommendations.length} recommended for you`
+                ? `${recommendations.length} best matches from the last 24h`
                 : "Loading…"
               : jobsQuery.data
                 ? `${total} opportunities`
@@ -107,7 +107,7 @@ export default function JobsPage() {
               {recommendationsQuery.isLoading && <p className="text-sm text-black/60 dark:text-white/60">Loading recommendations…</p>}
               {recommendationsQuery.data && recommendations.length === 0 && (
                 <p className="text-sm text-black/60 dark:text-white/60">
-                  No recommendations yet. Upload a resume and complete onboarding to get personalized matches.
+                  No strong matches from the last 24 hours yet. New jobs are ranked as they arrive.
                 </p>
               )}
               {recommendations.map((job) => (

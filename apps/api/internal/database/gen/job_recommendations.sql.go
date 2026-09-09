@@ -65,7 +65,7 @@ LEFT JOIN job_preferences p ON p.user_id = r.user_id
 WHERE r.user_id = $1
   AND j.status = 'ACTIVE' AND j.canonical_job_id IS NULL
   AND j.country_code = 'US' AND j.role_classification = 'IC_SOFTWARE'
-  AND j.posted_at IS NOT NULL AND j.posted_at >= now() - INTERVAL '7 days'
+  AND j.posted_at IS NOT NULL AND j.posted_at >= now() - INTERVAL '24 hours'
   AND (
       j.explicit_sponsorship_denied = false
       OR NOT (
@@ -76,7 +76,7 @@ WHERE r.user_id = $1
           OR regexp_replace(lower(coalesce(p.work_authorization, '')), '[- _]', '', 'g') LIKE '%h1b%'
       )
   )
-ORDER BY r.final_score DESC
+ORDER BY r.final_score DESC, j.posted_at DESC
 LIMIT $2
 `
 
