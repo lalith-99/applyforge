@@ -154,7 +154,7 @@ func (h *Handlers) handleUpdateSuggestion(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusNotFound, "tailoring suggestion not found")
 		return
 	}
-	if (req.Status == StatusApproved || req.Status == StatusEdited) && suggestion.RequiresAttestation && !req.Attested {
+	if updateNeedsAttestation(suggestion, req.Status, req.Attested) {
 		httpx.WriteError(
 			w,
 			http.StatusConflict,
@@ -217,4 +217,12 @@ func toRunDetail(run Run, suggestions []Suggestion) map[string]any {
 		"completed_at":           run.CompletedAt,
 		"suggestions":            suggestions,
 	}
+}
+
+
+func updateNeedsAttestation(suggestion Suggestion, status string, attested bool) bool {
+	if status != StatusApproved && status != StatusEdited {
+		return false
+	}
+	return suggestion.RequiresAttestation && !attested
 }
