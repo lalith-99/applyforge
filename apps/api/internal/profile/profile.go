@@ -4,6 +4,7 @@ package profile
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,10 @@ import (
 )
 
 // ErrNotFound is returned when no profile has been created yet for a user.
-var ErrNotFound = errors.New("profile not found")
+var (
+	ErrNotFound            = errors.New("profile not found")
+	ErrIncompleteOnboarding = errors.New("profile is missing required onboarding fields")
+)
 
 // Profile is the domain representation of a user's personal/career profile.
 type Profile struct {
@@ -108,6 +112,10 @@ func (r *Repository) Get(ctx context.Context, userID uuid.UUID) (Profile, error)
 
 // Upsert creates or updates the profile for a user.
 func (r *Repository) Upsert(ctx context.Context, userID uuid.UUID, in UpsertInput) (Profile, error) {
+	if in.MarkOnboardingComplete && !validOnboardingProfile(in) {
+		return Profile{}, ErrIncompleteOnboarding
+	}
+
 	currency := in.DesiredCompensationCurrency
 	if currency == "" {
 		currency = "USD"
@@ -148,4 +156,24 @@ func orEmpty(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+
+func validOnboardingProfile(in UpsertInput) bool {
+	if in.FirstName == nil || strings.TrimSpace(*in.FirstName) == "" {
+		return false
+	}
+	if in.LastName == nil || strings.TrimSpace(*in.LastName) == "" {
+		return false
+	}
+	if len(orEmpty(in.PrimaryTargetTitles)) == 0 {
+		return false
+	}
+	if in.Seniority == nil || strings.TrimSpace(*in.Seniority) == "" {
+		return false
+	}
+	if in.YearsExperience == nil || *in.YearsExperience <= 0 {
+		return false
+	}
+	return true
 }
