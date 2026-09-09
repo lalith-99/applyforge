@@ -16,6 +16,11 @@ from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE_RE = re.compile(r"(\+?\d[\d\-. ()]{8,}\d)")
+_LINKEDIN_RE = re.compile(
+    r"https?://(?:www\.)?linkedin\.com/(?:in|pub)/[^\s|)>\]]+",
+    re.IGNORECASE,
+)
+_METADATA_LINK_PREFIXES = ("linkedin url:", "github url:", "external url:")
 _DATE_RANGE_RE = re.compile(
     r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?(19|20)\d{2}\s*[-\u2013\u2014]\s*"
     r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?((19|20)\d{2}|[Pp]resent|[Cc]urrent)",
@@ -54,6 +59,8 @@ def _split_sections(lines: list[str]) -> dict[str, list[str]]:
     sections: dict[str, list[str]] = {"preamble": []}
     current = "preamble"
     for line in lines:
+        if line.strip().lower().startswith(_METADATA_LINK_PREFIXES):
+            continue
         header = _detect_header(line)
         if header:
             current = header
@@ -165,12 +172,36 @@ def _split_title_company(header: str) -> tuple[str | None, str | None]:
     return header.strip() or None, None
 
 
+def _extract_headline(lines: list[str], name: str | None) -> str | None:
+    """Preserve the compact professional headline commonly placed below name."""
+    if not name:
+        return None
+    try:
+        name_index = next(i for i, line in enumerate(lines[:6]) if line.strip() == name)
+    except StopIteration:
+        return None
+
+    for line in lines[name_index + 1 : name_index + 4]:
+        value = line.strip()
+        if not value or "@" in value or _PHONE_RE.search(value) or _detect_header(value):
+            continue
+        if value.lower().startswith(_METADATA_LINK_PREFIXES):
+            continue
+        # Headline rows are usually compact role/technology branding, often
+        # pipe-separated. Avoid treating a location/contact row as headline.
+        if "|" in value and not re.search(r"\b(?:USA|United States|Remote)\b", value, re.IGNORECASE):
+            return value
+    return None
+
+
 def parse_resume_text(raw_text: str) -> ResumeProfile:
     lines = raw_text.splitlines()
 
     email_match = _EMAIL_RE.search(raw_text)
     phone_match = _PHONE_RE.search(raw_text)
     name = next((line.strip() for line in lines[:5] if line.strip() and "@" not in line), None)
+    linkedin_match = _LINKEDIN_RE.search(raw_text)
+    headline = _extract_headline(lines, name)
 
     sections = _split_sections(lines)
 
@@ -185,8 +216,10 @@ def parse_resume_text(raw_text: str) -> ResumeProfile:
     return ResumeProfile(
         contact=ContactInfo(
             name=name,
+            headline=headline,
             email=email_match.group(0) if email_match else None,
             phone=phone_match.group(0) if phone_match else None,
+            linkedin_url=linkedin_match.group(0).rstrip(".,;") if linkedin_match else None,
         ),
         summary=summary,
         skills=skills,
@@ -208,7 +241,14 @@ def parse_resume_text_ai(raw_text: str) -> ResumeProfile:
         "titles, dates, skills, or bullet content that isn't present. Preserve bullet wording closely, "
         "only cleaning up obvious PDF-extraction artifacts (broken ligatures, stray whitespace). For each "
         "experience, detected_skills should list only skills clearly evidenced by that experience's own "
-        "bullets, and technologies should list specific tools/technologies named in those bullets."
+        "bullets, and technologies should list specific tools/technologies named in those bullets. Preserve "
+        "the professional headline beneath the candidate name when present. Preserve contact URLs exactly, "
+        "especially LinkedIn profile URLs surfaced as 'LinkedIn URL: ...'."
     )
     user = f"Resume text:\n\n{raw_text}"
-    return structured_completion(system, user, ResumeProfile)
+    return structured_completion(
+        system,
+        user,
+        ResumeProfile,
+        model_env_var="OPENAI_RESUME_MODEL",
+    )
