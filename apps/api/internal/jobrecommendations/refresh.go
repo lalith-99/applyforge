@@ -3,6 +3,7 @@ package jobrecommendations
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/background"
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateprofile"
@@ -18,7 +19,13 @@ func EnqueueForActiveUsers(ctx context.Context, queue *background.Queue, profile
 		return err
 	}
 	for _, userID := range userIDs {
-		if err := queue.Enqueue(ctx, JobTypeCompute, ComputePayload{UserID: userID.String()}, 3); err != nil {
+		if err := queue.EnqueueDebounced(
+			ctx,
+			JobTypeCompute,
+			ComputePayload{UserID: userID.String()},
+			3,
+			2*time.Minute,
+		); err != nil {
 			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -89,6 +90,13 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 
 	version := prof.Version
 	recs := toRecommendations(ranked, version)
+	slog.Info("daily recommendation shortlist computed",
+		"user_id", userID,
+		"candidate_count", len(candidates),
+		"ranked_count", len(ranked),
+		"recommendation_count", len(recs),
+		"candidate_profile_version", version,
+	)
 	return w.repo.ReplaceForUser(ctx, userID, recs)
 }
 

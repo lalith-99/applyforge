@@ -415,6 +415,11 @@ func run() error {
 	jobRecommendationsRepo := jobrecommendations.NewRepository(db)
 	jobRecommendationsHandlers := jobrecommendations.NewHandlers(jobRecommendationsRepo)
 	jobRecommendationsWorker := jobrecommendations.NewComputeWorker(matchingService, airankService, candidateProfileRepo, jobRecommendationsRepo)
+	syncSourceWorker.SetOnCatalogChanged(func(ctx context.Context) {
+		if err := jobrecommendations.EnqueueForActiveUsers(ctx, jobQueue, candidateProfileRepo); err != nil {
+			slog.Error("enqueue recommendation refresh after catalog change failed", "error", err)
+		}
+	})
 	candidateProfileWorker.SetOnBuilt(func(ctx context.Context, userID uuid.UUID) {
 		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
 			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)

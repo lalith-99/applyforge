@@ -335,6 +335,9 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		}
 	}
 
+	retrievedCandidates := len(candidateOrder)
+	eligibleCandidates := 0
+	seniorityRejected := 0
 	ranked := make([]RankedJob, 0, len(candidateOrder))
 	for _, jobID := range candidateOrder {
 		job := candidateByID[jobID]
@@ -346,7 +349,9 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		if !result.Eligibility.Eligible {
 			continue
 		}
+		eligibleCandidates++
 		if !recommendationSeniorityEligible(job.Title, candidateProfile) {
+			seniorityRejected++
 			continue
 		}
 		ranked = append(ranked, RankedJob{Job: job, Result: result})
@@ -360,9 +365,18 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		}
 		return left > right
 	})
+	preAICandidates := len(ranked)
 	if len(ranked) > limit {
 		ranked = ranked[:limit]
 	}
+	slog.Info("recommendation funnel completed",
+		"user_id", userID,
+		"retrieved_candidates", retrievedCandidates,
+		"eligible_candidates", eligibleCandidates,
+		"seniority_rejected", seniorityRejected,
+		"pre_ai_candidates", preAICandidates,
+		"returned_candidates", len(ranked),
+	)
 	return ranked, nil
 }
 
