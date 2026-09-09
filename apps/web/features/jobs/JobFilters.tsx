@@ -13,7 +13,7 @@ export const DEFAULT_FILTERS: JobFiltersState = {
   search: "",
   location: "",
   remoteType: "",
-  employmentType: "",
+  employmentType: "FullTime",
   postedWithin: "",
   sort: "newest",
 };
