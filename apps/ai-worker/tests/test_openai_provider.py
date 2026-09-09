@@ -116,3 +116,28 @@ def test_embed_text_wraps_client_errors(monkeypatch) -> None:
 
     with pytest.raises(openai_provider.AIProviderError):
         openai_provider.embed_text("hello world")
+
+
+def test_structured_completion_uses_operation_specific_model(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+    monkeypatch.setenv("OPENAI_RESUME_MODEL", "gpt-5.6-terra")
+
+    class _FakeCompletions:
+        def parse(self, **kwargs):
+            assert kwargs["model"] == "gpt-5.6-terra"
+            message = type("M", (), {"parsed": _Dummy(value="hello")})()
+            choice = type("C", (), {"message": message})()
+            return type("Completion", (), {"choices": [choice]})()
+
+    fake_chat = type("Chat", (), {"completions": _FakeCompletions()})()
+    fake_client = type("Client", (), {"chat": fake_chat})()
+    monkeypatch.setattr(openai_provider, "_get_client", lambda: fake_client)
+
+    result = openai_provider.structured_completion(
+        "system",
+        "user",
+        _Dummy,
+        model_env_var="OPENAI_RESUME_MODEL",
+    )
+    assert result == _Dummy(value="hello")

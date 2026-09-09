@@ -34,10 +34,12 @@ func New(baseURL string) *Client {
 
 // ContactInfo mirrors app/resume/models.py ContactInfo.
 type ContactInfo struct {
-	Name     *string `json:"name"`
-	Email    *string `json:"email"`
-	Phone    *string `json:"phone"`
-	Location *string `json:"location"`
+	Name        *string `json:"name"`
+	Headline    *string `json:"headline"`
+	Email       *string `json:"email"`
+	Phone       *string `json:"phone"`
+	Location    *string `json:"location"`
+	LinkedinURL *string `json:"linkedin_url"`
 }
 
 // ExperienceEntry mirrors app/resume/models.py ExperienceEntry.

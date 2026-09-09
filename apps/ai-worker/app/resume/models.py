@@ -7,9 +7,11 @@ from pydantic import BaseModel, Field
 
 class ContactInfo(BaseModel):
     name: str | None = None
+    headline: str | None = None
     email: str | None = None
     phone: str | None = None
     location: str | None = None
+    linkedin_url: str | None = None
 
 
 class ExperienceEntry(BaseModel):

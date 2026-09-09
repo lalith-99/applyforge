@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -74,6 +75,7 @@ func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUI
 	if err := json.Unmarshal(baseResume.ParsedProfile, &base); err != nil {
 		return Version{}, fmt.Errorf("decode parsed profile: %w", err)
 	}
+	s.recoverMissingContactMetadata(ctx, baseResume, &base)
 
 	var suggestions []tailoring.Suggestion
 	var alignmentScore *int32
@@ -96,6 +98,7 @@ func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUI
 	merged := mergeContent(base, suggestions)
 	if editedContent != nil {
 		merged = *editedContent
+		mergeMissingContactMetadata(&merged.Contact, base.Contact)
 	}
 
 	var matchScore *int32
@@ -138,6 +141,47 @@ func (s *Service) GenerateVersion(ctx context.Context, userID, resumeID uuid.UUI
 	}
 
 	return s.repo.SetDocuments(ctx, version.ID, pdfKey, docxKey)
+}
+
+func (s *Service) recoverMissingContactMetadata(
+	ctx context.Context,
+	baseResume resume.Resume,
+	profile *aiclient.ResumeProfile,
+) {
+	if profile.Contact.Headline != nil && profile.Contact.LinkedinURL != nil {
+		return
+	}
+
+	fileBytes, err := s.storageClient.Get(ctx, baseResume.StorageKey)
+	if err != nil {
+		slog.Warn("resume contact metadata recovery skipped", "resume_id", baseResume.ID, "error", err)
+		return
+	}
+	rawText, err := s.aiClient.ExtractResumeText(
+		ctx,
+		baseResume.OriginalFilename,
+		baseResume.MimeType,
+		fileBytes,
+	)
+	if err != nil {
+		slog.Warn("resume contact metadata extraction failed", "resume_id", baseResume.ID, "error", err)
+		return
+	}
+	reparsed, err := s.aiClient.ParseResume(ctx, rawText)
+	if err != nil {
+		slog.Warn("resume contact metadata parse failed", "resume_id", baseResume.ID, "error", err)
+		return
+	}
+	mergeMissingContactMetadata(&profile.Contact, reparsed.Contact)
+}
+
+func mergeMissingContactMetadata(dst *aiclient.ContactInfo, source aiclient.ContactInfo) {
+	if dst.Headline == nil || *dst.Headline == "" {
+		dst.Headline = source.Headline
+	}
+	if dst.LinkedinURL == nil || *dst.LinkedinURL == "" {
+		dst.LinkedinURL = source.LinkedinURL
+	}
 }
 
 // Download fetches the generated document bytes for a version, along with
