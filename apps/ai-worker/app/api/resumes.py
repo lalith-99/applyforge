@@ -17,8 +17,8 @@ from app.providers.openai_provider import (
     is_configured,
 )
 from app.resume.extraction import SUPPORTED_MIME_TYPES, UnsupportedResumeType, extract_text
-from app.resume.models import ExtractResponse, ParseRequest, ParseResponse
 from app.resume.faithful import parse_resume_text_faithful, reconcile_ai_profile
+from app.resume.models import ExtractResponse, ParseRequest, ParseResponse
 from app.resume.parsing import parse_resume_text_ai
 
 logger = logging.getLogger(__name__)
