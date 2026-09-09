@@ -102,7 +102,6 @@ func TestMergeContent_RejectedSuggestionsNeverApplied(t *testing.T) {
 	}
 }
 
-
 func TestMergeContent_EquivalentSkillAliasesAreNotDuplicated(t *testing.T) {
 	base := aiclient.ResumeProfile{Skills: []string{"React.js", "Java 21", "PostgreSQL"}}
 	suggestions := []tailoring.Suggestion{
