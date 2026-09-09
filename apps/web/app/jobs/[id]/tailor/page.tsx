@@ -42,8 +42,19 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
   }, [isProcessing, run]);
 
   const updateSuggestion = useMutation({
-    mutationFn: ({ suggestionId, status }: { suggestionId: string; status: string }) =>
-      api.patch<TailoringSuggestion>(`/tailoring/${run!.id}/suggestions/${suggestionId}`, { status }),
+    mutationFn: ({
+      suggestionId,
+      status,
+      attested = false,
+    }: {
+      suggestionId: string;
+      status: string;
+      attested?: boolean;
+    }) =>
+      api.patch<TailoringSuggestion>(`/tailoring/${run!.id}/suggestions/${suggestionId}`, {
+        status,
+        attested,
+      }),
     onSuccess: (updated) => {
       setRun((prev) =>
         prev
@@ -145,7 +156,7 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                 disabled={isProcessing}
                 className="rounded-md border border-black/10 px-4 py-2 text-sm dark:border-white/15 disabled:opacity-60"
               >
-                Approve All Selected
+                Approve All Verified
               </button>
             </div>
 
@@ -164,7 +175,13 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                 <SuggestionCard
                   key={s.ID}
                   suggestion={s}
-                  onApprove={() => updateSuggestion.mutate({ suggestionId: s.ID, status: "APPROVED" })}
+                  onApprove={(attested) =>
+                    updateSuggestion.mutate({
+                      suggestionId: s.ID,
+                      status: "APPROVED",
+                      attested,
+                    })
+                  }
                   onReject={() => updateSuggestion.mutate({ suggestionId: s.ID, status: "REJECTED" })}
                 />
               ))}
@@ -432,9 +449,12 @@ function SuggestionCard({
   onReject,
 }: {
   suggestion: TailoringSuggestion;
-  onApprove: () => void;
+  onApprove: (attested: boolean) => void;
   onReject: () => void;
 }) {
+  const [attested, setAttested] = useState(false);
+  const needsAttestation = suggestion.RequiresAttestation;
+
   return (
     <div className="flex flex-col gap-3 rounded-md border border-black/10 p-4 dark:border-white/15">
       <div className="flex items-center justify-between">
@@ -445,6 +465,15 @@ function SuggestionCard({
           {suggestion.Source === "AI_SUGGESTED" && (
             <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
               AI Suggested
+            </span>
+          )}
+          {suggestion.EvidenceStatus === "VERIFIED" ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              Verified rewrite
+            </span>
+          ) : (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+              Candidate verification required
             </span>
           )}
           <span
@@ -473,6 +502,28 @@ function SuggestionCard({
       </div>
       <p className="text-xs text-black/60 dark:text-white/60">Why: {suggestion.Reason}</p>
 
+      {needsAttestation && suggestion.UserStatus === "PENDING" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-medium">Candidate attestation required</p>
+          <p className="mt-1 text-xs">
+            This draft contains experience or skills not verified from the master resume. It can only
+            enter the final resume after you confirm that you have performed substantially equivalent work.
+          </p>
+          <label className="mt-3 flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={attested}
+              onChange={(event) => setAttested(event.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              I confirm I have performed work substantially equivalent to this statement and want to use it
+              in my resume.
+            </span>
+          </label>
+        </div>
+      )}
+
       {suggestion.SkillsAdded.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {suggestion.SkillsAdded.map((skill) => (
@@ -489,8 +540,12 @@ function SuggestionCard({
 
       {suggestion.UserStatus === "PENDING" && (
         <div className="flex gap-2">
-          <button onClick={onApprove} className="rounded-md bg-foreground px-3 py-1.5 text-sm text-background">
-            Approve
+          <button
+            onClick={() => onApprove(attested)}
+            disabled={needsAttestation && !attested}
+            className="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {needsAttestation ? "Attest & Approve" : "Approve"}
           </button>
           <button onClick={onReject} className="rounded-md border border-black/10 px-3 py-1.5 text-sm dark:border-white/15">
             Reject
