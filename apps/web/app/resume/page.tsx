@@ -45,6 +45,15 @@ export default function ResumePage() {
     },
   });
 
+  const reparseMutation = useMutation({
+    mutationFn: (id: string) => api.post<ResumeSummary>(`/resumes/${id}/reparse`),
+    onSuccess: (_resume, id) => {
+      queryClient.invalidateQueries({ queryKey: ["resumes"] });
+      queryClient.invalidateQueries({ queryKey: ["resumes", id] });
+      setSelectedId(id);
+    },
+  });
+
   const router = useRouter();
   const deleteAccountMutation = useMutation({
     mutationFn: () => api.delete("/account"),
@@ -103,6 +112,17 @@ export default function ResumePage() {
               <StatusBadge status={r.status} />
               <button
                 type="button"
+                disabled={r.status === "UPLOADED" || r.status === "PARSING" || reparseMutation.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  reparseMutation.mutate(r.id);
+                }}
+                className="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reparse
+              </button>
+              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`Delete "${r.original_filename}"? This cannot be undone.`)) {
@@ -117,6 +137,14 @@ export default function ResumePage() {
           </div>
         ))}
       </section>
+
+      {reparseMutation.isError && (
+        <p className="text-sm text-red-600">
+          {reparseMutation.error instanceof ApiError
+            ? reparseMutation.error.message
+            : "Could not reparse resume."}
+        </p>
+      )}
 
       {selectedId && detailQuery.data && <ResumeReview resume={detailQuery.data} />}
 
