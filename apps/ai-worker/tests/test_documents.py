@@ -129,13 +129,20 @@ def _realistic_one_page_profile() -> ResumeProfile:
                 end_date="Present",
                 location="USA",
                 bullets=[
-                    "Develop and modernize enterprise applications using Java 21, Spring Boot, REST APIs, JPA, Oracle, and Angular.",
-                    "Migrate legacy J2EE components to Java 21 and Spring Boot microservices, improving scalability and API response times.",
-                    "Design REST APIs and reusable service-layer components using Spring Boot, JPA, and Oracle.",
-                    "Build Angular interfaces integrated with Spring Boot APIs and improve accessibility workflows.",
-                    "Integrate Spring Boot microservices with Amazon ECS, Amazon S3, and Route 53 for cloud-ready deployments.",
-                    "Build internal retrieval-augmented search using LangChain, Bedrock, OpenAI APIs, and semantic retrieval.",
-                    "Support dependency upgrades, secure refactoring, and vulnerability remediation.",
+                    ("Develop and modernize enterprise applications using Java 21, Spring Boot, "
+                     "REST APIs, JPA, Oracle, and Angular."),
+                    ("Migrate legacy J2EE components to Java 21 and Spring Boot microservices, "
+                     "improving scalability and API response times."),
+                    ("Design REST APIs and reusable service-layer components using Spring Boot, "
+                     "JPA, and Oracle."),
+                    ("Build Angular interfaces integrated with Spring Boot APIs and improve "
+                     "accessibility workflows."),
+                    ("Integrate Spring Boot microservices with Amazon ECS, Amazon S3, and Route 53 "
+                     "for cloud-ready deployments."),
+                    ("Build internal retrieval-augmented search using LangChain, Bedrock, "
+                     "OpenAI APIs, and semantic retrieval."),
+                    ("Support dependency upgrades, secure refactoring, and vulnerability "
+                     "remediation."),
                 ],
             ),
             ExperienceEntry(
@@ -145,11 +152,16 @@ def _realistic_one_page_profile() -> ResumeProfile:
                 end_date="Jul 2024",
                 location="USA",
                 bullets=[
-                    "Developed Java Spring Boot REST APIs across merchant-facing fintech payment services.",
-                    "Migrated monolithic payment modules to AWS- and Kubernetes-based microservices.",
-                    "Reduced API latency through Redis caching, Kafka asynchronous processing, and service optimizations.",
-                    "Designed scalable backend services for distributed payment-processing workflows.",
-                    "Built Python risk-scoring workflows to improve suspicious-activity prioritization.",
+                    ("Developed Java Spring Boot REST APIs across merchant-facing fintech payment "
+                     "services."),
+                    ("Migrated monolithic payment modules to AWS- and Kubernetes-based "
+                     "microservices."),
+                    ("Reduced API latency through Redis caching, Kafka asynchronous processing, "
+                     "and service optimizations."),
+                    ("Designed scalable backend services for distributed payment-processing "
+                     "workflows."),
+                    ("Built Python risk-scoring workflows to improve suspicious-activity "
+                     "prioritization."),
                     "Increased automated test coverage using Selenium and Jest.",
                 ],
             ),
@@ -160,10 +172,14 @@ def _realistic_one_page_profile() -> ResumeProfile:
                 end_date="Dec 2021",
                 location="India",
                 bullets=[
-                    "Developed Java Spring Boot REST APIs and optimized SQL queries and database indexes.",
-                    "Modernized legacy application modules into independently deployable Spring Boot microservices.",
-                    "Designed persistence and service-layer components using Hibernate, SQL, and MySQL.",
-                    "Built Jenkins CI/CD pipelines using Maven, JUnit, Git, Docker, automated testing, and deployment stages.",
+                    ("Developed Java Spring Boot REST APIs and optimized SQL queries and database "
+                     "indexes."),
+                    ("Modernized legacy application modules into independently deployable "
+                     "Spring Boot microservices."),
+                    ("Designed persistence and service-layer components using Hibernate, SQL, "
+                     "and MySQL."),
+                    ("Built Jenkins CI/CD pipelines using Maven, JUnit, Git, Docker, automated "
+                     "testing, and deployment stages."),
                     "Implemented OAuth 2.0, SAML SSO, and role-based access control.",
                 ],
             ),
