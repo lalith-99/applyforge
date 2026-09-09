@@ -195,7 +195,7 @@ export interface TailoringSuggestion {
   RiskLevel: "LOW" | "MEDIUM" | "HIGH";
   UserStatus: "PENDING" | "APPROVED" | "EDITED" | "REJECTED";
   EditedText: string | null;
-  EvidenceStatus: "VERIFIED" | "CANDIDATE_ATTESTATION_REQUIRED";
+  EvidenceStatus: "VERIFIED" | "CANDIDATE_ATTESTATION_REQUIRED" | "BUILD_BEFORE_USE";
   RequiresAttestation: boolean;
 }
 
