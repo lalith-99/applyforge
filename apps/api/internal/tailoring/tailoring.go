@@ -89,7 +89,7 @@ func runFromRow(row db.TailoringRun) Run {
 const (
 	EvidenceVerified                     = "VERIFIED"
 	EvidenceCandidateAttestationRequired = "CANDIDATE_ATTESTATION_REQUIRED"
-	EvidenceBuildBeforeUse                = "BUILD_BEFORE_USE"
+	EvidenceBuildBeforeUse               = "BUILD_BEFORE_USE"
 )
 
 // Suggestion is a single proposed resume change.
