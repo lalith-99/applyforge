@@ -226,9 +226,10 @@ type RankedJob struct {
 
 // Recommend runs the multi-stage funnel (Phase G): hard filters -> semantic
 // retrieval -> deterministic scoring. Returns up to limit ELIGIBLE jobs for
-// userID, ranked by Result.TotalScore. Returns candidateprofile.ErrNotFound
-// if the user has no generated (embedded) profile yet - callers should fall
-// back to plain List()-based browsing in that case.
+// userID, ranked by Result.TotalScore. Semantic retrieval is optional: when a
+// candidate embedding is unavailable, the funnel still uses target-role/skill
+// lexical retrieval. ErrNotFound now means there is no generated candidate
+// profile at all.
 func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([]RankedJob, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
