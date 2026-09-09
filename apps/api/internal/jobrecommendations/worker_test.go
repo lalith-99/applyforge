@@ -130,7 +130,6 @@ func TestToRecommendations_CapsDailyShortlistAt20(t *testing.T) {
 	}
 }
 
-
 func TestToRecommendations_CapsSameCompanyAtTwo(t *testing.T) {
 	companyID := uuid.New()
 	ranked := make([]airank.RankedJob, 0, 8)
