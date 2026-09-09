@@ -16,7 +16,7 @@ import (
 
 // ErrNotFound is returned when no profile has been created yet for a user.
 var (
-	ErrNotFound            = errors.New("profile not found")
+	ErrNotFound             = errors.New("profile not found")
 	ErrIncompleteOnboarding = errors.New("profile is missing required onboarding fields")
 )
 
@@ -157,7 +157,6 @@ func orEmpty(s []string) []string {
 	}
 	return s
 }
-
 
 func validOnboardingProfile(in UpsertInput) bool {
 	if in.FirstName == nil || strings.TrimSpace(*in.FirstName) == "" {
