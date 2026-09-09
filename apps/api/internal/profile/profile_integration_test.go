@@ -48,7 +48,7 @@ func TestRepository_UpsertAndGet(t *testing.T) {
 	in := UpsertInput{
 		FirstName:               &firstName,
 		LastName:                &lastName,
-		Seniority:              &seniority,
+		Seniority:               &seniority,
 		PrimaryTargetTitles:     []string{"Backend Engineer", "Software Engineer"},
 		AlternativeTargetTitles: []string{"Platform Engineer"},
 		YearsExperience:         &years,
@@ -86,7 +86,6 @@ func TestRepository_UpsertAndGet(t *testing.T) {
 		t.Fatalf("expected persisted first name %q, got %v", firstName, fetched.FirstName)
 	}
 }
-
 
 func TestRepository_CannotCompleteOnboardingWithoutRankingFields(t *testing.T) {
 	q := testdb.OpenTx(t)
