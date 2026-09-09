@@ -80,7 +80,6 @@ func TestRecommendationPreAIRank_PrefersTargetRoleDirection(t *testing.T) {
 	}
 }
 
-
 func TestDiversifyPreAICandidates_CapsCompanyRepresentation(t *testing.T) {
 	dominantCompany := uuid.New()
 	ranked := make([]RankedJob, 0, 12)
