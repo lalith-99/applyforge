@@ -79,7 +79,12 @@ Target roles: {', '.join(request.target_roles) or 'unspecified'}
 Jobs to rank ({len(request.jobs)}):
 {jobs_text}"""
 
-    return structured_completion(_SYSTEM_PROMPT, user_prompt, RankJobsResult)
+    return structured_completion(
+        _SYSTEM_PROMPT,
+        user_prompt,
+        RankJobsResult,
+        model_env_var="OPENAI_RANKING_MODEL",
+    )
 
 
 def _format_job(job: JobRankingInput) -> str:
