@@ -8,44 +8,26 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/resume"
 )
 
-func TestEnsureAddedSkillsReachABullet_AddsGrowthBulletForOrphanedSkill(t *testing.T) {
-	bullet := "Built Go microservices for telecom file processing."
-	aiResp := aiclient.TailoringResponse{
-		SkillSuggestions: []aiclient.TailoringSuggestion{
-			{Section: "skills", SkillsAdded: []string{"Rust"}, Source: "AI_SUGGESTED"},
-		},
-	}
-	experiences := []resume.Experience{{Bullets: []string{bullet}}}
-
-	ensureAddedSkillsReachABullet(&aiResp, experiences)
-
-	if len(aiResp.ExperienceSuggestions) != 1 {
-		t.Fatalf("expected one synthesized experience suggestion, got %d", len(aiResp.ExperienceSuggestions))
-	}
-	got := aiResp.ExperienceSuggestions[0]
-	if got.RiskLevel != "HIGH" || got.Source != "AI_SUGGESTED" {
-		t.Fatalf("expected an honest, high-risk growth suggestion, got %+v", got)
-	}
-	if got.OriginalText == nil || *got.OriginalText != bullet {
-		t.Fatalf("expected original text to be the real existing bullet, got %v", got.OriginalText)
-	}
-}
-
-func TestEnsureAddedSkillsReachABullet_SkipsSkillsAlreadyMentioned(t *testing.T) {
-	aiResp := aiclient.TailoringResponse{
-		SkillSuggestions: []aiclient.TailoringSuggestion{
-			{Section: "skills", SkillsAdded: []string{"Rust"}, Source: "AI_SUGGESTED"},
-		},
+func TestSanitizeKnownSkillSuggestionsKeepsUnknownAIDraftForAttestation(t *testing.T) {
+	resp := aiclient.TailoringResponse{
 		ExperienceSuggestions: []aiclient.TailoringSuggestion{
-			{Section: "experience", SuggestedText: "Applying growing Rust expertise to systems work."},
+			{
+				Section:       "experience",
+				SuggestedText: "Deployed Spring Boot microservices on Azure using containerized CI/CD workflows.",
+				SkillsAdded:   []string{"Azure"},
+				Source:        "AI_SUGGESTED",
+				RiskLevel:     "HIGH",
+			},
 		},
 	}
-	experiences := []resume.Experience{{Bullets: []string{"Some bullet."}}}
 
-	ensureAddedSkillsReachABullet(&aiResp, experiences)
+	sanitizeKnownSkillSuggestions(&resp, map[string]bool{"java": true, "spring boot": true})
 
-	if len(aiResp.ExperienceSuggestions) != 1 {
-		t.Fatalf("expected no additional suggestion since Rust is already mentioned, got %d", len(aiResp.ExperienceSuggestions))
+	if len(resp.ExperienceSuggestions) != 1 {
+		t.Fatalf("unknown AI experience draft should survive for attestation: %+v", resp.ExperienceSuggestions)
+	}
+	if resp.ExperienceSuggestions[0].SkillsAdded[0] != "Azure" {
+		t.Fatalf("expected Azure attestation metadata to remain, got %+v", resp.ExperienceSuggestions[0])
 	}
 }
 
