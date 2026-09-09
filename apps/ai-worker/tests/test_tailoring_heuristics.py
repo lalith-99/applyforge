@@ -1,7 +1,13 @@
 """Tests for heuristic resume tailoring suggestion generation."""
 
-from app.tailoring.heuristics import generate_tailoring
-from app.tailoring.models import ExperienceInput, TailoringRequest, TransferableMatchInput
+from app.tailoring.heuristics import _sanitize_ai_tailoring, generate_tailoring
+from app.tailoring.models import (
+    ExperienceInput,
+    TailoringRequest,
+    TailoringResponse,
+    TailoringSuggestion,
+    TransferableMatchInput,
+)
 
 EXPERIENCES = [
     ExperienceInput(
@@ -58,20 +64,16 @@ def test_max_match_mode_suggests_all_missing_skills() -> None:
     assert "Kubernetes" in added
 
 
-def test_max_match_weaves_unsupported_skills_into_a_bullet_as_growth_area() -> None:
+def test_max_match_keeps_unsupported_skills_out_of_professional_experience() -> None:
     response = generate_tailoring(_request("MAX_MATCH"))
     experience_text = " ".join(s.suggested_text for s in response.experience_suggestions).lower()
-    # Unsupported skills (no transferable_matches evidence) may now appear in
-    # a bullet, but only as an honest growth/learning claim, never as a claim
-    # of already-completed production ownership.
-    assert "kubernetes" in experience_text
-    assert "built" not in experience_text.split("kubernetes")[-1][:40]
 
-    growth_suggestion = next(
-        s for s in response.experience_suggestions if "kubernetes" in s.suggested_text.lower()
+    assert "amazon sqs" not in experience_text
+    assert "kubernetes" not in experience_text
+    assert all("learning" not in s.suggested_text.lower() for s in response.experience_suggestions)
+    assert all(
+        "proficiency" not in s.suggested_text.lower() for s in response.experience_suggestions
     )
-    assert growth_suggestion.risk_level == "HIGH"
-    assert "growth area" in growth_suggestion.reason.lower()
 
 
 def test_skill_suggestion_with_transfer_has_lower_risk_than_without() -> None:
@@ -110,15 +112,14 @@ def test_keyword_coverage_improves_with_more_permissive_modes() -> None:
     assert max_match.keyword_coverage_after >= strict.keyword_coverage_after
 
 
-def test_max_match_touches_summary_skills_and_experience() -> None:
+def test_max_match_reaches_skill_coverage_without_fake_experience_touchpoints() -> None:
     response = generate_tailoring(_request("MAX_MATCH"))
-    total_touchpoints = (
-        (1 if response.summary_suggestion else 0)
-        + len(response.skill_suggestions)
-        + len(response.experience_suggestions)
-    )
-    assert total_touchpoints >= 5
+
     assert response.keyword_coverage_after == 1.0
+    assert len(response.skill_suggestions) == 2
+    experience_text = " ".join(s.suggested_text for s in response.experience_suggestions).lower()
+    assert "amazon sqs" not in experience_text
+    assert "kubernetes" not in experience_text
 
 
 def test_equivalent_skill_labels_do_not_create_false_missing_skills() -> None:
@@ -146,3 +147,94 @@ def test_equivalent_skill_labels_do_not_create_false_missing_skills() -> None:
     assert response.skill_suggestions == []
     assert response.keyword_coverage_before == 1.0
     assert response.keyword_coverage_after == 1.0
+
+
+
+def test_ai_sanitizer_rejects_learning_style_azure_experience_rewrite() -> None:
+    original = (
+        "Develop and modernize enterprise healthcare applications using Java 21, "
+        "Spring Boot, REST APIs, JPA, Oracle, and Angular 19."
+    )
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Software Engineer",
+        master_skills=["Java 21", "Spring Boot", "Angular 19"],
+        master_summary="Java software engineer.",
+        experiences=[
+            ExperienceInput(
+                company="CMS",
+                title="Software Development Engineer",
+                bullets=[original],
+                detected_skills=["Java", "Spring Boot", "Angular"],
+            )
+        ],
+        required_skills=["Java", "Azure"],
+        preferred_skills=[],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+    result = TailoringResponse(
+        experience_suggestions=[
+            TailoringSuggestion(
+                section="experience",
+                original_text=original,
+                suggested_text=(
+                    original.rstrip(".")
+                    + ", while actively building hands-on proficiency in Azure."
+                ),
+                requirements_addressed=["Azure"],
+                skills_added=["Azure"],
+                keywords_added=["Azure"],
+                source="AI_SUGGESTED",
+                reason="Add Azure keyword.",
+                confidence=0.5,
+                risk_level="HIGH",
+            )
+        ],
+        skill_suggestions=[],
+        keyword_coverage_before=0.5,
+        keyword_coverage_after=1.0,
+    )
+
+    sanitized = _sanitize_ai_tailoring(request, result)
+
+    assert sanitized.experience_suggestions == []
+
+
+def test_ai_sanitizer_keeps_evidence_based_experience_rewrite() -> None:
+    original = "Built Java Spring Boot REST APIs for payment services."
+    request = TailoringRequest(
+        mode="STRICT",
+        job_title="Java Engineer",
+        master_skills=["Java", "Spring Boot"],
+        master_summary="Java software engineer.",
+        experiences=[
+            ExperienceInput(
+                company="Acme",
+                title="Software Engineer",
+                bullets=[original],
+                detected_skills=["Java", "Spring Boot", "REST"],
+            )
+        ],
+        required_skills=["Java", "Spring Boot"],
+        preferred_skills=[],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+    suggestion = TailoringSuggestion(
+        section="experience",
+        original_text=original,
+        suggested_text="Built Java Spring Boot REST APIs supporting payment services.",
+        requirements_addressed=["Java", "Spring Boot"],
+        source="MASTER_RESUME",
+        reason="Tighter evidence-based wording.",
+        confidence=0.9,
+        risk_level="LOW",
+    )
+
+    sanitized = _sanitize_ai_tailoring(
+        request,
+        TailoringResponse(experience_suggestions=[suggestion]),
+    )
+
+    assert sanitized.experience_suggestions == [suggestion]
