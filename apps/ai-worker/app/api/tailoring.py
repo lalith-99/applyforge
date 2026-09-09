@@ -44,10 +44,12 @@ def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
             )
 
     fallback = generate_tailoring(request)
-    # The deterministic fallback cannot reliably rewrite prose with the same
-    # quality as the source resume. Preserve the original summary rather than
-    # appending awkward "Targeting <job title>" language when AI is unavailable.
+    # When the AI provider is unavailable, keep the master resume prose intact.
+    # The deterministic fallback is useful for surfacing missing skill keywords,
+    # but its summary/experience rewrites read like match-analysis metadata
+    # ("directly applicable to this role") rather than polished resume copy.
     fallback.summary_suggestion = None
+    fallback.experience_suggestions = []
     return fallback
 
 

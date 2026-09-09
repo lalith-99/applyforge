@@ -34,6 +34,7 @@ backend reliability, transaction monitoring, and release stability.
 EDUCATION
 Master of Science in Computer Science
 Jan 2022 – Aug 2023 | Lubbock, Texas Texas Tech University, USA
+LinkedIn URL: https://www.linkedin.com/in/b-vandana16/
 """
 
 
@@ -45,6 +46,8 @@ def test_faithful_parser_preserves_exact_skills_and_versions() -> None:
         "Java Software Engineer | Spring Boot | Microservices | AWS | Kafka"
     )
     assert profile.contact.location == "Maryland, USA"
+    assert profile.contact.phone == "(806) 451-9997"
+    assert profile.contact.linkedin_url == "https://www.linkedin.com/in/b-vandana16/"
 
     assert "Java 8" in profile.skills
     assert "Java 21" in profile.skills
@@ -72,13 +75,14 @@ def test_faithful_parser_joins_wrapped_experience_bullets() -> None:
     assert cms.bullets[1].endswith("30%.")
 
 
-def test_faithful_parser_keeps_header_out_of_summary() -> None:
+def test_faithful_parser_keeps_header_and_link_metadata_out_of_content() -> None:
     profile = parse_resume_text_faithful(RAW_RESUME)
 
     assert profile.summary is not None
     assert profile.summary.startswith("Java Software Engineer with 5+ years")
     assert "PROFESSIONAL SUMMARY" not in profile.summary
     assert "vandanabharatha16@gmail.com" not in profile.summary
+    assert all("LinkedIn URL:" not in entry for entry in profile.education)
 
 
 def test_reconcile_repairs_lossy_ai_output() -> None:

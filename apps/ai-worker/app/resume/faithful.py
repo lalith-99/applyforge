@@ -15,7 +15,7 @@ from app.core.skills_dictionary import canonical_skills
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(\+?\d[\d\-. ()]{8,}\d)")
+_PHONE_RE = re.compile(r"(\(\d{3}\)[\d\-. ]{6,}\d|\+?\d[\d\-. ()]{8,}\d)")
 _LINKEDIN_RE = re.compile(
     r"https?://(?:www\.)?linkedin\.com/(?:in|pub)/[^\s|)>\]]+",
     re.IGNORECASE,
@@ -326,8 +326,17 @@ def _parse_experience_section(lines: list[str]) -> list[ExperienceEntry]:
     return entries
 
 
+def _is_external_metadata_line(line: str) -> bool:
+    lowered = line.strip().lower()
+    return lowered.startswith(("linkedin url:", "github url:", "external url:"))
+
+
 def parse_resume_text_faithful(raw_text: str) -> ResumeProfile:
-    lines = _explode_inline_section_headers(raw_text)
+    lines = [
+        line
+        for line in _explode_inline_section_headers(raw_text)
+        if not _is_external_metadata_line(line)
+    ]
     sections = _split_sections(lines)
 
     email_match = _EMAIL_RE.search(raw_text)

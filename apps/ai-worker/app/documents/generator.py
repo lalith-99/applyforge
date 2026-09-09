@@ -8,6 +8,7 @@ and adaptive PDF typography before allowing a second page.
 from __future__ import annotations
 
 import io
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -21,6 +22,7 @@ from fpdf import FPDF
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
 _CORE_FONTS_ENCODING = "cp1252"
+_PDF_FONT = "Times"
 _TEXT_COLOR = (25, 25, 25)
 _MUTED_COLOR = (85, 85, 85)
 _ACCENT_COLOR = (24, 55, 84)
@@ -49,22 +51,22 @@ class _PDFStyle:
 
 
 _COMPACT = _PDFStyle(
-    left_margin=9.5,
-    top_margin=6.5,
-    right_margin=9.5,
-    bottom_margin=7.0,
+    left_margin=9.0,
+    top_margin=6.0,
+    right_margin=9.0,
+    bottom_margin=6.5,
     name_size=15.5,
-    headline_size=9.0,
-    contact_size=8.2,
-    section_size=9.7,
-    body_size=8.5,
-    skill_size=8.1,
-    role_size=8.8,
-    meta_size=8.0,
-    line_height=3.9,
+    headline_size=9.5,
+    contact_size=8.5,
+    section_size=10.0,
+    body_size=9.0,
+    skill_size=8.5,
+    role_size=9.2,
+    meta_size=8.2,
+    line_height=4.05,
     bullet_indent=3.8,
-    section_gap=0.8,
-    role_gap=0.6,
+    section_gap=0.65,
+    role_gap=0.45,
 )
 
 _TIGHT = _PDFStyle(
@@ -73,17 +75,17 @@ _TIGHT = _PDFStyle(
     right_margin=8.0,
     bottom_margin=6.0,
     name_size=14.5,
-    headline_size=8.5,
-    contact_size=7.8,
-    section_size=9.2,
-    body_size=7.9,
-    skill_size=7.6,
-    role_size=8.2,
-    meta_size=7.5,
-    line_height=3.55,
+    headline_size=8.8,
+    contact_size=8.0,
+    section_size=9.4,
+    body_size=8.2,
+    skill_size=7.9,
+    role_size=8.5,
+    meta_size=7.7,
+    line_height=3.65,
     bullet_indent=3.4,
-    section_gap=0.5,
-    role_gap=0.35,
+    section_gap=0.45,
+    role_gap=0.3,
 )
 
 
@@ -146,7 +148,7 @@ def _render_pdf_document(profile: ResumeProfile, style: _PDFStyle) -> FPDF:
 
     if profile.summary:
         _section_heading(pdf, "Professional Summary", style)
-        pdf.set_font("Helvetica", "", style.body_size)
+        pdf.set_font(_PDF_FONT, "", style.body_size)
         pdf.set_text_color(*_TEXT_COLOR)
         pdf.multi_cell(
             0,
@@ -169,7 +171,7 @@ def _render_pdf_document(profile: ResumeProfile, style: _PDFStyle) -> FPDF:
             if index:
                 pdf.ln(style.role_gap)
             _experience_heading(pdf, exp, style)
-            pdf.set_font("Helvetica", "", style.body_size)
+            pdf.set_font(_PDF_FONT, "", style.body_size)
             pdf.set_text_color(*_TEXT_COLOR)
             for bullet in exp.bullets:
                 _bullet_item(pdf, bullet, style)
@@ -177,7 +179,7 @@ def _render_pdf_document(profile: ResumeProfile, style: _PDFStyle) -> FPDF:
 
     if profile.education:
         _section_heading(pdf, "Education", style)
-        pdf.set_font("Helvetica", "", style.body_size)
+        pdf.set_font(_PDF_FONT, "", style.body_size)
         pdf.set_text_color(*_TEXT_COLOR)
         for entry in _compact_education_entries(profile.education):
             pdf.multi_cell(
@@ -192,7 +194,7 @@ def _render_pdf_document(profile: ResumeProfile, style: _PDFStyle) -> FPDF:
 
     if profile.certifications:
         _section_heading(pdf, "Certifications", style)
-        pdf.set_font("Helvetica", "", style.body_size)
+        pdf.set_font(_PDF_FONT, "", style.body_size)
         pdf.set_text_color(*_TEXT_COLOR)
         for entry in profile.certifications:
             pdf.multi_cell(
@@ -210,7 +212,7 @@ def _render_pdf_document(profile: ResumeProfile, style: _PDFStyle) -> FPDF:
 def _render_header(pdf: FPDF, profile: ResumeProfile, style: _PDFStyle) -> None:
     content_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    pdf.set_font("Helvetica", "B", style.name_size)
+    pdf.set_font(_PDF_FONT, "B", style.name_size)
     pdf.set_text_color(*_TEXT_COLOR)
     pdf.cell(
         content_width,
@@ -222,7 +224,7 @@ def _render_header(pdf: FPDF, profile: ResumeProfile, style: _PDFStyle) -> None:
     )
 
     if profile.contact.headline:
-        pdf.set_font("Helvetica", "B", style.headline_size)
+        pdf.set_font(_PDF_FONT, "B", style.headline_size)
         pdf.set_text_color(*_TEXT_COLOR)
         pdf.multi_cell(
             content_width,
@@ -248,7 +250,7 @@ def _render_contact_line(pdf: FPDF, contact: ContactInfo, style: _PDFStyle) -> N
     if not segments:
         return
 
-    pdf.set_font("Helvetica", "", style.contact_size)
+    pdf.set_font(_PDF_FONT, "", style.contact_size)
     separator = " | "
     widths: list[float] = []
     for index, (label, _) in enumerate(segments):
@@ -261,10 +263,10 @@ def _render_contact_line(pdf: FPDF, contact: ContactInfo, style: _PDFStyle) -> N
 
     for index, (label, link) in enumerate(segments):
         if link:
-            pdf.set_font("Helvetica", "U", style.contact_size)
+            pdf.set_font(_PDF_FONT, "U", style.contact_size)
             pdf.set_text_color(*_LINK_COLOR)
             pdf.cell(pdf.get_string_width(label), 3.8, label, link=link, new_x="RIGHT")
-            pdf.set_font("Helvetica", "", style.contact_size)
+            pdf.set_font(_PDF_FONT, "", style.contact_size)
             pdf.set_text_color(*_MUTED_COLOR)
         else:
             pdf.set_text_color(*_MUTED_COLOR)
@@ -278,7 +280,7 @@ def _render_contact_line(pdf: FPDF, contact: ContactInfo, style: _PDFStyle) -> N
 
 
 def _section_heading(pdf: FPDF, text: str, style: _PDFStyle) -> None:
-    pdf.set_font("Helvetica", "B", style.section_size)
+    pdf.set_font(_PDF_FONT, "B", style.section_size)
     pdf.set_text_color(*_TEXT_COLOR)
     pdf.cell(0, 4.2, text.upper(), new_x="LMARGIN", new_y="NEXT")
     pdf.set_draw_color(*_RULE_COLOR)
@@ -303,10 +305,43 @@ _SKILL_CATEGORY_ORDER = (
 def _skill_category(skill: str) -> str:
     value = skill.lower().strip()
 
-    if value in {"java", "go", "golang", "c", "c++", "c#", "kotlin"} or value.startswith(
-        ("java ", "python", "javascript", "typescript", "sql", "bash", "kotlin ")
+    if any(
+        token in value
+        for token in (
+            "oracle",
+            "postgres",
+            "mysql",
+            "mongodb",
+            "redis",
+            "kafka",
+            "database",
+            "index optimization",
+            "sql optimization",
+            "asynchronous processing",
+        )
+    ):
+        return "Databases & Messaging"
+
+    language_names = (
+        "java",
+        "python",
+        "javascript",
+        "typescript",
+        "sql",
+        "bash",
+        "kotlin",
+        "go",
+        "golang",
+        "c",
+        "c++",
+        "c#",
+    )
+    if value in language_names or any(
+        re.fullmatch(rf"{re.escape(language)}(?:\s+\d+(?:\.\d+)*)?", value)
+        for language in language_names
     ):
         return "Languages"
+
     if any(
         token in value
         for token in (
@@ -326,22 +361,6 @@ def _skill_category(skill: str) -> str:
     if any(
         token in value
         for token in (
-            "oracle",
-            "postgres",
-            "mysql",
-            "mongodb",
-            "redis",
-            "kafka",
-            "database",
-            "index optimization",
-            "sql optimization",
-            "asynchronous processing",
-        )
-    ):
-        return "Databases & Messaging"
-    if any(
-        token in value
-        for token in (
             "aws",
             "amazon ecs",
             "amazon s3",
@@ -355,7 +374,18 @@ def _skill_category(skill: str) -> str:
             "ci/cd",
             "azure",
             "gcp",
+            "gce",
             "openshift",
+            "linux",
+            "ansible",
+            "chef",
+            "puppet",
+            "travis",
+            "gitlab ci",
+            "github actions",
+            "helm",
+            "argo cd",
+            "argocd",
         )
     ):
         return "Cloud & DevOps"
@@ -422,17 +452,17 @@ def _render_skill_groups(pdf: FPDF, skills: list[str], style: _PDFStyle) -> None
     # Size the label column from the actual longest category. The old fixed
     # width was narrower than "Databases & Messaging:" and caused the first
     # skill to collide with the label.
-    pdf.set_font("Helvetica", "B", style.skill_size)
+    pdf.set_font(_PDF_FONT, "B", style.skill_size)
     label_width = max(
         31.5,
         max((pdf.get_string_width(f"{label}:") for label, _ in groups), default=0) + 2.5,
     )
 
     for label, values in groups:
-        pdf.set_font("Helvetica", "B", style.skill_size)
+        pdf.set_font(_PDF_FONT, "B", style.skill_size)
         pdf.set_text_color(*_TEXT_COLOR)
         pdf.cell(label_width, style.line_height, f"{label}:", new_x="RIGHT", new_y="TOP")
-        pdf.set_font("Helvetica", "", style.skill_size)
+        pdf.set_font(_PDF_FONT, "", style.skill_size)
         pdf.multi_cell(
             content_width - label_width,
             style.line_height,
@@ -449,23 +479,23 @@ def _experience_heading(pdf: FPDF, exp: ExperienceEntry, style: _PDFStyle) -> No
     right = " | ".join(v for v in [dates, exp.location] if v)
 
     content_width = pdf.w - pdf.l_margin - pdf.r_margin
-    pdf.set_font("Helvetica", "I", style.meta_size)
+    pdf.set_font(_PDF_FONT, "I", style.meta_size)
     right_width = pdf.get_string_width(right) + 1.5 if right else 0
     left_width = max(35.0, content_width - right_width)
 
     role_size = style.role_size
     while role_size > 7.2:
-        pdf.set_font("Helvetica", "B", role_size)
+        pdf.set_font(_PDF_FONT, "B", role_size)
         if pdf.get_string_width(left) <= left_width:
             break
         role_size -= 0.2
 
-    pdf.set_font("Helvetica", "B", role_size)
+    pdf.set_font(_PDF_FONT, "B", role_size)
     pdf.set_text_color(*_TEXT_COLOR)
     if pdf.get_string_width(left) <= left_width:
         pdf.cell(left_width, style.line_height + 0.2, left, new_x="RIGHT", new_y="TOP")
         if right:
-            pdf.set_font("Helvetica", "I", style.meta_size)
+            pdf.set_font(_PDF_FONT, "I", style.meta_size)
             pdf.set_text_color(*_MUTED_COLOR)
             pdf.cell(
                 right_width,
@@ -488,7 +518,7 @@ def _experience_heading(pdf: FPDF, exp: ExperienceEntry, style: _PDFStyle) -> No
         new_y="NEXT",
     )
     if right:
-        pdf.set_font("Helvetica", "I", style.meta_size)
+        pdf.set_font(_PDF_FONT, "I", style.meta_size)
         pdf.set_text_color(*_MUTED_COLOR)
         pdf.cell(
             content_width,
@@ -596,13 +626,13 @@ def render_docx(profile: ResumeProfile) -> bytes:
 
 def _set_docx_base_style(doc: Document) -> None:
     normal = doc.styles["Normal"]
-    normal.font.name = "Arial"
+    normal.font.name = "Times New Roman"
     normal.font.size = Pt(9)
     normal.paragraph_format.space_after = Pt(0)
     normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
 
     list_bullet = doc.styles["List Bullet"]
-    list_bullet.font.name = "Arial"
+    list_bullet.font.name = "Times New Roman"
     list_bullet.font.size = Pt(9)
     list_bullet.paragraph_format.space_after = Pt(0)
 
