@@ -47,6 +47,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/resumes", h.handleUpload)
 	r.Get("/resumes", h.handleList)
 	r.Get("/resumes/{id}", h.handleGet)
+	r.Post("/resumes/{id}/reparse", h.handleReparse)
 }
 
 func (h *Handlers) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +157,37 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 	detail["parsed_profile"] = res.ParsedProfile
 	detail["experiences"] = experiences
 	httpx.WriteJSON(w, http.StatusOK, detail)
+}
+
+func (h *Handlers) handleReparse(w http.ResponseWriter, r *http.Request) {
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid resume id")
+		return
+	}
+
+	res, err := h.repo.Get(r.Context(), id, u.ID)
+	if err != nil {
+		if err == ErrNotFound {
+			httpx.WriteError(w, http.StatusNotFound, "resume not found")
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load resume")
+		return
+	}
+
+	if err := h.queue.Enqueue(r.Context(), JobTypeParse, ParsePayload{ResumeID: res.ID.String()}, 5); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not schedule resume reparse")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusAccepted, toSummary(res))
 }
 
 func toSummary(r Resume) map[string]any {
