@@ -201,6 +201,62 @@ def test_ai_sanitizer_rejects_learning_style_azure_experience_rewrite() -> None:
     assert sanitized.experience_suggestions == []
 
 
+
+
+def test_ai_sanitizer_keeps_strong_azure_draft_but_marks_it_for_attestation() -> None:
+    original = (
+        "Develop and modernize enterprise healthcare applications using Java 21, "
+        "Spring Boot, REST APIs, JPA, Oracle, and Angular 19."
+    )
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Software Engineer",
+        master_skills=["Java 21", "Spring Boot", "Angular 19"],
+        master_summary="Java software engineer.",
+        experiences=[
+            ExperienceInput(
+                company="CMS",
+                title="Software Development Engineer",
+                bullets=[original],
+                detected_skills=["Java", "Spring Boot", "Angular"],
+            )
+        ],
+        required_skills=["Java", "Azure"],
+        preferred_skills=[],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+    draft = TailoringSuggestion(
+        section="experience",
+        original_text=original,
+        suggested_text=(
+            "Modernized Java 21 and Spring Boot services and deployed them to Azure "
+            "App Service with managed configuration for cloud-ready healthcare workflows."
+        ),
+        requirements_addressed=["Azure"],
+        skills_added=[],
+        keywords_added=[],
+        source="MASTER_RESUME",
+        reason="Aligns the existing modernization work to the target cloud requirement.",
+        confidence=0.7,
+        risk_level="LOW",
+    )
+
+    sanitized = _sanitize_ai_tailoring(
+        request,
+        TailoringResponse(experience_suggestions=[draft]),
+    )
+
+    assert len(sanitized.experience_suggestions) == 1
+    suggestion = sanitized.experience_suggestions[0]
+    assert suggestion.source == "AI_SUGGESTED"
+    assert suggestion.risk_level == "HIGH"
+    assert "Azure" in suggestion.skills_added
+    assert "candidate verification" in suggestion.reason.lower()
+    assert "learning" not in suggestion.suggested_text.lower()
+    assert "proficiency" not in suggestion.suggested_text.lower()
+
+
 def test_ai_sanitizer_keeps_evidence_based_experience_rewrite() -> None:
     original = "Built Java Spring Boot REST APIs for payment services."
     request = TailoringRequest(
