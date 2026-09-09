@@ -171,7 +171,10 @@ export default function OnboardingPage() {
             <Field label="Country"><input {...profileForm.register("country")} className={inputClass} /></Field>
           </div>
 
-          <Field label="Primary target titles (comma separated)">
+          <Field
+            label="Primary target titles (comma separated) *"
+            error={profileForm.formState.errors.primary_target_titles?.message}
+          >
             <input {...profileForm.register("primary_target_titles")} className={inputClass} placeholder="Backend Engineer, Software Engineer" />
           </Field>
           <Field label="Alternative target titles (comma separated)">
@@ -179,11 +182,11 @@ export default function OnboardingPage() {
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Seniority">
+            <Field label="Seniority *" error={profileForm.formState.errors.seniority?.message}>
               <input {...profileForm.register("seniority")} className={inputClass} placeholder="e.g. Senior" />
             </Field>
-            <Field label="Years of experience">
-              <input type="number" {...profileForm.register("years_experience")} className={inputClass} />
+            <Field label="Years of experience *" error={profileForm.formState.errors.years_experience?.message}>
+              <input type="number" min={1} {...profileForm.register("years_experience")} className={inputClass} />
             </Field>
           </div>
 

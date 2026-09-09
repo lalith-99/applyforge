@@ -129,6 +129,10 @@ func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		MarkOnboardingComplete:      req.CompleteOnboarding,
 	})
 	if err != nil {
+		if errors.Is(err, ErrIncompleteOnboarding) {
+			httpx.WriteError(w, http.StatusBadRequest, "complete onboarding requires first name, last name, at least one target title, seniority, and years of experience")
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "could not update profile")
 		return
 	}
