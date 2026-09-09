@@ -2,10 +2,7 @@
 
 # ruff: noqa: E501
 
-from app.resume.faithful import (
-    parse_resume_text_faithful,
-    reconcile_ai_profile,
-)
+from app.resume.faithful import parse_resume_text_faithful, reconcile_ai_profile
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
 
