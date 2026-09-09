@@ -8,6 +8,9 @@ AI_API_KEY configured. STRICT/GROWTH/MAX_MATCH mode rules are enforced here.
 
 from __future__ import annotations
 
+import re
+
+from app.core.skills_dictionary import canonical_skills
 from app.tailoring.models import (
     ExperienceInput,
     TailoringRequest,
@@ -227,56 +230,13 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     required_matched = [s for s in request.required_skills if _skill_key(s) in have]
     preferred_matched = [s for s in request.preferred_skills if _skill_key(s) in have]
 
-    relevant = _lower_set(request.required_skills) | _lower_set(request.preferred_skills)
-    # MAX_MATCH: skills with no transferable evidence still need to land
-    # somewhere visible on the resume, not just the skills list, so they all
-    # share the single most relevant existing bullet as an honest growth claim.
-    max_match_fallback_exp = (
-        _most_relevant_experience(request.experiences, relevant)
-        if request.mode == "MAX_MATCH"
-        else None
-    )
-    max_match_fallback_bullet = (
-        max_match_fallback_exp.bullets[0]
-        if max_match_fallback_exp and max_match_fallback_exp.bullets
-        else None
-    )
-
     skill_suggestions: list[TailoringSuggestion] = []
-    # Group every newly-added skill by the bullet it should be reflected
-    # against, so a bullet that picks up several skills gets ONE combined,
-    # honestly-worded suggestion instead of several near-duplicates.
-    bullet_transfer_skills: dict[str, list[str]] = {}
-    bullet_growth_skills: dict[str, list[str]] = {}
     for skill in required_missing + preferred_missing:
         importance = "required" if skill in required_missing else "preferred"
         transfer = _transfer_for(skill, request.transferable_matches)
         suggestion = _skill_suggestion(skill, importance, request.mode, transfer)
-        if not suggestion:
-            continue
-        skill_suggestions.append(suggestion)
-
-        # A skill added to the skills section should also show up in the
-        # experience section, not just sit in isolation in the skills list.
-        if transfer is not None:
-            exp = _find_experience_by_skill(transfer.source_skill, request.experiences)
-            if exp:
-                bullet_transfer_skills.setdefault(exp.bullets[0], []).append(skill)
-                continue
-
-        if max_match_fallback_bullet:
-            bullet_growth_skills.setdefault(max_match_fallback_bullet, []).append(skill)
-
-    linked_bullets = dict.fromkeys([*bullet_transfer_skills, *bullet_growth_skills])
-    linked_experience_suggestions = [
-        _added_skills_experience_suggestion(
-            bullet,
-            bullet_transfer_skills.get(bullet, []),
-            bullet_growth_skills.get(bullet, []),
-            request.job_title,
-        )
-        for bullet in linked_bullets
-    ]
+        if suggestion:
+            skill_suggestions.append(suggestion)
 
     summary_suggestion = _summary_suggestion(
         request.master_summary, request.job_title, required_matched + preferred_matched
@@ -284,9 +244,7 @@ def generate_tailoring(request: TailoringRequest) -> TailoringResponse:
     experience_suggestion = _experience_suggestion(
         request.experiences, request.required_skills, request.preferred_skills, request.job_title
     )
-    experience_suggestions = (
-        [experience_suggestion] if experience_suggestion else []
-    ) + linked_experience_suggestions
+    experience_suggestions = [experience_suggestion] if experience_suggestion else []
 
     total_reqs = len(request.required_skills) + len(request.preferred_skills)
     before_matched = len(required_matched) + len(preferred_matched)
@@ -316,17 +274,85 @@ _MODE_POLICY = {
         "candidate already has to that missing skill. Do not suggest any skill without transfer support."
     ),
     "MAX_MATCH": (
-        "MAX_MATCH mode: you MUST suggest adding EVERY missing required and preferred skill to the "
-        "skills section (not a curated subset) so keyword coverage approaches 100%. For each added "
-        "skill, also weave it into whichever existing bullet is most relevant, using honest framing: "
-        "skills backed by transferable_matches are directly transferable (LOW risk_level); skills with "
-        "no evidence must be framed as an honest growth claim (e.g. 'currently building hands-on "
-        "proficiency in X', 'applying foundational knowledge of X to...') and marked HIGH risk_level - "
-        "never claim production ownership, certification, or completed outcomes for them. Rewrite as "
-        "many bullets as needed (not capped at three) so the tailored resume visibly touches at least "
-        "4-5 distinct elements (summary + several bullets + skills), not a token change."
+        "MAX_MATCH mode: suggest adding EVERY missing required and preferred skill to the skills "
+        "section so keyword coverage approaches 100%, but NEVER insert an unsupported skill into "
+        "Professional Experience or the professional summary. Missing skills without direct master-"
+        "resume evidence stay as skill suggestions only and must be marked as requiring user "
+        "verification before approval. Professional Experience must remain evidence-only."
     ),
 }
+
+
+_LEARNING_PHRASES = (
+    "building hands-on proficiency",
+    "building proficiency",
+    "currently learning",
+    "learning ",
+    "growth area",
+    "directly transferable to",
+    "directly applicable to this",
+)
+
+
+def _skills_in_text(text: str) -> set[str]:
+    lowered = text.lower()
+    found: set[str] = set()
+    for skill in canonical_skills():
+        pattern = r"(?<![\\w+#.-])" + re.escape(skill.lower()) + r"(?![\\w+#-])"
+        if re.search(pattern, lowered):
+            found.add(_skill_key(skill))
+    return found
+
+
+def _experience_evidence_for_bullet(
+    request: TailoringRequest, original_text: str
+) -> set[str] | None:
+    for exp in request.experiences:
+        if original_text not in exp.bullets:
+            continue
+        evidence = _lower_set(exp.detected_skills)
+        evidence.update(_skills_in_text(original_text))
+        return evidence
+    return None
+
+
+def _sanitize_ai_tailoring(
+    request: TailoringRequest, result: TailoringResponse
+) -> TailoringResponse:
+    """Reject AI rewrites that turn missing keywords into fake job experience."""
+    verified_master = _lower_set(request.master_skills)
+    verified_master.update(
+        _skill_key(skill)
+        for exp in request.experiences
+        for skill in exp.detected_skills
+    )
+
+    summary = result.summary_suggestion
+    if summary:
+        introduced = _skills_in_text(summary.suggested_text) - verified_master
+        if introduced:
+            summary = None
+
+    grounded_experience: list[TailoringSuggestion] = []
+    for suggestion in result.experience_suggestions:
+        if not suggestion.original_text:
+            continue
+        evidence = _experience_evidence_for_bullet(request, suggestion.original_text)
+        if evidence is None:
+            continue
+
+        lowered = suggestion.suggested_text.lower()
+        if any(phrase in lowered for phrase in _LEARNING_PHRASES):
+            continue
+
+        introduced = _skills_in_text(suggestion.suggested_text) - evidence
+        if introduced:
+            continue
+        grounded_experience.append(suggestion)
+
+    result.summary_suggestion = summary
+    result.experience_suggestions = grounded_experience
+    return result
 
 
 def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
@@ -351,16 +377,15 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "one exists) to foreground the candidate's most relevant verified skills and experience for "
         "this role - section='summary' and original_text must be the exact existing summary. In STRICT "
         "or GROWTH mode, suggest up to three high-value experience bullet rewrites; in MAX_MATCH mode, "
-        "rewrite as many bullets as needed to honestly incorporate every added or matched skill. Each "
-        "rewrite must be grounded in an exact existing bullet, and connect it to the most relevant job "
-        "responsibility or requirement. For a missing skill, create section='skills', original_text="
-        "null, and list it in skills_added only when the mode allows it. A skill backed by "
-        "transferable_matches may receive an honest experience rewrite. In STRICT or GROWTH mode, a "
-        "skill with no transfer evidence must NEVER be inserted into an experience bullet - list it "
-        "only as an AI_SUGGESTED skill. In MAX_MATCH mode, a skill with no transfer evidence MAY be "
-        "woven into an existing bullet, but only as an honest, clearly-framed growth/learning claim, "
-        "never as a claim of production usage, ownership, or completed outcomes. Do not claim hands-on "
-        "ownership, proficiency, certification, or results for unsupported skills. Always populate "
+        "you may rewrite more existing bullets, but every Professional Experience rewrite must remain "
+        "strictly evidence-based. Each rewrite must be grounded in an exact existing bullet and may "
+        "mention only technologies already present in that experience's detected_skills or original "
+        "bullet. For a missing skill, create section='skills', original_text=null, and list it in "
+        "skills_added only when the mode allows it. Transferability is useful for explaining why a "
+        "skill may be learnable, but it is NOT evidence that the candidate used the target skill in a "
+        "job. Never put phrases such as 'building proficiency', 'learning', 'growth area', 'directly "
+        "transferable to', or 'directly applicable to this role' inside Professional Experience. "
+        "Never invent a new professional-experience bullet merely to place a missing keyword. Always populate "
         "requirements_addressed with the exact requirements or responsibilities addressed, and explain "
         "the value of every suggestion in reason. Set source='MASTER_RESUME' for evidence-only rewrites "
         "and source='AI_SUGGESTED' for additions. Compute keyword_coverage_before/after as the "
@@ -373,9 +398,10 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "a one-page resume when the source resume was already compact."
     )
     user = request.model_dump_json(indent=2)
-    return structured_completion(
+    result = structured_completion(
         system,
         user,
         TailoringResponse,
         model_env_var="OPENAI_TAILORING_MODEL",
     )
+    return _sanitize_ai_tailoring(request, result)

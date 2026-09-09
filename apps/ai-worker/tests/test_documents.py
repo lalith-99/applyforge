@@ -3,7 +3,15 @@
 import fitz
 from fastapi.testclient import TestClient
 
-from app.documents.generator import _sanitize_for_pdf, _skill_category, render_docx, render_pdf
+from app.documents.generator import (
+    _COMPACT,
+    _render_pdf_document,
+    _sanitize_for_pdf,
+    _sanitize_profile_for_pdf,
+    _skill_category,
+    render_docx,
+    render_pdf,
+)
 from app.main import app
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
@@ -208,6 +216,31 @@ def test_render_pdf_realistic_resume_stays_one_page() -> None:
     data = render_pdf(_realistic_one_page_profile())
     with fitz.open(stream=data, filetype="pdf") as doc:
         assert doc.page_count == 1
+
+
+def test_render_pdf_uses_more_page_height_than_compact_baseline_when_room_exists() -> None:
+    profile = _realistic_one_page_profile()
+    final_data = render_pdf(profile)
+    compact_pdf = _render_pdf_document(_sanitize_profile_for_pdf(profile), _COMPACT)
+    compact_data = bytes(compact_pdf.output())
+
+    with fitz.open(stream=compact_data, filetype="pdf") as compact_doc:
+        compact_blocks = compact_doc[0].get_text("blocks")
+        compact_bottom = max(block[3] for block in compact_blocks if block[4].strip())
+
+    with fitz.open(stream=final_data, filetype="pdf") as final_doc:
+        final_blocks = final_doc[0].get_text("blocks")
+        final_bottom = max(block[3] for block in final_blocks if block[4].strip())
+
+    assert final_bottom > compact_bottom + 20
+
+
+def test_render_pdf_does_not_split_multiword_skill_name() -> None:
+    data = render_pdf(_realistic_one_page_profile())
+    with fitz.open(stream=data, filetype="pdf") as doc:
+        text = doc[0].get_text().replace("\xa0", " ")
+        assert "Asynchronous Processing" in text
+        assert "Asynchronous\nProcessing" not in text
 
 
 def test_render_docx_produces_valid_zip_bytes() -> None:
