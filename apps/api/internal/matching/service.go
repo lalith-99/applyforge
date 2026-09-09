@@ -346,10 +346,20 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		if !result.Eligibility.Eligible {
 			continue
 		}
+		if !recommendationSeniorityEligible(job.Title, candidateProfile) {
+			continue
+		}
 		ranked = append(ranked, RankedJob{Job: job, Result: result})
 	}
 
-	sort.Slice(ranked, func(i, j int) bool { return ranked[i].Result.TotalScore > ranked[j].Result.TotalScore })
+	sort.SliceStable(ranked, func(i, j int) bool {
+		left := recommendationPreAIRank(ranked[i], candidateProfile)
+		right := recommendationPreAIRank(ranked[j], candidateProfile)
+		if left == right {
+			return ranked[i].Result.TotalScore > ranked[j].Result.TotalScore
+		}
+		return left > right
+	})
 	if len(ranked) > limit {
 		ranked = ranked[:limit]
 	}
@@ -398,4 +408,150 @@ func recommendationLexicalTerms(candidate candidateprofile.Profile) []string {
 		}
 	}
 	return terms
+}
+
+
+var recommendationGenericRoleTokens = map[string]bool{
+	"software": true, "engineer": true, "engineering": true, "developer": true,
+	"development": true, "senior": true, "sr": true, "mid": true, "level": true,
+	"ii": true, "iii": true, "iv": true, "lead": true, "staff": true, "principal": true,
+}
+
+func recommendationPreAIRank(r RankedJob, candidate candidateprofile.Profile) float64 {
+	roleScore := recommendationTargetRoleScore(r.Job.Title, candidate.TargetRoles)
+	// Technical evidence stays the majority signal, but target-role direction
+	// is strong enough to stop generic high-overlap infrastructure roles from
+	// crowding Java/backend/full-stack targets out before the AI stage.
+	return 0.70*float64(r.Result.TotalScore) + 0.30*roleScore
+}
+
+func recommendationTargetRoleScore(title string, targetRoles []string) float64 {
+	if len(targetRoles) == 0 {
+		return 70
+	}
+	titleTokens := recommendationRoleTokenSet(title)
+	best := 35.0
+	for _, target := range targetRoles {
+		targetTokens := recommendationRoleTokenSet(target)
+		if len(targetTokens) == 0 {
+			// A generic target such as "Software Engineer" should be neutral
+			// rather than penalizing every specialization.
+			if strings.Contains(strings.ToLower(title), "software") ||
+				strings.Contains(strings.ToLower(title), "developer") ||
+				strings.Contains(strings.ToLower(title), "engineer") {
+				if best < 70 {
+					best = 70
+				}
+			}
+			continue
+		}
+		matched := 0
+		for token := range targetTokens {
+			if titleTokens[token] {
+				matched++
+			}
+		}
+		if matched == 0 {
+			continue
+		}
+		coverage := float64(matched) / float64(len(targetTokens))
+		score := 60 + 40*coverage
+		if score > best {
+			best = score
+		}
+	}
+	return best
+}
+
+func recommendationRoleTokenSet(value string) map[string]bool {
+	value = strings.ToLower(value)
+	value = strings.NewReplacer("-", " ", "/", " ", "_", " ", ".", " ").Replace(value)
+	out := map[string]bool{}
+	for _, token := range strings.Fields(value) {
+		if recommendationGenericRoleTokens[token] {
+			continue
+		}
+		switch token {
+		case "golang":
+			token = "go"
+		case "fullstack":
+			token = "full"
+			out["stack"] = true
+		case "microservices":
+			token = "microservice"
+		}
+		if len(token) >= 2 {
+			out[token] = true
+		}
+	}
+	return out
+}
+
+func recommendationSeniorityEligible(title string, candidate candidateprofile.Profile) bool {
+	jobRank, jobKnown := recommendationSeniorityRank(title)
+	if !jobKnown {
+		return true
+	}
+
+	candidateRank, candidateKnown := 0, false
+	if candidate.Seniority != nil {
+		candidateRank, candidateKnown = recommendationSeniorityRank(*candidate.Seniority)
+	}
+	if !candidateKnown && candidate.YearsExperience != nil {
+		switch {
+		case *candidate.YearsExperience >= 5:
+			candidateRank, candidateKnown = 3, true // senior
+		case *candidate.YearsExperience >= 2:
+			candidateRank, candidateKnown = 2, true // mid
+		default:
+			candidateRank, candidateKnown = 1, true
+		}
+	}
+	if !candidateKnown {
+		// We can still reject Staff/Principal unless the target itself asks for
+		// that level; unknown candidate seniority is not evidence for elite IC levels.
+		if jobRank >= 4 && !candidateTargetsSeniority(candidate.TargetRoles, jobRank) {
+			return false
+		}
+		return true
+	}
+
+	if jobRank > candidateRank && !candidateTargetsSeniority(candidate.TargetRoles, jobRank) {
+		return false
+	}
+	// A senior+ candidate should not get junior/entry recommendations simply
+	// because the technologies happen to overlap.
+	if candidateRank >= 3 && jobRank <= 1 {
+		return false
+	}
+	return true
+}
+
+func candidateTargetsSeniority(targetRoles []string, minimumRank int) bool {
+	for _, target := range targetRoles {
+		if rank, ok := recommendationSeniorityRank(target); ok && rank >= minimumRank {
+			return true
+		}
+	}
+	return false
+}
+
+func recommendationSeniorityRank(value string) (int, bool) {
+	lower := strings.ToLower(value)
+	switch {
+	case strings.Contains(lower, "principal"), strings.Contains(lower, "distinguished"):
+		return 5, true
+	case strings.Contains(lower, "staff"), strings.Contains(lower, "lead"):
+		return 4, true
+	case strings.Contains(lower, "senior"), strings.Contains(lower, "sr. "), strings.HasPrefix(lower, "sr "):
+		return 3, true
+	case strings.Contains(lower, "mid"), strings.Contains(lower, "level 2"), strings.Contains(lower, "level ii"):
+		return 2, true
+	case strings.Contains(lower, "junior"), strings.Contains(lower, "entry"), strings.Contains(lower, "jr. "), strings.HasPrefix(lower, "jr "):
+		return 1, true
+	case strings.Contains(lower, "intern"):
+		return 0, true
+	default:
+		return 0, false
+	}
 }
