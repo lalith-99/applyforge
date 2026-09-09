@@ -41,25 +41,115 @@ func NewService(repo *Repository, resumes *resume.Repository, candidateSkillsRep
 	}
 }
 
-// Generate builds and stores a new profile version for userID from their
-// most recently parsed resume plus current preferences/profile data. Safe
-// to call repeatedly (e.g. after every resume re-parse or preferences
-// change) - content_hash-based skipping isn't done here since generation is
-// already only triggered on genuine upstream changes (see callers), unlike
-// the JD-parsing cache which is queried far more often than its inputs change.
+// Generate builds and stores a new profile version for userID from the latest
+// parsed resume plus current onboarding/profile/preferences data.
 func (s *Service) Generate(ctx context.Context, userID uuid.UUID) (Profile, error) {
-	resumes, err := s.resumes.ListForUser(ctx, userID)
+	req, sourceHash, err := s.currentSource(ctx, userID)
 	if err != nil {
-		return Profile{}, fmt.Errorf("list resumes: %w", err)
+		return Profile{}, err
 	}
 
-	// candidate_skills is the normalized/deduped source of truth for "what
-	// the candidate knows" (it's what the resume parser itself populates,
-	// then a user can edit/approve) - preferred over reading raw
-	// ResumeProfile.Skills again, which is a coarser earlier-stage view.
+	synthesized, err := s.aiClient.BuildCandidateProfile(ctx, req)
+	if err != nil {
+		return Profile{}, fmt.Errorf("synthesize candidate profile: %w", err)
+	}
+
+	// Explicit user/profile data wins over an empty synthesis field. This is
+	// especially important for ranking direction: a transient AI fallback must
+	// never erase target roles, seniority, years, or resume skills that are
+	// already present in ApplyForge's source-of-truth records.
+	if len(synthesized.TargetRoles) == 0 && len(req.TargetRoles) > 0 {
+		synthesized.TargetRoles = append([]string{}, req.TargetRoles...)
+	}
+	if synthesized.Seniority == nil || strings.TrimSpace(*synthesized.Seniority) == "" {
+		synthesized.Seniority = req.Seniority
+	}
+	if (synthesized.YearsExperience == nil || *synthesized.YearsExperience <= 0) &&
+		req.YearsExperience != nil && *req.YearsExperience > 0 {
+		years := *req.YearsExperience
+		synthesized.YearsExperience = &years
+	}
+	if len(synthesized.CoreSkills) == 0 && len(req.MasterSkills) > 0 {
+		synthesized.CoreSkills = append([]string{}, req.MasterSkills...)
+	}
+	if strings.TrimSpace(synthesized.Summary) == "" && req.MasterSummary != nil {
+		synthesized.Summary = *req.MasterSummary
+	}
+
+	transferable := make([]TransferableSkill, 0, len(synthesized.TransferableSkills))
+	for _, t := range synthesized.TransferableSkills {
+		transferable = append(transferable, TransferableSkill{
+			Skill: t.Skill, Evidence: t.Evidence, Strength: t.Strength,
+		})
+	}
+
+	p := Profile{
+		TargetRoles:           synthesized.TargetRoles,
+		Seniority:             synthesized.Seniority,
+		YearsExperience:       intPtrToInt32Ptr(synthesized.YearsExperience),
+		CoreSkills:            synthesized.CoreSkills,
+		SecondarySkills:       synthesized.SecondarySkills,
+		TransferableSkills:    transferable,
+		Domains:               synthesized.Domains,
+		ArchitectureStrengths: synthesized.ArchitectureStrengths,
+		LeadershipSignals:     synthesized.LeadershipSignals,
+		ExperienceEvidence:    synthesized.ExperienceEvidence,
+		Summary:               synthesized.Summary,
+		SourceContentHash:     sourceHash,
+	}
+
+	return s.repo.Create(ctx, userID, p)
+}
+
+// NeedsRebuild compares the latest materialized candidate profile with the
+// current resume/onboarding/preferences source data. It repairs older profiles
+// that were generated before onboarding was completed without rebuilding a
+// healthy profile on every API restart.
+func (s *Service) NeedsRebuild(ctx context.Context, userID uuid.UUID) (bool, error) {
+	req, sourceHash, err := s.currentSource(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	latest, err := s.repo.GetLatest(ctx, userID)
+	if err != nil {
+		if err == ErrNotFound {
+			return true, nil
+		}
+		return false, err
+	}
+
+	if latest.SourceContentHash != sourceHash {
+		return true, nil
+	}
+	if len(latest.TargetRoles) == 0 && len(req.TargetRoles) > 0 {
+		return true, nil
+	}
+	if (latest.Seniority == nil || strings.TrimSpace(*latest.Seniority) == "") &&
+		req.Seniority != nil && strings.TrimSpace(*req.Seniority) != "" {
+		return true, nil
+	}
+	if (latest.YearsExperience == nil || *latest.YearsExperience <= 0) &&
+		req.YearsExperience != nil && *req.YearsExperience > 0 {
+		return true, nil
+	}
+	if len(latest.CoreSkills) == 0 && len(req.MasterSkills) > 0 {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (s *Service) currentSource(ctx context.Context, userID uuid.UUID) (aiclient.CandidateProfileRequest, string, error) {
+	resumes, err := s.resumes.ListForUser(ctx, userID)
+	if err != nil {
+		return aiclient.CandidateProfileRequest{}, "", fmt.Errorf("list resumes: %w", err)
+	}
+
+	// candidate_skills is the normalized/deduped source of truth for what the
+	// candidate currently knows.
 	skillRows, err := s.candidateSkills.ListForUser(ctx, userID)
 	if err != nil {
-		return Profile{}, fmt.Errorf("list candidate skills: %w", err)
+		return aiclient.CandidateProfileRequest{}, "", fmt.Errorf("list candidate skills: %w", err)
 	}
 	masterSkills := make([]string, 0, len(skillRows))
 	for _, sk := range skillRows {
@@ -85,21 +175,26 @@ func (s *Service) Generate(ctx context.Context, userID uuid.UUID) (Profile, erro
 				Technologies: append(append([]string{}, e.DetectedSkills...), e.Technologies...),
 			})
 		}
-		break // ListForUser is newest-first; only the latest resume feeds the profile
+		break
 	}
 
 	prefs, err := s.preferencesRepo.Get(ctx, userID)
 	if err != nil && err != preferences.ErrNotFound {
-		return Profile{}, fmt.Errorf("load preferences: %w", err)
+		return aiclient.CandidateProfileRequest{}, "", fmt.Errorf("load preferences: %w", err)
 	}
 
 	prof, err := s.profileRepo.Get(ctx, userID)
 	if err != nil && err != profile.ErrNotFound {
-		return Profile{}, fmt.Errorf("load profile: %w", err)
+		return aiclient.CandidateProfileRequest{}, "", fmt.Errorf("load profile: %w", err)
 	}
 
+	targetRoles := dedupeNonEmpty(append(
+		append([]string{}, prof.PrimaryTargetTitles...),
+		prof.AlternativeTargetTitles...,
+	))
+
 	req := aiclient.CandidateProfileRequest{
-		TargetRoles:           emptyIfNil(prof.PrimaryTargetTitles),
+		TargetRoles:           targetRoles,
 		Seniority:             prof.Seniority,
 		YearsExperience:       int32PtrToIntPtr(prof.YearsExperience),
 		MasterSkills:          emptyIfNil(masterSkills),
@@ -110,37 +205,11 @@ func (s *Service) Generate(ctx context.Context, userID uuid.UUID) (Profile, erro
 		WorkAuthorization:     prefs.WorkAuthorization,
 		ImmigrationStatus:     prefs.ImmigrationStatus,
 	}
-
-	synthesized, err := s.aiClient.BuildCandidateProfile(ctx, req)
-	if err != nil {
-		return Profile{}, fmt.Errorf("synthesize candidate profile: %w", err)
-	}
-
-	transferable := make([]TransferableSkill, 0, len(synthesized.TransferableSkills))
-	for _, t := range synthesized.TransferableSkills {
-		transferable = append(transferable, TransferableSkill{Skill: t.Skill, Evidence: t.Evidence, Strength: t.Strength})
-	}
-
-	p := Profile{
-		TargetRoles:           synthesized.TargetRoles,
-		Seniority:             synthesized.Seniority,
-		YearsExperience:       intPtrToInt32Ptr(synthesized.YearsExperience),
-		CoreSkills:            synthesized.CoreSkills,
-		SecondarySkills:       synthesized.SecondarySkills,
-		TransferableSkills:    transferable,
-		Domains:               synthesized.Domains,
-		ArchitectureStrengths: synthesized.ArchitectureStrengths,
-		LeadershipSignals:     synthesized.LeadershipSignals,
-		ExperienceEvidence:    synthesized.ExperienceEvidence,
-		Summary:               synthesized.Summary,
-		SourceContentHash:     contentHash(masterSkills, masterSummary, prof, prefs),
-	}
-
-	return s.repo.Create(ctx, userID, p)
+	return req, candidateSourceHash(req), nil
 }
 
 // EmbeddingText builds a normalized text representation of a profile for
-// semantic embedding (Phase G's candidate-side retrieval input).
+// semantic embedding.
 func EmbeddingText(p Profile) string {
 	var b strings.Builder
 	if p.Seniority != nil {
@@ -158,14 +227,47 @@ func EmbeddingText(p Profile) string {
 	return b.String()
 }
 
-func contentHash(masterSkills []string, masterSummary *string, prof profile.Profile, prefs preferences.Preferences) string {
+func candidateSourceHash(req aiclient.CandidateProfileRequest) string {
 	h := sha256.New()
-	h.Write([]byte(strings.Join(masterSkills, "|")))
-	h.Write([]byte(derefOr(masterSummary, "")))
-	h.Write([]byte(strings.Join(prof.PrimaryTargetTitles, "|")))
-	h.Write([]byte(derefOr(prof.Seniority, "")))
-	h.Write([]byte(derefOr(prefs.WorkAuthorization, "")))
+	write := func(value string) {
+		h.Write([]byte(value))
+		h.Write([]byte{0})
+	}
+	write(strings.Join(req.TargetRoles, "|"))
+	write(derefOr(req.Seniority, ""))
+	if req.YearsExperience != nil {
+		write(fmt.Sprintf("%d", *req.YearsExperience))
+	} else {
+		write("")
+	}
+	write(strings.Join(req.MasterSkills, "|"))
+	write(derefOr(req.MasterSummary, ""))
+	write(strings.Join(req.PreferredIndustries, "|"))
+	write(strings.Join(req.PreferredTechnologies, "|"))
+	write(derefOr(req.WorkAuthorization, ""))
+	write(derefOr(req.ImmigrationStatus, ""))
+	for _, exp := range req.Experiences {
+		write(exp.Company)
+		write(exp.Title)
+		write(strings.Join(exp.Bullets, "|"))
+		write(strings.Join(exp.Technologies, "|"))
+	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func dedupeNonEmpty(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func derefOr(s *string, fallback string) string {
