@@ -8,10 +8,18 @@ from docx import Document
 from app.resume.extraction import UnsupportedResumeType, extract_text
 
 
-def _build_pdf_bytes(text: str) -> bytes:
+def _build_pdf_bytes(text: str, linkedin_url: str | None = None) -> bytes:
     doc = fitz.open()
     page = doc.new_page()
     page.insert_text((72, 72), text)
+    if linkedin_url:
+        page.insert_link(
+            {
+                "kind": fitz.LINK_URI,
+                "from": fitz.Rect(72, 80, 150, 95),
+                "uri": linkedin_url,
+            }
+        )
     return doc.tobytes()
 
 
@@ -46,3 +54,10 @@ def test_extract_unsupported_mime_type_raises() -> None:
         raise AssertionError("expected UnsupportedResumeType")
     except UnsupportedResumeType:
         pass
+
+
+def test_extract_pdf_preserves_linkedin_annotation_target() -> None:
+    url = "https://www.linkedin.com/in/jordan-rivera/"
+    pdf_bytes = _build_pdf_bytes("Jordan Rivera\nLinkedIn", linkedin_url=url)
+    text = extract_text(pdf_bytes, "application/pdf")
+    assert f"LinkedIn URL: {url}" in text
