@@ -26,13 +26,22 @@ type SyncSourcePayload struct {
 // the source's current config (so enable/disable/token edits take effect
 // without redeploying) and runs one ingestion poll against it.
 type SyncSourceWorker struct {
-	repo      *Repository
-	ingestion *IngestionService
+	repo             *Repository
+	ingestion        *IngestionService
+	onCatalogChanged func(context.Context)
 }
 
 // NewSyncSourceWorker builds a SyncSourceWorker.
 func NewSyncSourceWorker(repo *Repository, ingestion *IngestionService) *SyncSourceWorker {
 	return &SyncSourceWorker{repo: repo, ingestion: ingestion}
+}
+
+// SetOnCatalogChanged registers a best-effort callback invoked when a source
+// poll materially changes the catalog. Callers should debounce expensive work
+// because many sources may finish close together.
+func (w *SyncSourceWorker) SetOnCatalogChanged(fn func(context.Context)) *SyncSourceWorker {
+	w.onCatalogChanged = fn
+	return w
 }
 
 // Handle implements background.Handler for JobTypeSyncSource.
@@ -71,6 +80,9 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 
 	slog.Info("job source ingestion completed", "source", sourceName, "board_token", cfg.BoardToken,
 		"fetched", result.Fetched, "inserted", result.Inserted, "updated", result.Updated, "deduped", result.Deduped, "closed", result.Closed)
+	if w.onCatalogChanged != nil && (result.Inserted > 0 || result.Closed > 0) {
+		w.onCatalogChanged(ctx)
+	}
 	return nil
 }
 
