@@ -42,9 +42,13 @@ func TestRepository_UpsertAndGet(t *testing.T) {
 	}
 
 	firstName := "Ada"
+	lastName := "Lovelace"
+	seniority := "Senior"
 	years := int32(6)
 	in := UpsertInput{
 		FirstName:               &firstName,
+		LastName:                &lastName,
+		Seniority:              &seniority,
 		PrimaryTargetTitles:     []string{"Backend Engineer", "Software Engineer"},
 		AlternativeTargetTitles: []string{"Platform Engineer"},
 		YearsExperience:         &years,
@@ -80,5 +84,30 @@ func TestRepository_UpsertAndGet(t *testing.T) {
 	}
 	if fetched.FirstName == nil || *fetched.FirstName != firstName {
 		t.Fatalf("expected persisted first name %q, got %v", firstName, fetched.FirstName)
+	}
+}
+
+
+func TestRepository_CannotCompleteOnboardingWithoutRankingFields(t *testing.T) {
+	q := testdb.OpenTx(t)
+	userRepo := users.NewRepositoryFromQueries(q)
+	repo := newRepository(q)
+	ctx := context.Background()
+
+	email := fmt.Sprintf("profile-invalid-%s@example.com", uuid.NewString())
+	user, err := userRepo.CreateWithPassword(ctx, email, "hash")
+	if err != nil {
+		t.Fatalf("create fixture user: %v", err)
+	}
+
+	firstName := "Ada"
+	lastName := "Lovelace"
+	_, err = repo.Upsert(ctx, user.ID, UpsertInput{
+		FirstName:              &firstName,
+		LastName:               &lastName,
+		MarkOnboardingComplete: true,
+	})
+	if err != ErrIncompleteOnboarding {
+		t.Fatalf("expected ErrIncompleteOnboarding, got %v", err)
 	}
 }
