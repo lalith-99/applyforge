@@ -62,6 +62,45 @@ func (queue *Queue) Enqueue(ctx context.Context, jobType string, payload any, ma
 	return err
 }
 
+// EnqueueDebounced schedules a job unless an equivalent one is already
+// pending/running or was enqueued within minInterval. This is useful for
+// fan-in events such as dozens of source polls all changing the same user's
+// recommendation catalog.
+func (queue *Queue) EnqueueDebounced(
+	ctx context.Context,
+	jobType string,
+	payload any,
+	maxAttempts int32,
+	minInterval time.Duration,
+) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	row, findErr := queue.q.FindJobByTypeAndPayload(ctx, db.FindJobByTypeAndPayloadParams{
+		JobType:      jobType,
+		MatchPayload: body,
+	})
+	if findErr == nil {
+		if row.Status == "PENDING" || row.Status == "RUNNING" {
+			return nil
+		}
+		if minInterval > 0 && row.CreatedAt.Valid && time.Since(row.CreatedAt.Time) < minInterval {
+			return nil
+		}
+	} else if !errors.Is(findErr, pgx.ErrNoRows) {
+		return findErr
+	}
+
+	_, err = queue.q.EnqueueJob(ctx, db.EnqueueJobParams{
+		JobType:     jobType,
+		Payload:     body,
+		MaxAttempts: maxAttempts,
+	})
+	return err
+}
+
 // FindByTypeAndPayload returns the most recent job of jobType whose payload
 // contains matchPayload (JSONB containment), regardless of status. Intended
 // for tests asserting a specific enqueue happened, without racing other
