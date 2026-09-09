@@ -3,7 +3,7 @@
 import fitz
 from fastapi.testclient import TestClient
 
-from app.documents.generator import _sanitize_for_pdf, render_docx, render_pdf
+from app.documents.generator import _sanitize_for_pdf, _skill_category, render_docx, render_pdf
 from app.main import app
 from app.resume.models import ContactInfo, ExperienceEntry, ResumeProfile
 
@@ -251,3 +251,13 @@ def test_documents_docx_endpoint() -> None:
     assert response.status_code == 200
     assert "wordprocessingml" in response.headers["content-type"]
     assert response.content[:2] == b"PK"
+
+
+def test_skill_categories_keep_optimization_and_devops_tools_out_of_other() -> None:
+    assert _skill_category("SQL") == "Languages"
+    assert _skill_category("SQL Optimization") == "Databases & Messaging"
+    assert _skill_category("Java 21") == "Languages"
+    assert _skill_category("Linux") == "Cloud & DevOps"
+    assert _skill_category("GCE") == "Cloud & DevOps"
+    assert _skill_category("Ansible") == "Cloud & DevOps"
+    assert _skill_category("GitLab CI") == "Cloud & DevOps"
