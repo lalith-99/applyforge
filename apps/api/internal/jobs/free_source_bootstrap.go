@@ -61,9 +61,11 @@ type FreeSourceBootstrapConfig struct {
 	RefreshAfter time.Duration
 }
 
-// FreeSourceBootstrapResult summarizes one best-effort HOT-company pass.
+// FreeSourceBootstrapResult summarizes one best-effort HOT+WARM sponsor pass.
 type FreeSourceBootstrapResult struct {
+	PriorityCompanies  int
 	HotCompanies       int
+	WarmCompanies      int
 	DirectoryEntries   int
 	MatchedCompanies   int
 	ResolvedCompanies  int
@@ -77,6 +79,7 @@ type freeSourceCompany struct {
 	ID                     uuid.UUID
 	Name                   string
 	EmployerNormalizedName string
+	Tier                   string
 }
 
 type freeSourceEntry struct {
@@ -141,15 +144,15 @@ var workdayReviewOnlyTokens = []string{
 	"university", "early_career", "early-career",
 }
 
-// BootstrapFreeHotCompanySources uses the public MIT-licensed ats-scrapers
-// company inventories as a discovery accelerator for HOT H-1B sponsors.
+// BootstrapFreePriorityCompanySources uses the public MIT-licensed ats-scrapers
+// company inventories as a discovery accelerator for HOT and WARM H-1B sponsors.
 //
 // The directory is not treated as authoritative identity evidence: only exact
 // normalized company-name matches are accepted automatically. Supported ATS
 // types can become job_sources, while unsupported portals are retained in
 // company_source_registry for future connectors. The operation is best-effort
 // and should never gate API startup.
-func (r *Repository) BootstrapFreeHotCompanySources(ctx context.Context, cfg FreeSourceBootstrapConfig) (FreeSourceBootstrapResult, error) {
+func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cfg FreeSourceBootstrapConfig) (FreeSourceBootstrapResult, error) {
 	if r.pool == nil {
 		return FreeSourceBootstrapResult{}, errors.New("free source bootstrap requires a repository backed by a database pool")
 	}
@@ -163,11 +166,19 @@ func (r *Repository) BootstrapFreeHotCompanySources(ctx context.Context, cfg Fre
 		cfg.RefreshAfter = defaultFreeSourceRefreshAfter
 	}
 
-	companies, err := r.hotCompaniesDueForFreeSourceBootstrap(ctx, cfg.RefreshAfter)
+	companies, err := r.priorityCompaniesDueForFreeSourceBootstrap(ctx, cfg.RefreshAfter)
 	if err != nil {
 		return FreeSourceBootstrapResult{}, err
 	}
-	result := FreeSourceBootstrapResult{HotCompanies: len(companies)}
+	result := FreeSourceBootstrapResult{PriorityCompanies: len(companies)}
+	for _, company := range companies {
+		switch company.Tier {
+		case "HOT":
+			result.HotCompanies++
+		case "WARM":
+			result.WarmCompanies++
+		}
+	}
 	if len(companies) == 0 {
 		return result, nil
 	}
@@ -253,7 +264,7 @@ func (r *Repository) BootstrapFreeHotCompanySources(ctx context.Context, cfg Fre
 		result.RegistryCandidates += len(discoveries)
 
 		if err := r.RecordDiscoveredCompanySources(ctx, company.ID, discoveries); err != nil {
-			slog.Warn("free HOT source candidate could not be recorded",
+			slog.Warn("free sponsor source candidate could not be recorded",
 				"company", company.Name,
 				"company_id", company.ID,
 				"error", err,
@@ -270,18 +281,20 @@ func (r *Repository) BootstrapFreeHotCompanySources(ctx context.Context, cfg Fre
 	return result, nil
 }
 
-func (r *Repository) hotCompaniesDueForFreeSourceBootstrap(ctx context.Context, refreshAfter time.Duration) ([]freeSourceCompany, error) {
+func (r *Repository) priorityCompaniesDueForFreeSourceBootstrap(ctx context.Context, refreshAfter time.Duration) ([]freeSourceCompany, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT c.id, c.name, w.employer_normalized_name
+		SELECT c.id, c.name, w.employer_normalized_name, w.tier
 		FROM company_sponsor_watchlist w
 		JOIN companies c ON c.id = w.company_id
-		WHERE w.tier = 'HOT'
+		WHERE w.tier IN ('HOT', 'WARM')
 		  AND (
 		      w.last_source_discovery_at IS NULL
 		      OR w.source_discovery_status IN ('PENDING', 'PARTIAL', 'FAILED')
 		      OR w.last_source_discovery_at < now() - ($1::bigint * interval '1 second')
 		  )
-		ORDER BY w.watchlist_rank
+		ORDER BY
+			CASE w.tier WHEN 'HOT' THEN 0 ELSE 1 END,
+			w.watchlist_rank
 	`, int64(refreshAfter.Seconds()))
 	if err != nil {
 		return nil, err
@@ -291,7 +304,7 @@ func (r *Repository) hotCompaniesDueForFreeSourceBootstrap(ctx context.Context, 
 	var companies []freeSourceCompany
 	for rows.Next() {
 		var item freeSourceCompany
-		if err := rows.Scan(&item.ID, &item.Name, &item.EmployerNormalizedName); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.EmployerNormalizedName, &item.Tier); err != nil {
 			return nil, err
 		}
 		companies = append(companies, item)
