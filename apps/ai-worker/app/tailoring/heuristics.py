@@ -301,7 +301,7 @@ def _skills_in_text(text: str) -> set[str]:
     lowered = text.lower()
     found: set[str] = set()
     for skill in canonical_skills():
-        pattern = r"(?<![\\w+#.-])" + re.escape(skill.lower()) + r"(?![\\w+#-])"
+        pattern = r"(?<![\w+#.-])" + re.escape(skill.lower()) + r"(?![\w+#-])"
         if re.search(pattern, lowered):
             found.add(_skill_key(skill))
     return found
@@ -445,6 +445,13 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "will carry the candidate-attestation warning. Do not invent metrics for such drafts. For a "
         "missing skill, also create section='skills', original_text=null, when the mode allows it. "
         "Prefer one coherent technical scenario over appending a keyword to an unrelated sentence. "
+        "When the JD only names a broad platform such as Azure or AWS, do not invent extra named "
+        "sub-services unless the JD or source resume mentions them; use realistic platform-level "
+        "implementation language instead. Keep most bullets around 18-32 words. Example quality bar: "
+        "BAD: '...while building proficiency in Azure.' GOOD AI_SUGGESTED/HIGH draft: 'Deployed "
+        "Spring Boot microservices on Azure using containerized CI/CD workflows, improving deployment "
+        "consistency across application environments.' The GOOD sentence is resume-ready prose, while "
+        "its AI_SUGGESTED/HIGH metadata tells the application to require candidate attestation. "
         "Always populate "
         "requirements_addressed with the exact requirements or responsibilities addressed, and explain "
         "the value of every suggestion in reason. Set source='MASTER_RESUME' for evidence-only rewrites "
