@@ -108,8 +108,8 @@ type Suggestion struct {
 	RiskLevel             string
 	UserStatus            string
 	EditedText            *string
-	EvidenceStatus      string
-	RequiresAttestation bool
+	EvidenceStatus        string
+	RequiresAttestation   bool
 }
 
 func suggestionEvidence(section, source string) (string, bool) {
