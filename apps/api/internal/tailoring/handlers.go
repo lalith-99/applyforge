@@ -219,7 +219,6 @@ func toRunDetail(run Run, suggestions []Suggestion) map[string]any {
 	}
 }
 
-
 func updateNeedsAttestation(suggestion Suggestion, status string, attested bool) bool {
 	if status != StatusApproved && status != StatusEdited {
 		return false
