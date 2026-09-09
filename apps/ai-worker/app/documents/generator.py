@@ -50,6 +50,26 @@ class _PDFStyle:
     role_gap: float
 
 
+_SPACIOUS = _PDFStyle(
+    left_margin=9.0,
+    top_margin=6.0,
+    right_margin=9.0,
+    bottom_margin=6.5,
+    name_size=16.2,
+    headline_size=9.9,
+    contact_size=8.8,
+    section_size=10.4,
+    body_size=9.65,
+    skill_size=8.95,
+    role_size=9.7,
+    meta_size=8.6,
+    line_height=4.55,
+    bullet_indent=3.9,
+    section_gap=1.1,
+    role_gap=0.75,
+)
+
+
 _RELAXED = _PDFStyle(
     left_margin=9.0,
     top_margin=6.0,
@@ -162,6 +182,12 @@ def render_pdf(profile: ResumeProfile) -> bytes:
     # still fits on one page; we never stretch content onto a second page just
     # to consume whitespace.
     remaining = pdf.h - pdf.b_margin - pdf.get_y()
+    if remaining > 30.0:
+        spacious = _render_pdf_document(sanitized, _SPACIOUS)
+        if len(spacious.pages) == 1:
+            pdf = spacious
+            return bytes(pdf.output())
+
     if remaining > 22.0:
         relaxed = _render_pdf_document(sanitized, _RELAXED)
         if len(relaxed.pages) == 1:
