@@ -10,16 +10,19 @@ const csvList = z
       .filter(Boolean),
   );
 
+const requiredCsvList = (message: string) =>
+  csvList.refine((items) => items.length > 0, { message });
+
 export const personalCareerSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
   city: z.string().optional(),
   state: z.string().optional(),
   country: z.string().optional(),
-  primary_target_titles: csvList,
+  primary_target_titles: requiredCsvList("Add at least one target job title"),
   alternative_target_titles: csvList,
-  seniority: z.string().optional(),
-  years_experience: z.coerce.number().int().min(0).max(60).optional(),
+  seniority: z.string().trim().min(1, "Seniority is required"),
+  years_experience: z.coerce.number().int().min(1, "Years of experience must be at least 1").max(60),
   preferred_industries: csvList,
   preferred_technologies: csvList,
   desired_compensation_min: z.coerce.number().int().min(0).optional(),
