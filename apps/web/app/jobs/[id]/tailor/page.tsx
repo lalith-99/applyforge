@@ -471,6 +471,10 @@ function SuggestionCard({
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
               Verified rewrite
             </span>
+          ) : suggestion.EvidenceStatus === "BUILD_BEFORE_USE" ? (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-900">
+              Build before use
+            </span>
           ) : (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
               Candidate verification required
@@ -504,10 +508,15 @@ function SuggestionCard({
 
       {needsAttestation && suggestion.UserStatus === "PENDING" && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-          <p className="font-medium">Candidate attestation required</p>
+          <p className="font-medium">
+            {suggestion.EvidenceStatus === "BUILD_BEFORE_USE"
+              ? "Complete hands-on work before using this skill"
+              : "Candidate attestation required"}
+          </p>
           <p className="mt-1 text-xs">
-            This draft contains experience or skills not verified from the master resume. It can only
-            enter the final resume after you confirm that you have performed substantially equivalent work.
+            {suggestion.EvidenceStatus === "BUILD_BEFORE_USE"
+              ? "This skill is not verified from the master resume. Use Quick Prep or a hands-on project first, then confirm when you can truthfully claim it."
+              : "This professional-experience draft is not verified from the master resume. It can only enter the final resume after you confirm that you performed substantially equivalent work."}
           </p>
           <label className="mt-3 flex items-start gap-2 text-xs">
             <input
@@ -517,8 +526,9 @@ function SuggestionCard({
               className="mt-0.5"
             />
             <span>
-              I confirm I have performed work substantially equivalent to this statement and want to use it
-              in my resume.
+              {suggestion.EvidenceStatus === "BUILD_BEFORE_USE"
+                ? "I confirm I have completed enough hands-on work to truthfully claim this skill in my resume."
+                : "I confirm I have performed work substantially equivalent to this statement and want to use it in my resume."}
             </span>
           </label>
         </div>
