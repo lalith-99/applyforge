@@ -89,6 +89,7 @@ func runFromRow(row db.TailoringRun) Run {
 const (
 	EvidenceVerified                     = "VERIFIED"
 	EvidenceCandidateAttestationRequired = "CANDIDATE_ATTESTATION_REQUIRED"
+	EvidenceBuildBeforeUse                = "BUILD_BEFORE_USE"
 )
 
 // Suggestion is a single proposed resume change.
@@ -112,10 +113,13 @@ type Suggestion struct {
 }
 
 func suggestionEvidence(section, source string) (string, bool) {
-	if source == "AI_SUGGESTED" {
-		return EvidenceCandidateAttestationRequired, true
+	if source != "AI_SUGGESTED" {
+		return EvidenceVerified, false
 	}
-	return EvidenceVerified, false
+	if section == "skills" {
+		return EvidenceBuildBeforeUse, true
+	}
+	return EvidenceCandidateAttestationRequired, true
 }
 
 func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
