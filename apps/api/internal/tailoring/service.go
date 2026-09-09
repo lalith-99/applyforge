@@ -215,7 +215,6 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 		}
 	}
 
-
 	var suggestions []Suggestion
 	if aiResp.SummarySuggestion != nil {
 		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(*aiResp.SummarySuggestion)); err == nil {
