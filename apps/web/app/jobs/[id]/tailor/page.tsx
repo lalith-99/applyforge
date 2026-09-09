@@ -307,8 +307,10 @@ function ResumePreview({ content }: { content: ResumeVersion["Content"] }) {
     <article className="max-h-[70vh] overflow-y-auto rounded-md border border-black/10 bg-white p-6 text-black shadow-sm dark:border-white/15 dark:bg-white dark:text-black">
       <header className="border-b border-black/15 pb-4 text-center">
         {contact.Name && <h2 className="text-2xl font-bold">{contact.Name}</h2>}
+        {contact.Headline && <p className="mt-1 text-sm font-semibold">{contact.Headline}</p>}
         <p className="mt-1 text-xs text-black/65">
-          {[contact.Email, contact.Phone, contact.Location].filter(Boolean).join(" | ")}
+          {[contact.Location, contact.Phone, contact.Email].filter(Boolean).join(" | ")}
+          {contact.LinkedinURL ? " | LinkedIn" : ""}
         </p>
       </header>
 
@@ -350,9 +352,11 @@ function normalizeResumeContent(content: ResumeVersionContent | null | undefined
   return {
     Contact: {
       Name: stringValue(rawContact.Name ?? rawContact.name),
+      Headline: stringValue(rawContact.Headline ?? rawContact.headline),
       Email: stringValue(rawContact.Email ?? rawContact.email),
       Phone: stringValue(rawContact.Phone ?? rawContact.phone),
       Location: stringValue(rawContact.Location ?? rawContact.location),
+      LinkedinURL: stringValue(rawContact.LinkedinURL ?? rawContact.linkedin_url),
     },
     Summary: stringValue(raw.Summary ?? raw.summary),
     Skills: stringArray(raw.Skills ?? raw.skills),
@@ -390,9 +394,11 @@ function serializeResumeContent(content: ResumeVersionContent) {
   return {
     contact: {
       name: content.Contact.Name,
+      headline: content.Contact.Headline,
       email: content.Contact.Email,
       phone: content.Contact.Phone,
       location: content.Contact.Location,
+      linkedin_url: content.Contact.LinkedinURL,
     },
     summary: content.Summary,
     skills: content.Skills,
