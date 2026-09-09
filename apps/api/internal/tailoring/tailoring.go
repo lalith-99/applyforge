@@ -86,6 +86,11 @@ func runFromRow(row db.TailoringRun) Run {
 	}
 }
 
+const (
+	EvidenceVerified                     = "VERIFIED"
+	EvidenceCandidateAttestationRequired = "CANDIDATE_ATTESTATION_REQUIRED"
+)
+
 // Suggestion is a single proposed resume change.
 type Suggestion struct {
 	ID                    uuid.UUID
@@ -102,9 +107,19 @@ type Suggestion struct {
 	RiskLevel             string
 	UserStatus            string
 	EditedText            *string
+	EvidenceStatus        string
+	RequiresAttestation   bool
+}
+
+func suggestionEvidence(section, source string) (string, bool) {
+	if source == "AI_SUGGESTED" {
+		return EvidenceCandidateAttestationRequired, true
+	}
+	return EvidenceVerified, false
 }
 
 func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
+	evidenceStatus, requiresAttestation := suggestionEvidence(row.Section, row.Source)
 	return Suggestion{
 		ID:                    database.PGToUUID(row.ID),
 		TailoringRunID:        database.PGToUUID(row.TailoringRunID),
@@ -120,6 +135,8 @@ func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
 		RiskLevel:             row.RiskLevel,
 		UserStatus:            row.UserStatus,
 		EditedText:            database.TextOrNil(row.EditedText),
+		EvidenceStatus:        evidenceStatus,
+		RequiresAttestation:   requiresAttestation,
 	}
 }
 
@@ -233,6 +250,21 @@ func (r *Repository) AddSuggestion(ctx context.Context, runID uuid.UUID, s Sugge
 	return suggestionFromRow(row), nil
 }
 
+// GetSuggestion returns one suggestion belonging to a run.
+func (r *Repository) GetSuggestion(ctx context.Context, suggestionID, runID uuid.UUID) (Suggestion, error) {
+	row, err := r.q.GetTailoringSuggestion(ctx, db.GetTailoringSuggestionParams{
+		ID:             database.UUIDToPG(suggestionID),
+		TailoringRunID: database.UUIDToPG(runID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Suggestion{}, ErrNotFound
+		}
+		return Suggestion{}, err
+	}
+	return suggestionFromRow(row), nil
+}
+
 // ListSuggestions returns all suggestions for a run, in creation order.
 func (r *Repository) ListSuggestions(ctx context.Context, runID uuid.UUID) ([]Suggestion, error) {
 	rows, err := r.q.ListTailoringSuggestions(ctx, database.UUIDToPG(runID))
@@ -260,9 +292,23 @@ func (r *Repository) UpdateSuggestionStatus(ctx context.Context, suggestionID, r
 	return suggestionFromRow(row), nil
 }
 
-// ApproveAllPending flips every PENDING suggestion in a run to APPROVED.
+// ApproveAllPending approves only verified suggestions. AI-suggested items
+// require an explicit per-card candidate attestation and are intentionally
+// skipped by bulk approval.
 func (r *Repository) ApproveAllPending(ctx context.Context, runID uuid.UUID) error {
-	return r.q.ApproveAllPendingSuggestions(ctx, database.UUIDToPG(runID))
+	suggestions, err := r.ListSuggestions(ctx, runID)
+	if err != nil {
+		return err
+	}
+	for _, suggestion := range suggestions {
+		if suggestion.UserStatus != StatusPending || suggestion.RequiresAttestation {
+			continue
+		}
+		if _, err := r.UpdateSuggestionStatus(ctx, suggestion.ID, runID, StatusApproved, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func orEmpty(s []string) []string {
