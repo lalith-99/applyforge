@@ -10,6 +10,41 @@ import (
 // mergeContent applies approved/edited tailoring suggestions onto a base
 // resume profile to produce the final content for a resume version. Pure
 // and DB-free so it's fully unit-testable in isolation from persistence.
+func resumeSkillKey(skill string) string {
+	key := strings.ToLower(strings.TrimSpace(skill))
+	switch key {
+	case "react.js", "reactjs":
+		return "react"
+	case "node.js", "node js":
+		return "nodejs"
+	case "golang":
+		return "go"
+	case "postgres":
+		return "postgresql"
+	case "amazon web services":
+		return "aws"
+	}
+
+	for _, prefix := range []string{"java", "spring boot", "angular", "python"} {
+		if strings.HasPrefix(key, prefix+" ") {
+			suffix := strings.TrimPrefix(key, prefix+" ")
+			if suffix != "" {
+				numeric := true
+				for _, r := range suffix {
+					if (r < '0' || r > '9') && r != '.' {
+						numeric = false
+						break
+					}
+				}
+				if numeric {
+					return prefix
+				}
+			}
+		}
+	}
+	return key
+}
+
 func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestion) aiclient.ResumeProfile {
 	merged := base
 	merged.Skills = append([]string{}, base.Skills...)
@@ -17,7 +52,7 @@ func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestio
 
 	existingSkills := make(map[string]bool, len(merged.Skills))
 	for _, s := range merged.Skills {
-		existingSkills[strings.ToLower(s)] = true
+		existingSkills[resumeSkillKey(s)] = true
 	}
 
 	for _, s := range suggestions {
@@ -34,7 +69,7 @@ func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestio
 			merged.Summary = &finalText
 		case "skills":
 			for _, skill := range s.SkillsAdded {
-				key := strings.ToLower(skill)
+				key := resumeSkillKey(skill)
 				if !existingSkills[key] {
 					merged.Skills = append(merged.Skills, skill)
 					existingSkills[key] = true
