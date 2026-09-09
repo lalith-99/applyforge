@@ -303,7 +303,9 @@ _SKILL_CATEGORY_ORDER = (
 def _skill_category(skill: str) -> str:
     value = skill.lower().strip()
 
-    if value.startswith(("java ", "python", "javascript", "typescript", "sql", "bash", "kotlin")):
+    if value in {"java", "go", "golang", "c", "c++", "c#", "kotlin"} or value.startswith(
+        ("java ", "python", "javascript", "typescript", "sql", "bash", "kotlin ")
+    ):
         return "Languages"
     if any(
         token in value
@@ -414,10 +416,19 @@ def _group_skills(skills: list[str]) -> list[tuple[str, list[str]]]:
 
 
 def _render_skill_groups(pdf: FPDF, skills: list[str], style: _PDFStyle) -> None:
-    label_width = 31.5
+    groups = _group_skills(skills)
     content_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    for label, values in _group_skills(skills):
+    # Size the label column from the actual longest category. The old fixed
+    # width was narrower than "Databases & Messaging:" and caused the first
+    # skill to collide with the label.
+    pdf.set_font("Helvetica", "B", style.skill_size)
+    label_width = max(
+        31.5,
+        max((pdf.get_string_width(f"{label}:") for label, _ in groups), default=0) + 2.5,
+    )
+
+    for label, values in groups:
         pdf.set_font("Helvetica", "B", style.skill_size)
         pdf.set_text_color(*_TEXT_COLOR)
         pdf.cell(label_width, style.line_height, f"{label}:", new_x="RIGHT", new_y="TOP")
