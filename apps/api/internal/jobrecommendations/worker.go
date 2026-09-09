@@ -31,8 +31,10 @@ type ComputePayload struct {
 const PoolSize = 60
 
 const (
-	DailyRecommendationLimit    = 20
-	MinDailyRecommendationScore = 65
+	DailyRecommendationLimit          = 20
+	DailyRecommendationTargetMinimum  = 10
+	MinStrongDailyRecommendationScore = 65
+	MinBackfillDailyScore             = 60
 )
 
 // ComputeWorker runs the full funnel (Phase G's Recommend + Phase H's
@@ -90,27 +92,22 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 }
 
 // toRecommendations converts the reranked candidate pool into the user's
-// daily shortlist. We deliberately prefer fewer strong jobs over padding the
-// list with weak opportunities: explicit AI SKIPs, weak fit/career/interview
-// signals, and low composite scores are dropped. The final list is capped at
-// 20 fresh opportunities.
+// daily shortlist. Strong APPLY_NOW / STRONG_CONSIDER opportunities lead the
+// list. If fewer than 10 survive, we backfill with the best reasonable
+// CONSIDER/fallback jobs rather than returning an unusably tiny list. SKIP is
+// always excluded and we never backfill below the minimum quality floor.
 func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendation {
-	recs := make([]Recommendation, 0, minInt(len(ranked), DailyRecommendationLimit))
+	strong := make([]Recommendation, 0, DailyRecommendationLimit)
+	backfill := make([]Recommendation, 0, DailyRecommendationLimit)
+
 	for _, r := range ranked {
-		if r.HasJudgment {
-			if r.Judgment.Recommendation == "SKIP" ||
-				r.Judgment.FitScore < 60 ||
-				r.Judgment.CareerAlignment < 50 ||
-				r.Judgment.InterviewProbabilityScore < 50 {
-				continue
-			}
-		} else if r.Result.TotalScore < MinDailyRecommendationScore {
+		if r.HasJudgment && r.Judgment.Recommendation == "SKIP" {
 			continue
 		}
 
 		freshness := dailyFreshnessScore(r.Job.PostedAt, r.Job.FirstSeenAt)
 		finalScore := dailyPriorityScore(r, freshness)
-		if finalScore < MinDailyRecommendationScore {
+		if finalScore < MinBackfillDailyScore {
 			continue
 		}
 
@@ -124,26 +121,53 @@ func toRecommendations(ranked []airank.RankedJob, version int32) []Recommendatio
 			ImmigrationEvidence:      r.Result.Eligibility.Immigration.Evidence,
 			ImmigrationPriorityScore: int32(r.Result.ImmigrationPriorityScore),
 		}
+		strongCandidate := finalScore >= MinStrongDailyRecommendationScore
 		if r.HasJudgment {
 			fitScore := int32(r.Judgment.FitScore)
 			recommendation := r.Judgment.Recommendation
 			rec.AIFitScore = &fitScore
 			rec.AIRecommendation = &recommendation
 			rec.AIReason = r.Judgment.Reason
+			strongCandidate = strongCandidate &&
+				(recommendation == "APPLY_NOW" || recommendation == "STRONG_CONSIDER")
+		} else {
+			strongCandidate = strongCandidate && r.Result.TotalScore >= MinStrongDailyRecommendationScore
+		}
+
+		if strongCandidate {
+			strong = append(strong, rec)
+		} else {
+			backfill = append(backfill, rec)
+		}
+	}
+
+	sortRecommendations(strong)
+	sortRecommendations(backfill)
+
+	if len(strong) >= DailyRecommendationLimit {
+		return strong[:DailyRecommendationLimit]
+	}
+
+	recs := append([]Recommendation{}, strong...)
+	// Once we already have 10+ strong jobs, do not dilute the shortlist just
+	// to reach 20. If we have fewer than 10, add the highest-quality reasonable
+	// alternatives until the list is useful or the backfill pool is exhausted.
+	for _, rec := range backfill {
+		if len(recs) >= DailyRecommendationTargetMinimum {
+			break
 		}
 		recs = append(recs, rec)
 	}
+	return recs
+}
 
+func sortRecommendations(recs []Recommendation) {
 	sort.SliceStable(recs, func(i, j int) bool {
 		if recs[i].FinalScore == recs[j].FinalScore {
 			return recs[i].DeterministicScore > recs[j].DeterministicScore
 		}
 		return recs[i].FinalScore > recs[j].FinalScore
 	})
-	if len(recs) > DailyRecommendationLimit {
-		recs = recs[:DailyRecommendationLimit]
-	}
-	return recs
 }
 
 // dailyPriorityScore is intentionally separate from matching.Score. The
