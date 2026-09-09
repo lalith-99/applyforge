@@ -18,7 +18,7 @@ from app.providers.openai_provider import (
 )
 from app.resume.extraction import SUPPORTED_MIME_TYPES, UnsupportedResumeType, extract_text
 from app.resume.models import ExtractResponse, ParseRequest, ParseResponse
-from app.resume.parsing import parse_resume_text, parse_resume_text_ai
+from app.resume.faithful import parse_resume_text_faithful, reconcile_ai_profile\nfrom app.resume.parsing import parse_resume_text_ai
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,14 @@ def parse(request: ParseRequest, response: Response) -> ParseResponse:
     if is_configured():
         clear_usage_metadata()
         try:
-            result = ParseResponse(profile=parse_resume_text_ai(request.raw_text))
+            ai_profile = parse_resume_text_ai(request.raw_text)
+            result = ParseResponse(
+                profile=reconcile_ai_profile(request.raw_text, ai_profile)
+            )
             apply_usage_headers(response)
             return result
         except AIProviderError:
             logger.warning("AI resume parsing failed, falling back to heuristic", exc_info=True)
 
-    profile = parse_resume_text(request.raw_text)
+    profile = parse_resume_text_faithful(request.raw_text)
     return ParseResponse(profile=profile)
