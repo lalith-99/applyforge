@@ -21,7 +21,9 @@ _SYSTEM_PROMPT = (
     "important requirements absent from the suggestions; repetition for duplicated phrases; and "
     "ATS_issues for keyword stuffing, unclear section intent, or formatting that would parse "
     "poorly. Exact job keywords should be used when supported, but never at the cost of truth. "
-    "Prefer concise bullets with action + work + verified outcome. Score ats_score (0-100) for "
+    "Prefer concise bullets with action + work + verified outcome. Flag ATS_issues when a rewrite "
+    "bloats a summary or bullet materially versus original_text, because page-count growth reduces "
+    "resume usability. Score ats_score (0-100) for "
     "keyword and parseability match, technical_match_score (0-100) for genuine fit, and "
     "human_readability (0-100) for specific, natural writing. Set recommend_regeneration=true for "
     "any unsupported claim, any ATS issue that materially harms parsing, or ats_score < 80. Give "
@@ -62,4 +64,9 @@ Job responsibilities: {", ".join(request.responsibilities) or "none"}
 Generated suggestions to review:
 {suggestions_text or "none"}"""
 
-    return structured_completion(_SYSTEM_PROMPT, user_prompt, CritiqueResult)
+    return structured_completion(
+        _SYSTEM_PROMPT,
+        user_prompt,
+        CritiqueResult,
+        model_env_var="OPENAI_TAILORING_MODEL",
+    )
