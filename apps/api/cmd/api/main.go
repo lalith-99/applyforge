@@ -412,16 +412,16 @@ func run() error {
 			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
 		}
 	})
-	preferencesHandlers.SetOnChanged(func(ctx context.Context, userID uuid.UUID) {
-		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
-			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
+	enqueueCandidateProfileRebuild := func(ctx context.Context, userID uuid.UUID) {
+		if err := jobQueue.Enqueue(ctx, candidateprofile.JobTypeBuild, candidateprofile.BuildPayload{UserID: userID.String()}, 3); err != nil {
+			slog.Error("enqueue build_candidate_profile failed", "user_id", userID, "error", err)
 		}
-	})
-	profileHandlers.SetOnChanged(func(ctx context.Context, userID uuid.UUID) {
-		if err := jobQueue.Enqueue(ctx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); err != nil {
-			slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", err)
-		}
-	})
+	}
+	// Recommendations depend on the materialized candidate profile. Rebuild it
+	// whenever onboarding/profile/preferences change; BuildWorker will enqueue
+	// compute_recommendations after the fresh profile is stored.
+	preferencesHandlers.SetOnChanged(enqueueCandidateProfileRebuild)
+	profileHandlers.SetOnChanged(enqueueCandidateProfileRebuild)
 
 	tailoringRepo := tailoring.NewRepository(db)
 	tailoringService := tailoring.NewService(tailoringRepo, resumeRepo, candidateSkillsRepo, jobsRepo, jobRequirementsService, matchingRepo, aiWorkerClient)
@@ -493,11 +493,29 @@ func run() error {
 	recommendationRefreshCtx, stopRecommendationRefresh := context.WithCancel(context.Background())
 	defer stopRecommendationRefresh()
 	go func() {
-		// Recompute once immediately on startup so a Docker restart repairs
-		// recommendations after new jobs, profile changes, or prior AI outages
-		// instead of waiting for the first periodic tick.
-		if err := jobrecommendations.EnqueueForActiveUsers(recommendationRefreshCtx, jobQueue, candidateProfileRepo); err != nil {
-			slog.Error("initial recommendation refresh failed", "error", err)
+		// Startup is also a repair pass. Older builds could materialize a
+		// candidate profile before onboarding was complete, then keep recomputing
+		// recommendations from that stale version forever. Compare each active
+		// profile with today's resume/onboarding/preferences inputs: rebuild stale
+		// profiles, otherwise just recompute against newly-arrived jobs.
+		userIDs, err := candidateProfileRepo.ListActiveUserIDs(recommendationRefreshCtx)
+		if err != nil {
+			slog.Error("initial candidate refresh failed", "error", err)
+		} else {
+			for _, userID := range userIDs {
+				needsRebuild, rebuildErr := candidateProfileService.NeedsRebuild(recommendationRefreshCtx, userID)
+				if rebuildErr != nil {
+					slog.Error("candidate profile freshness check failed", "user_id", userID, "error", rebuildErr)
+					continue
+				}
+				if needsRebuild {
+					enqueueCandidateProfileRebuild(recommendationRefreshCtx, userID)
+					continue
+				}
+				if enqueueErr := jobQueue.Enqueue(recommendationRefreshCtx, jobrecommendations.JobTypeCompute, jobrecommendations.ComputePayload{UserID: userID.String()}, 3); enqueueErr != nil {
+					slog.Error("enqueue compute_recommendations failed", "user_id", userID, "error", enqueueErr)
+				}
+			}
 		}
 
 		ticker := time.NewTicker(time.Duration(recommendationRefreshMinutes) * time.Minute)
