@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/lalithlochan/applyforge/apps/api/internal/candidateprofile"
 	"github.com/lalithlochan/applyforge/apps/api/internal/jobs"
 )
@@ -75,5 +77,41 @@ func TestRecommendationPreAIRank_PrefersTargetRoleDirection(t *testing.T) {
 	}
 	if recommendationPreAIRank(relevant, candidate) <= recommendationPreAIRank(offTarget, candidate) {
 		t.Fatalf("target-role alignment should let relevant Java backend role outrank off-target SRE despite lower raw score")
+	}
+}
+
+func TestDiversifyPreAICandidates_CapsCompanyRepresentation(t *testing.T) {
+	dominantCompany := uuid.New()
+	ranked := make([]RankedJob, 0, 12)
+
+	for i := 0; i < 8; i++ {
+		ranked = append(ranked, RankedJob{
+			Job:    jobs.Job{ID: uuid.New(), CompanyID: dominantCompany, Title: "Software Engineer"},
+			Result: Result{TotalScore: 95 - i},
+		})
+	}
+	for i := 0; i < 4; i++ {
+		ranked = append(ranked, RankedJob{
+			Job:    jobs.Job{ID: uuid.New(), CompanyID: uuid.New(), Title: "Backend Engineer"},
+			Result: Result{TotalScore: 80 - i},
+		})
+	}
+
+	selected := diversifyPreAICandidates(ranked, 8, 5)
+	if len(selected) != 8 {
+		t.Fatalf("expected 8 selected candidates, got %d", len(selected))
+	}
+
+	dominantCount := 0
+	for _, candidate := range selected {
+		if candidate.Job.CompanyID == dominantCompany {
+			dominantCount++
+		}
+	}
+	if dominantCount != 5 {
+		t.Fatalf("expected dominant company capped at 5 before AI, got %d", dominantCount)
+	}
+	if distinctRecommendationCompanies(selected) < 4 {
+		t.Fatalf("expected diversified company representation, got %d companies", distinctRecommendationCompanies(selected))
 	}
 }

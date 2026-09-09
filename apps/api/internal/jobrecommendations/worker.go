@@ -29,7 +29,7 @@ type ComputePayload struct {
 // PoolSize is how many candidates the funnel considers before AI reranking
 // and the final cut - generous enough that the true top results are almost
 // certainly included, small enough to keep AI reranking costs bounded.
-const PoolSize = 60
+const PoolSize = 80
 
 const (
 	DailyRecommendationLimit          = 20
