@@ -210,6 +210,23 @@ def test_render_pdf_realistic_resume_stays_one_page() -> None:
         assert doc.page_count == 1
 
 
+def test_render_pdf_uses_available_page_height_without_large_dead_zone() -> None:
+    data = render_pdf(_realistic_one_page_profile())
+    with fitz.open(stream=data, filetype="pdf") as doc:
+        page = doc[0]
+        blocks = page.get_text("blocks")
+        content_bottom = max(block[3] for block in blocks if block[4].strip())
+        assert page.rect.height - content_bottom < 105
+
+
+def test_render_pdf_does_not_split_multiword_skill_name() -> None:
+    data = render_pdf(_realistic_one_page_profile())
+    with fitz.open(stream=data, filetype="pdf") as doc:
+        text = doc[0].get_text().replace("\xa0", " ")
+        assert "Asynchronous Processing" in text
+        assert "Asynchronous\nProcessing" not in text
+
+
 def test_render_docx_produces_valid_zip_bytes() -> None:
     data = render_docx(_sample_profile())
     assert data[:2] == b"PK"
