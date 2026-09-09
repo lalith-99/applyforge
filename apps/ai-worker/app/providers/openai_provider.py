@@ -122,12 +122,24 @@ def _get_client() -> OpenAI:
 
 
 def structured_completion[T: BaseModel](
-    system_prompt: str, user_prompt: str, response_model: type[T]
+    system_prompt: str,
+    user_prompt: str,
+    response_model: type[T],
+    *,
+    model_env_var: str | None = None,
 ) -> T:
-    """Requests a chat completion from OpenAI constrained to response_model's
-    JSON schema, and returns it parsed + validated as that Pydantic model."""
+    """Requests a structured completion and validates it as response_model.
+
+    model_env_var allows high-value/low-frequency operations such as resume
+    parsing or tailoring to use a stronger model without forcing high-volume
+    ranking/classification calls onto the same expensive model.
+    """
     client = _get_client()
-    model = os.environ.get("OPENAI_MODEL", _DEFAULT_MODEL)
+    model = (
+        os.environ.get(model_env_var, "").strip()
+        if model_env_var
+        else ""
+    ) or os.environ.get("OPENAI_MODEL", _DEFAULT_MODEL)
     try:
         completion = client.chat.completions.parse(
             model=model,
