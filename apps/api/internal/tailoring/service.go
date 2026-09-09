@@ -79,14 +79,19 @@ func (s *Service) CreateQueuedRun(ctx context.Context, userID, jobID, resumeID u
 		return Run{}, err
 	}
 
+	res, err := s.resumes.Get(ctx, resumeID, userID)
+	if err != nil {
+		return Run{}, err
+	}
+	experiences, err := s.resumes.ListExperiences(ctx, resumeID)
+	if err != nil {
+		return Run{}, err
+	}
 	skills, err := s.candidateSkills.ListForUser(ctx, userID)
 	if err != nil {
 		return Run{}, err
 	}
-	skillSet := make(map[string]bool, len(skills))
-	for _, sk := range skills {
-		skillSet[strings.ToLower(sk.NormalizedName)] = true
-	}
+	skillSet, _, _ := masterResumeSkillInventory(res, experiences, skills)
 
 	requiredNames := skillRequirementNames(reqs.RequiredSkills)
 	preferredNames := skillRequirementNames(reqs.PreferredSkills)
@@ -137,13 +142,9 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 		return err
 	}
 
-	skillSet := make(map[string]bool, len(skills))
-	masterSkills := make([]string, 0, len(skills))
-	skillKeys := make([]string, 0, len(skills))
-	for _, sk := range skills {
-		key := strings.ToLower(sk.NormalizedName)
-		skillSet[key] = true
-		masterSkills = append(masterSkills, sk.DisplayName)
+	skillSet, masterSkills, masterSummary := masterResumeSkillInventory(res, experiences, skills)
+	skillKeys := make([]string, 0, len(skillSet))
+	for key := range skillSet {
 		skillKeys = append(skillKeys, key)
 	}
 
@@ -155,16 +156,6 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 
 	requiredNames := skillRequirementNames(reqs.RequiredSkills)
 	preferredNames := skillRequirementNames(reqs.PreferredSkills)
-
-	var masterSummary *string
-	var parsedProfile struct {
-		Summary *string `json:"summary"`
-	}
-	if len(res.ParsedProfile) > 0 {
-		if err := json.Unmarshal(res.ParsedProfile, &parsedProfile); err == nil {
-			masterSummary = parsedProfile.Summary
-		}
-	}
 
 	baseReq := aiclient.TailoringRequest{
 		Mode:                run.Mode,
@@ -186,6 +177,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 		_ = s.repo.FailRun(ctx, runID)
 		return err
 	}
+	sanitizeKnownSkillSuggestions(&aiResp, skillSet)
 
 	if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
 		return err
@@ -205,6 +197,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 			return err
 		}
 		if revisedResp, revErr := s.aiClient.SuggestTailoring(ctx, revisedReq); revErr == nil {
+			sanitizeKnownSkillSuggestions(&revisedResp, skillSet)
 			aiResp = revisedResp
 			revisionCount = 1
 
@@ -266,6 +259,110 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 
 	_, err = s.repo.CompleteRun(ctx, runID, summaryJSON, coverageJSON, int32(alignmentAfter))
 	return err
+}
+
+// masterResumeSkillInventory derives the skills actually present on the
+// selected resume. This intentionally does not treat user-global target/AI
+// skills as if they were already written on this particular resume.
+func masterResumeSkillInventory(res resume.Resume, experiences []resume.Experience, fallback []candidateskills.Skill) (map[string]bool, []string, *string) {
+	skillSet := map[string]bool{}
+	masterSkills := []string{}
+	seenDisplay := map[string]bool{}
+	add := func(raw string) {
+		display := strings.TrimSpace(raw)
+		key := tailoringSkillKey(display)
+		if key == "" || skillSet[key] {
+			return
+		}
+		skillSet[key] = true
+		if !seenDisplay[key] {
+			masterSkills = append(masterSkills, display)
+			seenDisplay[key] = true
+		}
+	}
+
+	var masterSummary *string
+	if len(res.ParsedProfile) > 0 {
+		var parsed aiclient.ResumeProfile
+		if err := json.Unmarshal(res.ParsedProfile, &parsed); err == nil {
+			masterSummary = parsed.Summary
+			for _, skill := range parsed.Skills {
+				add(skill)
+			}
+		}
+	}
+	for _, exp := range experiences {
+		for _, skill := range exp.DetectedSkills {
+			add(skill)
+		}
+		for _, skill := range exp.Technologies {
+			add(skill)
+		}
+	}
+
+	// Older/partially parsed resumes may not have structured skill arrays.
+	// Fall back only to skills whose provenance is the master resume, rather
+	// than user-approved targeting suggestions from unrelated jobs.
+	if len(skillSet) == 0 {
+		for _, skill := range fallback {
+			if skill.Source == candidateskills.SourceMasterResume {
+				add(skill.DisplayName)
+			}
+		}
+	}
+	return skillSet, masterSkills, masterSummary
+}
+
+func tailoringSkillKey(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+}
+
+// sanitizeKnownSkillSuggestions is a hard business-rule boundary around LLM
+// output. The model may rewrite or emphasize a verified skill, but it must
+// never label a skill already present on the selected resume as a new
+// AI-suggested/learn-first addition.
+func sanitizeKnownSkillSuggestions(resp *aiclient.TailoringResponse, known map[string]bool) {
+	filteredSkills := make([]aiclient.TailoringSuggestion, 0, len(resp.SkillSuggestions))
+	for _, suggestion := range resp.SkillSuggestions {
+		if suggestionTouchesKnownSkill(suggestion, known) {
+			continue
+		}
+		filteredSkills = append(filteredSkills, suggestion)
+	}
+	resp.SkillSuggestions = filteredSkills
+
+	filteredExperiences := make([]aiclient.TailoringSuggestion, 0, len(resp.ExperienceSuggestions))
+	for _, suggestion := range resp.ExperienceSuggestions {
+		if suggestion.Source == "AI_SUGGESTED" && suggestionTouchesKnownSkill(suggestion, known) {
+			continue
+		}
+		filteredExperiences = append(filteredExperiences, suggestion)
+	}
+	resp.ExperienceSuggestions = filteredExperiences
+
+	if resp.SummarySuggestion != nil {
+		resp.SummarySuggestion.SkillsAdded = unknownSkills(resp.SummarySuggestion.SkillsAdded, known)
+		resp.SummarySuggestion.KeywordsAdded = unknownSkills(resp.SummarySuggestion.KeywordsAdded, known)
+	}
+}
+
+func suggestionTouchesKnownSkill(suggestion aiclient.TailoringSuggestion, known map[string]bool) bool {
+	for _, skill := range suggestion.SkillsAdded {
+		if known[tailoringSkillKey(skill)] {
+			return true
+		}
+	}
+	return false
+}
+
+func unknownSkills(values []string, known map[string]bool) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if !known[tailoringSkillKey(value)] {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 // ensureAddedSkillsReachABullet guarantees MAX_MATCH's promise that every
