@@ -78,7 +78,14 @@ export interface ResumeExperience {
 }
 
 export interface ResumeParsedProfile {
-  contact: { name: string | null; email: string | null; phone: string | null; location: string | null };
+  contact: {
+    name: string | null;
+    headline: string | null;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    linkedin_url: string | null;
+  };
   summary: string | null;
   skills: string[];
   experiences: {
@@ -329,9 +336,11 @@ export interface ResumeVersion {
 export interface ResumeVersionContent {
   Contact: {
     Name: string | null;
+    Headline: string | null;
     Email: string | null;
     Phone: string | null;
     Location: string | null;
+    LinkedinURL: string | null;
   };
   Summary: string | null;
   Skills: string[];
