@@ -50,6 +50,26 @@ class _PDFStyle:
     role_gap: float
 
 
+_RELAXED = _PDFStyle(
+    left_margin=9.0,
+    top_margin=6.0,
+    right_margin=9.0,
+    bottom_margin=6.5,
+    name_size=16.0,
+    headline_size=9.7,
+    contact_size=8.7,
+    section_size=10.2,
+    body_size=9.35,
+    skill_size=8.7,
+    role_size=9.4,
+    meta_size=8.4,
+    line_height=4.3,
+    bullet_indent=3.8,
+    section_gap=0.9,
+    role_gap=0.6,
+)
+
+
 _COMPACT = _PDFStyle(
     left_margin=9.0,
     top_margin=6.0,
@@ -129,11 +149,24 @@ def _sanitize_profile_for_pdf(profile: ResumeProfile) -> ResumeProfile:
 
 
 def render_pdf(profile: ResumeProfile) -> bytes:
-    """Render compact PDF, tightening typography only when content spills."""
+    """Render one page with readable typography and balanced vertical fill."""
     sanitized = _sanitize_profile_for_pdf(profile)
     pdf = _render_pdf_document(sanitized, _COMPACT)
+
     if len(pdf.pages) > 1:
         pdf = _render_pdf_document(sanitized, _TIGHT)
+        return bytes(pdf.output())
+
+    # If a compact one-page resume leaves a conspicuous blank band at the
+    # bottom, use a slightly more readable/roomy style. Keep it only when it
+    # still fits on one page; we never stretch content onto a second page just
+    # to consume whitespace.
+    remaining = pdf.h - pdf.b_margin - pdf.get_y()
+    if remaining > 22.0:
+        relaxed = _render_pdf_document(sanitized, _RELAXED)
+        if len(relaxed.pages) == 1:
+            pdf = relaxed
+
     return bytes(pdf.output())
 
 
@@ -458,10 +491,13 @@ def _render_skill_groups(pdf: FPDF, skills: list[str], style: _PDFStyle) -> None
         label_width = pdf.get_string_width(f"{label}:") + 2.2
         pdf.cell(label_width, style.line_height, f"{label}:", new_x="RIGHT", new_y="TOP")
         pdf.set_font(_PDF_FONT, "", style.skill_size)
+        # Keep each multi-word skill together so an orphan such as
+        # "Asynchronous" / "Processing" cannot split across two visual lines.
+        display_values = [value.replace(" ", "\xa0") for value in values]
         pdf.multi_cell(
             content_width - label_width,
             style.line_height,
-            ", ".join(values),
+            ", ".join(display_values),
             align="L",
             new_x="LMARGIN",
             new_y="NEXT",
