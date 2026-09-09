@@ -19,6 +19,7 @@ func classifyTitle(title string) RoleClassification {
 	// In particular, do not exclude on "sales" alone: "Salesforce Developer"
 	// is a software role while "Sales Engineer" is not part of this catalog.
 	excluded := []string{
+		" intern ", " internship ", " co-op ", " coop ", " apprentice ", " apprenticeship ", " student ",
 		" engineering manager ", " software engineering manager ", " development manager ",
 		" manager, ", " manager ", " director ", " vice president ", " vp ", " head of ",
 		" quality assurance ", " qa ", " tester ", " test engineer ", " sdet ",
