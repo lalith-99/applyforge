@@ -64,3 +64,29 @@ def test_parse_resume_handles_empty_input() -> None:
     profile = parse_resume_text("")
     assert profile.skills == []
     assert profile.experiences == []
+
+
+def test_parse_resume_preserves_headline_and_linkedin() -> None:
+    raw = """Jordan Rivera
+Java Software Engineer | Spring Boot | Microservices | AWS | Kafka
+Maryland, USA | (555) 010-1000 | jordan@example.com | LinkedIn
+PROFESSIONAL SUMMARY
+Java engineer with five years of experience.
+TECHNICAL SKILLS
+Java, Spring Boot, AWS
+PROFESSIONAL EXPERIENCE
+Engineer | Example Co | Jan 2020 - Present
+• Built Java services.
+EDUCATION
+M.S. Computer Science
+LinkedIn URL: https://www.linkedin.com/in/jordan-rivera/
+"""
+
+    profile = parse_resume_text(raw)
+
+    assert profile.contact.name == "Jordan Rivera"
+    assert profile.contact.headline == (
+        "Java Software Engineer | Spring Boot | Microservices | AWS | Kafka"
+    )
+    assert profile.contact.linkedin_url == "https://www.linkedin.com/in/jordan-rivera/"
+    assert all("LinkedIn URL:" not in item for item in profile.education)
