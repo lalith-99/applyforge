@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 
@@ -59,13 +60,18 @@ func (w *BuildWorker) Handle(ctx context.Context, job background.Job) error {
 		return fmt.Errorf("generate candidate profile: %w", err)
 	}
 
-	resp, err := w.aiClient.Embed(ctx, EmbeddingText(p))
-	if err != nil {
-		return fmt.Errorf("embed candidate profile: %w", err)
-	}
-
-	if err := w.repo.UpdateEmbedding(ctx, p.ID, resp.Embedding, resp.Model); err != nil {
-		return err
+	resp, embedErr := w.aiClient.Embed(ctx, EmbeddingText(p))
+	if embedErr == nil {
+		if err := w.repo.UpdateEmbedding(ctx, p.ID, resp.Embedding, resp.Model); err != nil {
+			slog.Warn("candidate profile embedding could not be stored; continuing with lexical recommendations",
+				"user_id", userID, "profile_id", p.ID, "error", err)
+		}
+	} else {
+		// Semantic retrieval is optional. Do not leave a successfully-generated
+		// profile stranded just because embeddings are unavailable; Recommend
+		// has a lexical fallback and can still produce a useful shortlist.
+		slog.Warn("candidate profile embedding failed; continuing with lexical recommendations",
+			"user_id", userID, "profile_id", p.ID, "error", embedErr)
 	}
 
 	if w.onBuilt != nil {
