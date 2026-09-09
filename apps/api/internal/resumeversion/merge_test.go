@@ -101,3 +101,18 @@ func TestMergeContent_RejectedSuggestionsNeverApplied(t *testing.T) {
 		t.Fatalf("expected rejected suggestion to leave bullet untouched, got %q", merged.Experiences[0].Bullets[0])
 	}
 }
+
+
+func TestMergeContent_EquivalentSkillAliasesAreNotDuplicated(t *testing.T) {
+	base := aiclient.ResumeProfile{Skills: []string{"React.js", "Java 21", "PostgreSQL"}}
+	suggestions := []tailoring.Suggestion{
+		{Section: "skills", SuggestedText: "Add React", SkillsAdded: []string{"React"}, UserStatus: tailoring.StatusApproved},
+		{Section: "skills", SuggestedText: "Add Java", SkillsAdded: []string{"Java"}, UserStatus: tailoring.StatusApproved},
+		{Section: "skills", SuggestedText: "Add Postgres", SkillsAdded: []string{"Postgres"}, UserStatus: tailoring.StatusApproved},
+	}
+
+	merged := mergeContent(base, suggestions)
+	if len(merged.Skills) != 3 {
+		t.Fatalf("expected equivalent skill aliases to be deduplicated, got %v", merged.Skills)
+	}
+}
