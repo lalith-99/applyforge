@@ -225,8 +225,9 @@ type RankedJob struct {
 }
 
 // Recommend runs the multi-stage funnel (Phase G): hard filters -> semantic
-// retrieval -> deterministic scoring. Returns up to limit ELIGIBLE jobs for
-// userID, ranked by Result.TotalScore. Semantic retrieval is optional: when a
+// retrieval -> deterministic scoring. Returns up to limit ELIGIBLE jobs from
+// the last 24 hours for userID, ranked by Result.TotalScore before the later
+// daily-priority/AI reranking stage. Semantic retrieval is optional: when a
 // candidate embedding is unavailable, the funnel still uses target-role/skill
 // lexical retrieval. ErrNotFound now means there is no generated candidate
 // profile at all.
@@ -251,7 +252,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	}
 	prefs := candidateCtx.prefs
 
-	const recommendedJobMaxAge = 7 * 24 * time.Hour
+	const recommendedJobMaxAge = 24 * time.Hour
 	postedAfter := time.Now().UTC().Add(-recommendedJobMaxAge)
 	requiresH1BSupport := preferences.RequiresH1BSupport(prefs)
 	filter := jobs.EmbeddingSearchFilter{
