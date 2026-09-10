@@ -79,15 +79,12 @@ func sanitizeRequirementTypes(
 
 	required = filter(required)
 	preferred = filter(preferred)
-	allowedKeywords := map[string]bool{}
-	for _, item := range append(append([]aiclient.SkillRequirement{}, required...), preferred...) {
-		allowedKeywords[strings.ToLower(strings.TrimSpace(item.NormalizedName))] = true
-	}
 	keywordsOut := make([]string, 0, len(keywords))
 	for _, keyword := range keywords {
-		if allowedKeywords[strings.ToLower(strings.TrimSpace(keyword))] {
-			keywordsOut = append(keywordsOut, keyword)
+		if educationSkillPattern.MatchString(keyword) {
+			continue
 		}
+		keywordsOut = append(keywordsOut, keyword)
 	}
 	return required, preferred, educationOut, keywordsOut
 }
