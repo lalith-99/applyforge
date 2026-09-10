@@ -23,7 +23,7 @@ import (
 var ErrNotFound = errors.New("job requirements not found")
 
 var educationSkillPattern = regexp.MustCompile(
-	`(?i)\b(bachelor|master|ph\.?d|degree|b\.?s\.?|m\.?s\.?)\b`,
+	`(?i)\b(bachelor'?s|master'?s|ph\.?d\.?|degree|b\.?s\.?|m\.?s\.?)\b`,
 )
 
 // Requirements is the domain representation of parsed job requirements.
