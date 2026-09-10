@@ -30,6 +30,8 @@ def _skill_key(value: str) -> str:
         "golang": "go",
         "postgres": "postgresql",
         "amazon web services": "aws",
+        "apache kafka": "kafka",
+        "argo cd": "argocd",
     }
     if key in aliases:
         return aliases[key]
@@ -302,9 +304,18 @@ _LEARNING_PHRASES = (
 def _skills_in_text(text: str) -> set[str]:
     lowered = text.lower()
     found: set[str] = set()
-    for skill in canonical_skills():
+    occupied: list[tuple[int, int]] = []
+
+    # Match longer technologies first so "Spring Boot" does not also create a
+    # synthetic "Spring" skill, and "React Native" does not also create
+    # "React". Overlapping shorter matches are skipped.
+    for skill in sorted(canonical_skills(), key=len, reverse=True):
         pattern = r"(?<![\w+#.-])" + re.escape(skill.lower()) + r"(?![\w+#-])"
-        if re.search(pattern, lowered):
+        for match in re.finditer(pattern, lowered):
+            span = match.span()
+            if any(span[0] < end and span[1] > start for start, end in occupied):
+                continue
+            occupied.append(span)
             found.add(_skill_key(skill))
     return found
 
@@ -411,6 +422,8 @@ def _sanitize_ai_tailoring(
         else:
             summary.source = "MASTER_RESUME"
             summary.risk_level = "LOW"
+            summary.skills_added = []
+            summary.keywords_added = []
 
     source_bullets = {
         bullet
@@ -447,6 +460,7 @@ def _sanitize_ai_tailoring(
             suggestion.source = "MASTER_RESUME"
             suggestion.risk_level = "LOW"
             suggestion.skills_added = []
+            suggestion.keywords_added = []
 
         # If the model accidentally rewrites the same source bullet twice, keep
         # the richer one instead of rejecting both or letting merge order decide.

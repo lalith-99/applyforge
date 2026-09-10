@@ -32,12 +32,22 @@ func (s *Service) WithUsageTracking(usage *aiusage.Repository) *Service {
 	return s
 }
 
-// GetOrParse returns cached requirements if they're still fresh for
-// contentHash, otherwise parses via the AI worker and caches the result.
+const requirementsParserCacheVersion = "req-v2"
+
+func versionedRequirementsHash(contentHash string) string {
+	return requirementsParserCacheVersion + ":" + contentHash
+}
+
+// GetOrParse returns cached requirements if they're still fresh for both the
+// job content and the current parser semantics. Bumping the parser cache
+// version reparses an existing job once on next use without a bulk migration.
 func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, description, contentHash string) (Requirements, error) {
+	cacheHash := versionedRequirementsHash(contentHash)
 	cached, err := s.repo.Get(ctx, jobID)
-	if err == nil && cached.ContentHash == contentHash {
-		s.usage.RecordAsync(ctx, aiusage.Entry{Operation: "parse_job_requirements", Status: "SUCCESS", CacheHit: true})
+	if err == nil && cached.ContentHash == cacheHash {
+		if s.usage != nil {
+			s.usage.RecordAsync(ctx, aiusage.Entry{Operation: "parse_job_requirements", Status: "SUCCESS", CacheHit: true})
+		}
 		return cached, nil
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
@@ -49,5 +59,5 @@ func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, descri
 		return Requirements{}, err
 	}
 
-	return s.repo.Upsert(ctx, jobID, contentHash, parsed)
+	return s.repo.Upsert(ctx, jobID, cacheHash, parsed)
 }
