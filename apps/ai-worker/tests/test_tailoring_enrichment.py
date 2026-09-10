@@ -25,10 +25,19 @@ def _request() -> TailoringRequest:
                 company="CMS",
                 title="Software Development Engineer",
                 bullets=[
-                    "Built an internal RAG-based search solution using LangChain and Amazon Bedrock.",
+                    (
+                        "Built an internal RAG-based search solution using LangChain "
+                        "and Amazon Bedrock."
+                    ),
                     "Used Claude Code to support dependency upgrades and secure refactoring.",
                 ],
-                detected_skills=["Java", "RAG", "LangChain", "Amazon Bedrock", "Claude Code"],
+                detected_skills=[
+                    "Java",
+                    "RAG",
+                    "LangChain",
+                    "Amazon Bedrock",
+                    "Claude Code",
+                ],
             )
         ],
         required_skills=[
@@ -122,7 +131,9 @@ def test_enrichment_can_add_one_attestation_gated_bullet_to_existing_role(
         target_company="CMS",
         target_title="Software Development Engineer",
         source="AI_SUGGESTED",
-        reason="Adds missing agentic-testing evidence to the most compatible AI-enabled role.",
+        reason=(
+            "Adds missing agentic-testing evidence to the most compatible AI-enabled role."
+        ),
         risk_level="HIGH",
     )
 
