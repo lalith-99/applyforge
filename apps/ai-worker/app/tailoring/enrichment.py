@@ -119,29 +119,49 @@ def _fallback_category(skill: str) -> str:
         )
     ):
         return "Cloud & DevOps"
-    if any(token in value for token in ("oauth", "saml", "rbac", "security", "pci")):
+    if any(
+        token in value for token in ("oauth", "saml", "rbac", "security", "pci")
+    ):
         return "Security"
-    if any(token in value for token in ("spring", "rest", "microservice", "jpa", "hibernate")):
+    if any(
+        token in value
+        for token in ("spring", "rest", "microservice", "jpa", "hibernate")
+    ):
         return "Backend"
-    if any(token in value for token in ("kafka", "redis", "postgres", "mysql", "oracle", "database")):
+    if any(
+        token in value
+        for token in ("kafka", "redis", "postgres", "mysql", "oracle", "database")
+    ):
         return "Databases & Messaging"
-    if any(token in value for token in ("angular", "react", "html", "css", "frontend")):
+    if any(
+        token in value for token in ("angular", "react", "html", "css", "frontend")
+    ):
         return "Frontend"
     return "Other"
 
 
-def _exact_role_exists(request: TailoringRequest, company: str | None, title: str | None) -> bool:
+def _exact_role_exists(
+    request: TailoringRequest, company: str | None, title: str | None
+) -> bool:
     if not company and not title:
         return False
     for exp in request.experiences:
-        company_ok = not company or (exp.company or "").strip().casefold() == company.strip().casefold()
-        title_ok = not title or (exp.title or "").strip().casefold() == title.strip().casefold()
+        company_ok = (
+            not company
+            or (exp.company or "").strip().casefold() == company.strip().casefold()
+        )
+        title_ok = (
+            not title
+            or (exp.title or "").strip().casefold() == title.strip().casefold()
+        )
         if company_ok and title_ok:
             return True
     return False
 
 
-def _enrichment_payload(request: TailoringRequest, result: TailoringResponse) -> dict[str, object]:
+def _enrichment_payload(
+    request: TailoringRequest, result: TailoringResponse
+) -> dict[str, object]:
     return {
         "job_title": request.job_title,
         "job_description": request.job_description,
@@ -208,8 +228,6 @@ def _validated_extra_suggestions(
             if added_per_role[role_key] >= 1:
                 continue
             suggestion.original_text = None
-            suggestion.source = "AI_SUGGESTED"
-            suggestion.risk_level = "HIGH"
             added_per_role[role_key] += 1
         else:
             suggestion.operation = "REWRITE"
@@ -222,6 +240,12 @@ def _validated_extra_suggestions(
             suggestion.target_company = None
             suggestion.target_title = None
             used_originals.add(suggestion.original_text)
+
+        # Every enrichment-pass experience draft requires explicit candidate
+        # review. This prevents imperfect model metadata from accidentally
+        # turning second-pass prose into verified employment history.
+        suggestion.source = "AI_SUGGESTED"
+        suggestion.risk_level = "HIGH"
 
         normalized_categories: dict[str, str] = {}
         for skill in suggestion.skills_added:
@@ -249,26 +273,30 @@ def enrich_tailoring_ai(
         return result
 
     system = (
-        "You are the placement and support editor for a technical resume. The first tailoring pass "
-        "has already produced the primary draft. NEVER replace, summarize, or rewrite that whole draft. "
-        "Your job has exactly two responsibilities. First, classify every skill currently proposed in "
-        "current_skill_suggestions into exactly one resume category: Languages, Backend, Databases & "
-        "Messaging, Cloud & DevOps, Frontend, Security, Testing & Tools, AI / GenAI, or Other. Put modern "
-        "agentic-AI capabilities such as prompt engineering, tool/function calling, agent memory, agent "
-        "orchestration, agent frameworks, MCP/Model Context Protocol, AI evaluation/observability, Claude "
-        "Code, Cursor, RAG, retrieval/context pipelines, LLMs, Bedrock, and OpenAI APIs under AI / GenAI "
-        "unless the term is clearly a general testing/devops tool instead. Put Go/Golang and other "
-        "programming languages under Languages. Second, inspect the full JD, master experiences, and the "
-        "current experience suggestions. Return at most two ADDITIONAL high-value experience suggestions "
-        "only when an important job requirement is still weakly supported. Prefer REWRITE: operation='REWRITE', "
-        "original_text must exactly equal one unused existing master bullet, and target_company/target_title "
-        "must be null. Use operation='ADD' only when no existing bullet can naturally carry the requirement; "
-        "then original_text must be null and target_company/target_title must exactly match an existing role. "
-        "Never create a new employer, title, date, certification, metric, team size, or named business outcome. "
-        "Any ADD bullet is an AI_SUGGESTED/HIGH candidate-attestation draft, not verified employment history. "
-        "For new target technology in any extra bullet, include it in skills_added and assign its category in "
-        "skill_categories. Keep extra bullets concise, technical, and interview-defensible. Do not append keywords "
-        "to unrelated work. Do not emit learning/proficiency/disclaimer language inside resume prose."
+        "You are the placement and support editor for a technical resume. The first "
+        "tailoring pass has already produced the primary draft. NEVER replace, summarize, "
+        "or rewrite that whole draft. Your job has exactly two responsibilities. First, "
+        "classify every skill currently proposed in current_skill_suggestions into exactly "
+        "one resume category: Languages, Backend, Databases & Messaging, Cloud & DevOps, "
+        "Frontend, Security, Testing & Tools, AI / GenAI, or Other. Put modern agentic-AI "
+        "capabilities such as prompt engineering, tool/function calling, agent memory, agent "
+        "orchestration, agent frameworks, MCP/Model Context Protocol, AI evaluation/observability, "
+        "Claude Code, Cursor, RAG, retrieval/context pipelines, LLMs, Bedrock, and OpenAI APIs "
+        "under AI / GenAI unless the term is clearly a general testing/devops tool instead. "
+        "Put Go/Golang and other programming languages under Languages. Second, inspect the "
+        "full JD, master experiences, and current experience suggestions. Return at most two "
+        "ADDITIONAL high-value experience suggestions only when an important job requirement "
+        "is still weakly supported. Prefer REWRITE: operation='REWRITE', original_text must "
+        "exactly equal one unused existing master bullet, and target_company/target_title must "
+        "be null. Use operation='ADD' only when no existing bullet can naturally carry the "
+        "requirement; then original_text must be null and target_company/target_title must "
+        "exactly match an existing role. Never create a new employer, title, date, certification, "
+        "metric, team size, or named business outcome. Any ADD bullet is an AI_SUGGESTED/HIGH "
+        "candidate-attestation draft, not verified employment history. For new target technology "
+        "in any extra bullet, include it in skills_added and assign its category in "
+        "skill_categories. Keep extra bullets concise, technical, and interview-defensible. "
+        "Do not append keywords to unrelated work. Do not emit learning/proficiency/disclaimer "
+        "language inside resume prose."
     )
 
     enrichment = structured_completion(
