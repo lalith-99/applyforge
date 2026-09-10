@@ -30,7 +30,7 @@ _EDUCATION_RE = re.compile(
     r"(bachelor.s degree|master.s degree|ph\.?d\.?|b\.?s\.?c?\.?\s+in|m\.?s\.?\s+in)", re.IGNORECASE
 )
 _EDUCATION_SKILL_RE = re.compile(
-    r"\b(bachelor|master|ph\.?d|degree|b\.?s\.?|m\.?s\.?)\b",
+    r"\b(bachelor'?s|master'?s|ph\.?d\.?|degree|b\.?s\.?|m\.?s\.?)\b",
     re.IGNORECASE,
 )
 _CLEARANCE_RE = re.compile(
