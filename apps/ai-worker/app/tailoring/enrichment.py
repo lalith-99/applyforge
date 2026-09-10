@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from app.providers.openai_provider import AIProviderError, structured_completion
 from app.tailoring.models import (
     SKILL_CATEGORIES,
-    SkillCategory,
+    SkillCategoryMap,
     TailoringRequest,
     TailoringResponse,
     TailoringSuggestion,
@@ -24,7 +24,7 @@ from app.tailoring.models import (
 
 
 class TailoringEnrichmentResponse(BaseModel):
-    skill_categories: dict[str, SkillCategory] = Field(default_factory=dict)
+    skill_categories: SkillCategoryMap = Field(default_factory=dict)
     experience_suggestions: list[TailoringSuggestion] = Field(default_factory=list)
 
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, WithJsonSchema, field_validator
 
 TAILORING_MODES = ("STRICT", "GROWTH", "MAX_MATCH")
 _RISK_LEVELS = ("LOW", "MEDIUM", "HIGH")
@@ -54,6 +54,62 @@ def _canonical_skill_display(value: str) -> str:
     return aliases.get(stripped.lower(), stripped)
 
 
+def _normalize_skill_category_map(value: object) -> dict[str, str]:
+    """Accept the OpenAI wire form or the application's normal dict form.
+
+    OpenAI strict Structured Outputs cannot reliably represent an arbitrary-key
+    object such as ``dict[str, SkillCategory]``. The wire schema therefore uses
+    a fixed array of ``{skill, category}`` objects. Pydantic converts that array
+    back into the existing map immediately, so Go/DB/UI contracts do not change.
+    """
+    if isinstance(value, list):
+        converted: dict[str, object] = {}
+        for item in value:
+            if isinstance(item, BaseModel):
+                item = item.model_dump()
+            if not isinstance(item, dict):
+                continue
+            skill = item.get("skill")
+            category = item.get("category")
+            if skill is not None:
+                converted[str(skill)] = category
+        value = converted
+
+    if not isinstance(value, dict):
+        return {}
+
+    out: dict[str, str] = {}
+    for raw_skill, raw_category in value.items():
+        skill = _canonical_skill_display(str(raw_skill))
+        category = str(raw_category).strip()
+        if not skill:
+            continue
+        out[skill] = category if category in SKILL_CATEGORIES else "Other"
+    return out
+
+
+_SKILL_CATEGORY_WIRE_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "skill": {"type": "string"},
+            "category": {"type": "string", "enum": list(SKILL_CATEGORIES)},
+        },
+        "required": ["skill", "category"],
+        "additionalProperties": False,
+    },
+}
+
+# Runtime value: dict[str, SkillCategory].
+# OpenAI response schema: [{"skill": "...", "category": "..."}].
+SkillCategoryMap = Annotated[
+    dict[str, SkillCategory],
+    BeforeValidator(_normalize_skill_category_map),
+    WithJsonSchema(_SKILL_CATEGORY_WIRE_SCHEMA),
+]
+
+
 class ExperienceInput(BaseModel):
     company: str | None = None
     title: str | None = None
@@ -88,7 +144,7 @@ class TailoringSuggestion(BaseModel):
     requirements_addressed: list[str] = Field(default_factory=list)
     skills_added: list[str] = Field(default_factory=list)
     keywords_added: list[str] = Field(default_factory=list)
-    skill_categories: dict[str, SkillCategory] = Field(default_factory=dict)
+    skill_categories: SkillCategoryMap = Field(default_factory=dict)
     operation: Literal["REWRITE", "ADD"] = "REWRITE"
     target_company: str | None = None
     target_title: str | None = None
@@ -103,18 +159,6 @@ class TailoringSuggestion(BaseModel):
         if not isinstance(value, list):
             return value
         return [_canonical_skill_display(item) for item in value]
-
-    @field_validator("skill_categories", mode="before")
-    @classmethod
-    def _normalize_skill_categories(cls, value: object) -> object:
-        if not isinstance(value, dict):
-            return {}
-        out: dict[str, str] = {}
-        for raw_skill, raw_category in value.items():
-            skill = _canonical_skill_display(str(raw_skill))
-            category = str(raw_category).strip()
-            out[skill] = category if category in SKILL_CATEGORIES else "Other"
-        return out
 
     @field_validator("operation", mode="before")
     @classmethod
