@@ -27,6 +27,7 @@ class TransferableMatchInput(BaseModel):
 class TailoringRequest(BaseModel):
     mode: str
     job_title: str
+    job_description: str = ""
     master_skills: list[str] = Field(default_factory=list)
     master_summary: str | None = None
     experiences: list[ExperienceInput] = Field(default_factory=list)
