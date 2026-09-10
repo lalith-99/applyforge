@@ -497,7 +497,7 @@ def test_max_match_ai_drops_skill_when_repair_cannot_support_it(monkeypatch) -> 
     result = generate_tailoring_ai(request)
 
     assert [s.skills_added for s in result.skill_suggestions] == [["Kotlin"]]
-    assert result.keyword_coverage_after == 2 / 3
+    assert result.keyword_coverage_after == 0.667
     assert "Swift" not in " ".join(
         skill
         for suggestion in result.skill_suggestions
