@@ -37,6 +37,8 @@ def test_structured_completion_returns_parsed_model(monkeypatch) -> None:
     class _FakeCompletions:
         def parse(self, **kwargs):
             assert kwargs["response_format"] is _Dummy
+            assert "temperature" not in kwargs
+            assert "top_p" not in kwargs
             message = type("M", (), {"parsed": _Dummy(value="hello")})()
             choice = type("C", (), {"message": message})()
             return type("Completion", (), {"choices": [choice]})()
@@ -126,6 +128,8 @@ def test_structured_completion_uses_operation_specific_model(monkeypatch) -> Non
     class _FakeCompletions:
         def parse(self, **kwargs):
             assert kwargs["model"] == "gpt-5.6-terra"
+            assert "temperature" not in kwargs
+            assert "top_p" not in kwargs
             message = type("M", (), {"parsed": _Dummy(value="hello")})()
             choice = type("C", (), {"message": message})()
             return type("Completion", (), {"choices": [choice]})()
