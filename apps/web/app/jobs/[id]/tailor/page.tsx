@@ -175,6 +175,7 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                 <SuggestionCard
                   key={s.ID}
                   suggestion={s}
+                  allSuggestions={run.suggestions ?? []}
                   onApprove={(attested) =>
                     updateSuggestion.mutate({
                       suggestionId: s.ID,
@@ -445,15 +446,29 @@ function PreviewSection({ title, children }: { title: string; children: ReactNod
 
 function SuggestionCard({
   suggestion,
+  allSuggestions,
   onApprove,
   onReject,
 }: {
   suggestion: TailoringSuggestion;
+  allSuggestions: TailoringSuggestion[];
   onApprove: (attested: boolean) => void;
   onReject: () => void;
 }) {
   const [attested, setAttested] = useState(false);
   const needsAttestation = suggestion.RequiresAttestation;
+  const supportingExperienceApproved =
+    suggestion.EvidenceStatus !== "BUILD_BEFORE_USE" ||
+    suggestion.SkillsAdded.every((skill) =>
+      allSuggestions.some(
+        (candidate) =>
+          candidate.Section === "experience" &&
+          candidate.SkillsAdded.some(
+            (supportedSkill) => supportedSkill.toLowerCase() === skill.toLowerCase(),
+          ) &&
+          (candidate.UserStatus === "APPROVED" || candidate.UserStatus === "EDITED"),
+      ),
+    );
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-black/10 p-4 dark:border-white/15">
@@ -515,9 +530,17 @@ function SuggestionCard({
           </p>
           <p className="mt-1 text-xs">
             {suggestion.EvidenceStatus === "BUILD_BEFORE_USE"
-              ? "This skill is not verified from the master resume. Use Quick Prep or a hands-on project first, then confirm when you can truthfully claim it."
+              ? "This skill is not verified from the master resume. It will only enter the final resume after an approved supporting experience draft exists and you confirm you can truthfully claim the skill."
               : "This professional-experience draft is not verified from the master resume. It can only enter the final resume after you confirm that you performed substantially equivalent work."}
           </p>
+          {suggestion.EvidenceStatus === "BUILD_BEFORE_USE" && (
+            <p className="mt-2 text-xs font-medium">
+              Supporting experience:{" "}
+              {supportingExperienceApproved
+                ? "approved"
+                : "approve the matching experience draft above first"}
+            </p>
+          )}
           <label className="mt-3 flex items-start gap-2 text-xs">
             <input
               type="checkbox"
@@ -552,10 +575,20 @@ function SuggestionCard({
         <div className="flex gap-2">
           <button
             onClick={() => onApprove(attested)}
-            disabled={needsAttestation && !attested}
+            disabled={
+              needsAttestation &&
+              (!attested ||
+                (suggestion.EvidenceStatus === "BUILD_BEFORE_USE" &&
+                  !supportingExperienceApproved))
+            }
             className="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {needsAttestation ? "Attest & Approve" : "Approve"}
+            {suggestion.EvidenceStatus === "BUILD_BEFORE_USE" &&
+            !supportingExperienceApproved
+              ? "Approve support first"
+              : needsAttestation
+                ? "Attest & Approve"
+                : "Approve"}
           </button>
           <button onClick={onReject} className="rounded-md border border-black/10 px-3 py-1.5 text-sm dark:border-white/15">
             Reject
