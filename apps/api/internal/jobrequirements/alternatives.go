@@ -46,7 +46,7 @@ func canonicalAlternativeSkill(raw string) string {
 			if value == alias {
 				return def.Display
 			}
-	}
+		}
 	}
 	return strings.TrimSpace(raw)
 }
