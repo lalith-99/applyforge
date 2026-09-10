@@ -8,8 +8,8 @@ still weakly represented.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -223,8 +223,6 @@ def _validated_extra_suggestions(
             suggestion.target_title = None
             used_originals.add(suggestion.original_text)
 
-        # Categories on experience metadata use the same explicit taxonomy so
-        # a companion skill card can reuse the model's decision if needed.
         normalized_categories: dict[str, str] = {}
         for skill in suggestion.skills_added:
             category = next(
@@ -275,7 +273,7 @@ def enrich_tailoring_ai(
 
     enrichment = structured_completion(
         system,
-        str(_enrichment_payload(request, result)),
+        json.dumps(_enrichment_payload(request, result), indent=2),
         TailoringEnrichmentResponse,
         model_env_var="OPENAI_TAILORING_MODEL",
     )
