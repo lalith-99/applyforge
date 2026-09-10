@@ -20,7 +20,7 @@ type TailoringSuggestionMetadata struct {
 func (q *Queries) UpdateTailoringSuggestionMetadata(
 	ctx context.Context,
 	id pgtype.UUID,
-	skillCategories string,
+	skillCategories []byte,
 	operation string,
 	targetCompany pgtype.Text,
 	targetTitle pgtype.Text,
@@ -28,7 +28,7 @@ func (q *Queries) UpdateTailoringSuggestionMetadata(
 	_, err := q.db.Exec(
 		ctx,
 		`UPDATE tailoring_suggestions
-         SET skill_categories = $2::jsonb,
+         SET skill_categories = convert_from($2, 'UTF8')::jsonb,
              operation = $3,
              target_company = $4,
              target_title = $5,
