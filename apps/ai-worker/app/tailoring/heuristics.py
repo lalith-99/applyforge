@@ -304,9 +304,18 @@ _LEARNING_PHRASES = (
 def _skills_in_text(text: str) -> set[str]:
     lowered = text.lower()
     found: set[str] = set()
-    for skill in canonical_skills():
+    occupied: list[tuple[int, int]] = []
+
+    # Match longer technologies first so "Spring Boot" does not also create a
+    # synthetic "Spring" skill, and "React Native" does not also create
+    # "React". Overlapping shorter matches are skipped.
+    for skill in sorted(canonical_skills(), key=len, reverse=True):
         pattern = r"(?<![\w+#.-])" + re.escape(skill.lower()) + r"(?![\w+#-])"
-        if re.search(pattern, lowered):
+        for match in re.finditer(pattern, lowered):
+            span = match.span()
+            if any(span[0] < end and span[1] > start for start, end in occupied):
+                continue
+            occupied.append(span)
             found.add(_skill_key(skill))
     return found
 
