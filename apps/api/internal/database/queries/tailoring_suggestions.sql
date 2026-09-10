@@ -1,8 +1,9 @@
 -- name: CreateTailoringSuggestion :one
 INSERT INTO tailoring_suggestions (
     tailoring_run_id, section, original_text, suggested_text, requirements_addressed,
-    skills_added, keywords_added, source, reason, confidence, risk_level
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    skills_added, keywords_added, skill_categories, operation, target_company, target_title,
+    source, reason, confidence, risk_level
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
 -- name: ListTailoringSuggestions :many
