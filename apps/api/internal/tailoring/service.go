@@ -43,9 +43,8 @@ func NewService(repo *Repository, resumes *resume.Repository, candidateSkillsRep
 
 // Tailor runs a full tailoring pass for a user's resume against a job,
 // synchronously. Kept for tests/manual use; the HTTP handler uses the async
-// CreateQueuedRun + ProcessRun split instead (Phase J), since generation
-// (plus Phase K's critique/revision pass) can take a while and the user
-// explicitly doesn't need it to block the request.
+// CreateQueuedRun + ProcessRun split instead, since generation and critique
+// can take a while and the user does not need them to block the request.
 func (s *Service) Tailor(ctx context.Context, userID, jobID, resumeID uuid.UUID, mode string) (Run, []Suggestion, error) {
 	run, err := s.CreateQueuedRun(ctx, userID, jobID, resumeID, mode)
 	if err != nil {
@@ -99,16 +98,11 @@ func (s *Service) CreateQueuedRun(ctx context.Context, userID, jobID, resumeID u
 	return s.repo.CreateRun(ctx, userID, jobID, resumeID, mode, int32(alignmentBefore))
 }
 
-// maxRevisions bounds Phase K's critique-driven regeneration loop - one
-// revision pass is enough to meaningfully improve a flagged first draft
-// without unbounded AI cost/latency if the critic keeps objecting.
-const maxRevisions = 1
-
-// ProcessRun runs the async multi-pass pipeline for an already-created
-// PENDING run (Phase J: generation; Phase K: AI critique + bounded
-// revision), called by a background worker. Advances Run.Status through
-// WRITING -> EVALUATING -> (REVISING -> WRITING -> EVALUATING once, if the
-// critic recommends it) -> COMPLETED, or FAILED on error.
+// ProcessRun generates exactly one tailoring draft, then runs the critic as
+// an advisory scorer. Critic feedback is persisted for ATS/readability scores,
+// but it must never replace the user's first complete AI draft automatically.
+// This keeps the user-facing suggestions stable and prevents a second model
+// call from collapsing a strong multi-bullet draft into a weaker one.
 func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	run, err := s.repo.GetRun(ctx, runID)
 	if err != nil {
@@ -184,30 +178,6 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	critic, criticErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, reqs.Responsibilities, aiResp))
 
 	revisionCount := int32(0)
-	if criticErr == nil && critic.RecommendRegeneration && revisionCount < maxRevisions {
-		if err := s.repo.UpdateStatus(ctx, runID, RunStatusRevising); err != nil {
-			return err
-		}
-		revisedReq := baseReq
-		revisedReq.Responsibilities = append(append([]string{}, reqs.Responsibilities...),
-			"CRITIC FEEDBACK FROM PREVIOUS DRAFT (address this): "+critic.Feedback)
-
-		if err := s.repo.UpdateStatus(ctx, runID, RunStatusWriting); err != nil {
-			return err
-		}
-		if revisedResp, revErr := s.aiClient.SuggestTailoring(ctx, revisedReq); revErr == nil {
-			sanitizeKnownSkillSuggestions(&revisedResp, skillSet)
-			aiResp = revisedResp
-			revisionCount = 1
-
-			if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
-				return err
-			}
-			if reCritic, reErr := s.aiClient.Critique(ctx, buildCritiqueRequest(job.Title, masterSummary, masterSkills, requiredNames, preferredNames, reqs.Responsibilities, aiResp)); reErr == nil {
-				critic = reCritic
-			}
-		}
-	}
 
 	if criticErr == nil {
 		if criticJSON, err := json.Marshal(critic); err == nil {
@@ -311,7 +281,24 @@ func masterResumeSkillInventory(res resume.Resume, experiences []resume.Experien
 }
 
 func tailoringSkillKey(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	key := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	switch key {
+	case "react.js", "reactjs":
+		return "react"
+	case "node.js", "node js":
+		return "nodejs"
+	case "golang":
+		return "go"
+	case "postgres":
+		return "postgresql"
+	case "amazon web services":
+		return "aws"
+	case "apache kafka":
+		return "kafka"
+	case "argo cd":
+		return "argocd"
+	}
+	return key
 }
 
 // sanitizeKnownSkillSuggestions is a hard business-rule boundary around LLM
@@ -328,18 +315,27 @@ func sanitizeKnownSkillSuggestions(resp *aiclient.TailoringResponse, known map[s
 	}
 	resp.SkillSuggestions = filteredSkills
 
-	filteredExperiences := make([]aiclient.TailoringSuggestion, 0, len(resp.ExperienceSuggestions))
-	for _, suggestion := range resp.ExperienceSuggestions {
-		if suggestion.Source == "AI_SUGGESTED" && suggestionTouchesKnownSkill(suggestion, known) {
-			continue
+	// Experience rewrites are valuable resume content and must not be discarded
+	// merely because the model included an already-known technology in
+	// skills_added. Strip known metadata instead; preserve the rewrite itself.
+	for i := range resp.ExperienceSuggestions {
+		suggestion := &resp.ExperienceSuggestions[i]
+		suggestion.SkillsAdded = unknownSkills(suggestion.SkillsAdded, known)
+		suggestion.KeywordsAdded = unknownSkills(suggestion.KeywordsAdded, known)
+		if suggestion.Source == "AI_SUGGESTED" && len(suggestion.SkillsAdded) == 0 {
+			suggestion.Source = "MASTER_RESUME"
+			suggestion.RiskLevel = "LOW"
 		}
-		filteredExperiences = append(filteredExperiences, suggestion)
 	}
-	resp.ExperienceSuggestions = filteredExperiences
 
 	if resp.SummarySuggestion != nil {
 		resp.SummarySuggestion.SkillsAdded = unknownSkills(resp.SummarySuggestion.SkillsAdded, known)
 		resp.SummarySuggestion.KeywordsAdded = unknownSkills(resp.SummarySuggestion.KeywordsAdded, known)
+		if resp.SummarySuggestion.Source == "AI_SUGGESTED" &&
+			len(resp.SummarySuggestion.SkillsAdded) == 0 {
+			resp.SummarySuggestion.Source = "MASTER_RESUME"
+			resp.SummarySuggestion.RiskLevel = "LOW"
+		}
 	}
 }
 
