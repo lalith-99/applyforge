@@ -417,7 +417,7 @@ def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
     assert "Swift" in support_text
 
 
-def test_max_match_ai_drops_skill_when_repair_cannot_support_it(monkeypatch) -> None:
+def test_max_match_ai_keeps_skill_when_repair_cannot_support_it(monkeypatch) -> None:
     original = "Built Java Spring Boot REST APIs for healthcare workflows."
     request = TailoringRequest(
         mode="MAX_MATCH",
@@ -496,10 +496,8 @@ def test_max_match_ai_drops_skill_when_repair_cannot_support_it(monkeypatch) -> 
 
     result = generate_tailoring_ai(request)
 
-    assert [s.skills_added for s in result.skill_suggestions] == [["Kotlin"]]
-    assert result.keyword_coverage_after == 0.667
-    assert "Swift" not in " ".join(
-        skill
-        for suggestion in result.skill_suggestions
-        for skill in suggestion.skills_added
-    )
+    assert [s.skills_added for s in result.skill_suggestions] == [["Kotlin"], ["Swift"]]
+    assert result.keyword_coverage_after == 1.0
+    support_text = " ".join(s.suggested_text for s in result.experience_suggestions)
+    assert "Kotlin" in support_text
+    assert "Swift" not in support_text
