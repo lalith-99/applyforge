@@ -457,7 +457,7 @@ function SuggestionCard({
 }) {
   const [attested, setAttested] = useState(false);
   const needsAttestation = suggestion.RequiresAttestation;
-  const supportingExperienceApproved =
+  const hasSupportingExperience =
     suggestion.EvidenceStatus !== "BUILD_BEFORE_USE" ||
     suggestion.SkillsAdded.every((skill) =>
       allSuggestions.some(
@@ -465,8 +465,7 @@ function SuggestionCard({
           candidate.Section === "experience" &&
           candidate.SkillsAdded.some(
             (supportedSkill) => supportedSkill.toLowerCase() === skill.toLowerCase(),
-          ) &&
-          (candidate.UserStatus === "APPROVED" || candidate.UserStatus === "EDITED"),
+          ),
       ),
     );
 
@@ -530,15 +529,15 @@ function SuggestionCard({
           </p>
           <p className="mt-1 text-xs">
             {suggestion.EvidenceStatus === "BUILD_BEFORE_USE"
-              ? "This skill is not verified from the master resume. It will only enter the final resume after an approved supporting experience draft exists and you confirm you can truthfully claim the skill."
+              ? "This skill is not verified from the master resume. Approve it independently if you want it in the tailored resume; when possible, ApplyForge also generates a supporting experience rewrite for separate review."
               : "This professional-experience draft is not verified from the master resume. It can only enter the final resume after you confirm that you performed substantially equivalent work."}
           </p>
           {suggestion.EvidenceStatus === "BUILD_BEFORE_USE" && (
             <p className="mt-2 text-xs font-medium">
               Supporting experience:{" "}
-              {supportingExperienceApproved
-                ? "approved"
-                : "approve the matching experience draft above first"}
+              {hasSupportingExperience
+                ? "AI draft generated above for separate review"
+                : "no coherent support bullet was generated; skill can still be reviewed independently"}
             </p>
           )}
           <label className="mt-3 flex items-start gap-2 text-xs">
@@ -575,20 +574,10 @@ function SuggestionCard({
         <div className="flex gap-2">
           <button
             onClick={() => onApprove(attested)}
-            disabled={
-              needsAttestation &&
-              (!attested ||
-                (suggestion.EvidenceStatus === "BUILD_BEFORE_USE" &&
-                  !supportingExperienceApproved))
-            }
+            disabled={needsAttestation && !attested}
             className="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {suggestion.EvidenceStatus === "BUILD_BEFORE_USE" &&
-            !supportingExperienceApproved
-              ? "Approve support first"
-              : needsAttestation
-                ? "Attest & Approve"
-                : "Approve"}
+            {needsAttestation ? "Attest & Approve" : "Approve"}
           </button>
           <button onClick={onReject} className="rounded-md border border-black/10 px-3 py-1.5 text-sm dark:border-white/15">
             Reject

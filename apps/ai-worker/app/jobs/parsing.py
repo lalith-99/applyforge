@@ -29,6 +29,10 @@ _EXPERIENCE_RE = re.compile(r"(\d+)\s*\+?\s*years?", re.IGNORECASE)
 _EDUCATION_RE = re.compile(
     r"(bachelor.s degree|master.s degree|ph\.?d\.?|b\.?s\.?c?\.?\s+in|m\.?s\.?\s+in)", re.IGNORECASE
 )
+_EDUCATION_SKILL_RE = re.compile(
+    r"\b(bachelor'?s|master'?s|ph\.?d\.?|degree|b\.?s\.?|m\.?s\.?)\b",
+    re.IGNORECASE,
+)
 _CLEARANCE_RE = re.compile(
     r"(security clearance|top secret|ts/sci|secret clearance)", re.IGNORECASE
 )
@@ -104,6 +108,36 @@ def _extract_responsibilities(description: str) -> list[str]:
     return _split_into_sentences(section)[:10]
 
 
+def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirements:
+    """Keep education requirements out of technical skill matching."""
+    education = list(requirements.education_requirements)
+    seen_education = {item.strip().lower() for item in education if item.strip()}
+
+    def filter_skills(items: list[SkillRequirement]) -> list[SkillRequirement]:
+        kept: list[SkillRequirement] = []
+        for item in items:
+            text = f"{item.normalized_name} {item.original_text}".strip()
+            if _EDUCATION_SKILL_RE.search(text):
+                education_text = item.original_text.strip() or item.normalized_name.strip()
+                key = education_text.lower()
+                if education_text and key not in seen_education:
+                    education.append(education_text)
+                    seen_education.add(key)
+                continue
+            kept.append(item)
+        return kept
+
+    requirements.required_skills = filter_skills(requirements.required_skills)
+    requirements.preferred_skills = filter_skills(requirements.preferred_skills)
+    requirements.education_requirements = education
+    requirements.keywords = [
+        keyword
+        for keyword in requirements.keywords
+        if not _EDUCATION_SKILL_RE.search(keyword)
+    ]
+    return requirements
+
+
 def parse_job_requirements(title: str, description: str) -> JobRequirements:
     required_text, preferred_text = _split_required_preferred(description)
 
@@ -164,7 +198,9 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "name (e.g. 'JS' -> 'JavaScript'). required_skills/preferred_skills must be discrete, "
         "nameable things a candidate can concretely have or not have: programming languages, "
         "frameworks, libraries, databases, cloud/infra platforms, tools, protocols, certifications, or "
-        "specifically-named methodologies (e.g. 'TDD', 'gRPC', 'Kubernetes', 'PostgreSQL'). Never "
+        "specifically-named methodologies (e.g. 'TDD', 'gRPC', 'Kubernetes', 'PostgreSQL'). Academic "
+        "degrees and fields of study are NEVER skills: put Bachelor's/Master's/PhD requirements only "
+        "in education_requirements, even when the posting lists them under required qualifications. Never "
         "include generic role descriptors, competency areas, or soft skills as a skill — phrases like "
         "'backend engineering', 'software engineering', 'system architecture', 'API design', "
         "'problem solving', 'ownership', or years-of-experience statements are NOT skills; capture "
@@ -174,7 +210,8 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "authorization without sponsorship, or asks whether sponsorship is needed now or in the future."
     )
     user = f"Job title: {title}\n\nJob description:\n{description}"
-    return structured_completion(system, user, JobRequirements)
+    result = structured_completion(system, user, JobRequirements)
+    return _sanitize_requirement_types(result)
 
 
 _ALLOWED_SOFTWARE_FAMILIES = {

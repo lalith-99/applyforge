@@ -276,10 +276,10 @@ _MODE_POLICY = {
         "candidate already has to that missing skill. Do not suggest any skill without transfer support."
     ),
     "MAX_MATCH": (
-        "MAX_MATCH mode: aggressively optimize for the target job. Every missing skill that you "
-        "propose adding to the skills section MUST also have at least one polished Professional "
-        "Experience rewrite that uses that skill in a coherent, realistic technical scenario. Draft "
-        "the support bullet from the most context-compatible existing experience, not a random one. "
+        "MAX_MATCH mode: aggressively optimize for the target job. For every important missing skill, "
+        "always return a skills-section suggestion. Strongly prefer pairing that skill with at least "
+        "one polished Professional Experience rewrite using it in a coherent, realistic technical "
+        "scenario. Draft support from the most context-compatible existing experience, not a random one. "
         "These drafts "
         "are review candidates only: set source='AI_SUGGESTED', risk_level='HIGH', and include every "
         "new technology in skills_added so the application can require explicit candidate attestation "
@@ -412,21 +412,6 @@ def _recompute_keyword_coverage(
     )
 
 
-def _drop_skills_without_experience_support(
-    request: TailoringRequest, result: TailoringResponse
-) -> TailoringResponse:
-    """Never ship a MAX_MATCH skill into the resume without a supporting draft."""
-    supported = _experience_support_keys(result)
-    filtered: list[TailoringSuggestion] = []
-    for suggestion in result.skill_suggestions:
-        keys = {_skill_key(skill) for skill in suggestion.skills_added if skill.strip()}
-        if keys and keys.issubset(supported):
-            filtered.append(suggestion)
-    result.skill_suggestions = filtered
-    _recompute_keyword_coverage(request, result)
-    return result
-
-
 def _generate_missing_experience_support_ai(
     request: TailoringRequest,
     result: TailoringResponse,
@@ -470,8 +455,9 @@ def _generate_missing_experience_support_ai(
         "dates, promotions, team sizes, numerical metrics, or named outcomes. You may preserve an "
         "existing metric only when the rewritten bullet clearly describes the same underlying outcome. "
         "If a skill cannot be integrated into any existing experience without producing an implausible "
-        "or random bullet, omit that skill entirely; the application will then remove it from the "
-        "skills section. Quality and coherence are more important than forcing every keyword."
+        "or random bullet, omit only the experience rewrite. Keep the skills-section suggestion so the "
+        "candidate can still review and approve that keyword independently. Quality and coherence are "
+        "more important than forcing a bad bullet."
     )
     return structured_completion(
         system,
@@ -593,8 +579,9 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "bullet itself as a clean completed-work accomplishment because the UI, not the resume text, "
         "will carry the candidate-attestation warning. Do not invent metrics for such drafts. For a "
         "missing skill, also create section='skills', original_text=null, when the mode allows it. "
-        "In MAX_MATCH, never return a skills-only addition: every skill_suggestion must be paired "
-        "with an experience_suggestion that literally contains that skill in the resume sentence. "
+        "In MAX_MATCH, make a best effort to pair each skill_suggestion with an experience_suggestion "
+        "that literally contains that skill in the resume sentence. If no coherent support bullet exists, "
+        "keep the skill_suggestion rather than fabricating a random experience rewrite. "
         "Prefer one coherent technical scenario over appending a keyword to an unrelated sentence. "
         "When the JD only names a broad platform such as Azure or AWS, do not invent extra named "
         "sub-services unless the JD or source resume mentions them; use realistic platform-level "
@@ -642,6 +629,6 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
                 # the generated resume just because the repair call failed.
                 pass
 
-        result = _drop_skills_without_experience_support(request, result)
+        _recompute_keyword_coverage(request, result)
 
     return result

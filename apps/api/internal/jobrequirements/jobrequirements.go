@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +21,10 @@ import (
 
 // ErrNotFound is returned when no requirements have been parsed for a job yet.
 var ErrNotFound = errors.New("job requirements not found")
+
+var educationSkillPattern = regexp.MustCompile(
+	`(?i)\b(bachelor'?s|master'?s|ph\.?d\.?|degree|b\.?s\.?|m\.?s\.?)\b`,
+)
 
 // Requirements is the domain representation of parsed job requirements.
 type Requirements struct {
@@ -40,10 +46,59 @@ type Requirements struct {
 	ParsedAt                      time.Time
 }
 
+func sanitizeRequirementTypes(
+	required, preferred []aiclient.SkillRequirement,
+	education, keywords []string,
+) ([]aiclient.SkillRequirement, []aiclient.SkillRequirement, []string, []string) {
+	educationOut := append([]string{}, education...)
+	seenEducation := map[string]bool{}
+	for _, item := range educationOut {
+		seenEducation[strings.ToLower(strings.TrimSpace(item))] = true
+	}
+
+	filter := func(items []aiclient.SkillRequirement) []aiclient.SkillRequirement {
+		out := make([]aiclient.SkillRequirement, 0, len(items))
+		for _, item := range items {
+			text := strings.TrimSpace(item.NormalizedName + " " + item.OriginalText)
+			if educationSkillPattern.MatchString(text) {
+				value := strings.TrimSpace(item.OriginalText)
+				if value == "" {
+					value = strings.TrimSpace(item.NormalizedName)
+				}
+				key := strings.ToLower(value)
+				if value != "" && !seenEducation[key] {
+					educationOut = append(educationOut, value)
+					seenEducation[key] = true
+				}
+				continue
+			}
+			out = append(out, item)
+		}
+		return out
+	}
+
+	required = filter(required)
+	preferred = filter(preferred)
+	keywordsOut := make([]string, 0, len(keywords))
+	for _, keyword := range keywords {
+		if educationSkillPattern.MatchString(keyword) {
+			continue
+		}
+		keywordsOut = append(keywordsOut, keyword)
+	}
+	return required, preferred, educationOut, keywordsOut
+}
+
 func fromRow(row db.JobRequirement) Requirements {
 	var required, preferred []aiclient.SkillRequirement
 	_ = json.Unmarshal(row.RequiredSkills, &required)
 	_ = json.Unmarshal(row.PreferredSkills, &preferred)
+	required, preferred, education, keywords := sanitizeRequirementTypes(
+		required,
+		preferred,
+		row.EducationRequirements,
+		row.Keywords,
+	)
 
 	return Requirements{
 		JobID:                         database.PGToUUID(row.JobID),
@@ -56,11 +111,11 @@ func fromRow(row db.JobRequirement) Requirements {
 		RequiredExperienceYears:       database.Int4OrNil(row.RequiredExperienceYears),
 		Responsibilities:              decodeStringList(row.Responsibilities),
 		Domains:                       row.Domains,
-		EducationRequirements:         row.EducationRequirements,
+		EducationRequirements:         education,
 		Certifications:                row.Certifications,
 		ClearanceRequirements:         database.TextOrNil(row.ClearanceRequirements),
 		WorkAuthorizationRequirements: database.TextOrNil(row.WorkAuthorizationRequirements),
-		Keywords:                      row.Keywords,
+		Keywords:                      keywords,
 		ParsedAt:                      row.ParsedAt.Time,
 	}
 }
@@ -102,6 +157,13 @@ func (r *Repository) Get(ctx context.Context, jobID uuid.UUID) (Requirements, er
 
 // Upsert stores newly parsed requirements for a job.
 func (r *Repository) Upsert(ctx context.Context, jobID uuid.UUID, contentHash string, reqs aiclient.JobRequirements) (Requirements, error) {
+	reqs.RequiredSkills, reqs.PreferredSkills, reqs.EducationRequirements, reqs.Keywords =
+		sanitizeRequirementTypes(
+			reqs.RequiredSkills,
+			reqs.PreferredSkills,
+			reqs.EducationRequirements,
+			reqs.Keywords,
+		)
 	requiredJSON, _ := json.Marshal(reqs.RequiredSkills)
 	preferredJSON, _ := json.Marshal(reqs.PreferredSkills)
 	responsibilitiesJSON, _ := json.Marshal(orEmptyStrings(reqs.Responsibilities))
