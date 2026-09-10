@@ -45,7 +45,6 @@ func resumeSkillKey(skill string) string {
 	return key
 }
 
-
 func approvedExperienceSupportSkills(suggestions []tailoring.Suggestion) map[string]bool {
 	supported := map[string]bool{}
 	for _, suggestion := range suggestions {
