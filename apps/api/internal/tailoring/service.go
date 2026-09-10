@@ -221,12 +221,14 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 			suggestions = append(suggestions, created)
 		}
 	}
-	for _, sg := range aiResp.SkillSuggestions {
+	// Show experience rewrites before their companion skill cards so users
+	// evaluate the evidence-bearing resume bullet before approving the keyword.
+	for _, sg := range aiResp.ExperienceSuggestions {
 		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(sg)); err == nil {
 			suggestions = append(suggestions, created)
 		}
 	}
-	for _, sg := range aiResp.ExperienceSuggestions {
+	for _, sg := range aiResp.SkillSuggestions {
 		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(sg)); err == nil {
 			suggestions = append(suggestions, created)
 		}
