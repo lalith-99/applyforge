@@ -45,6 +45,34 @@ func resumeSkillKey(skill string) string {
 	return key
 }
 
+func approvedExperienceSupportSkills(suggestions []tailoring.Suggestion) map[string]bool {
+	supported := map[string]bool{}
+	for _, suggestion := range suggestions {
+		if suggestion.Section != "experience" {
+			continue
+		}
+		if suggestion.UserStatus != tailoring.StatusApproved &&
+			suggestion.UserStatus != tailoring.StatusEdited {
+			continue
+		}
+
+		finalText := suggestion.SuggestedText
+		if suggestion.EditedText != nil {
+			finalText = *suggestion.EditedText
+		}
+		lowerText := strings.ToLower(finalText)
+		for _, skill := range suggestion.SkillsAdded {
+			if skill == "" {
+				continue
+			}
+			if strings.Contains(lowerText, strings.ToLower(skill)) {
+				supported[resumeSkillKey(skill)] = true
+			}
+		}
+	}
+	return supported
+}
+
 func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestion) aiclient.ResumeProfile {
 	merged := base
 	merged.Skills = append([]string{}, base.Skills...)
@@ -54,6 +82,7 @@ func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestio
 	for _, s := range merged.Skills {
 		existingSkills[resumeSkillKey(s)] = true
 	}
+	approvedSupport := approvedExperienceSupportSkills(suggestions)
 
 	for _, s := range suggestions {
 		if s.UserStatus != tailoring.StatusApproved && s.UserStatus != tailoring.StatusEdited {
@@ -70,6 +99,9 @@ func mergeContent(base aiclient.ResumeProfile, suggestions []tailoring.Suggestio
 		case "skills":
 			for _, skill := range s.SkillsAdded {
 				key := resumeSkillKey(skill)
+				if s.Source == "AI_SUGGESTED" && !approvedSupport[key] {
+					continue
+				}
 				if !existingSkills[key] {
 					merged.Skills = append(merged.Skills, skill)
 					existingSkills[key] = true

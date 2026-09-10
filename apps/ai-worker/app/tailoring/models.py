@@ -63,3 +63,9 @@ class TailoringResponse(BaseModel):
     experience_suggestions: list[TailoringSuggestion] = Field(default_factory=list)
     keyword_coverage_before: float = 0.0
     keyword_coverage_after: float = 0.0
+
+
+class ExperienceSupportResponse(BaseModel):
+    """Focused repair-pass output for missing skill-to-experience coverage."""
+
+    experience_suggestions: list[TailoringSuggestion] = Field(default_factory=list)

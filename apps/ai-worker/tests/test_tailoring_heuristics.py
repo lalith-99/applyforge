@@ -1,8 +1,13 @@
 """Tests for heuristic resume tailoring suggestion generation."""
 
-from app.tailoring.heuristics import _sanitize_ai_tailoring, generate_tailoring
+from app.tailoring.heuristics import (
+    _sanitize_ai_tailoring,
+    generate_tailoring,
+    generate_tailoring_ai,
+)
 from app.tailoring.models import (
     ExperienceInput,
+    ExperienceSupportResponse,
     TailoringRequest,
     TailoringResponse,
     TailoringSuggestion,
@@ -294,3 +299,207 @@ def test_ai_sanitizer_keeps_evidence_based_experience_rewrite() -> None:
     )
 
     assert sanitized.experience_suggestions == [suggestion]
+
+
+def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
+    monkeypatch,
+) -> None:
+    first_bullet = "Built Java Spring Boot REST APIs for healthcare workflows."
+    second_bullet = "Built Angular interfaces integrated with backend APIs."
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Mobile Platform Engineer",
+        master_skills=["Java", "Spring Boot", "Angular"],
+        master_summary="Java software engineer.",
+        experiences=[
+            ExperienceInput(
+                company="CMS",
+                title="Software Development Engineer",
+                bullets=[first_bullet, second_bullet],
+                detected_skills=["Java", "Spring Boot", "Angular"],
+            )
+        ],
+        required_skills=["Java", "Kotlin"],
+        preferred_skills=["Swift"],
+        responsibilities=["Build mobile-facing application services and client integrations."],
+        transferable_matches=[],
+    )
+
+    initial = TailoringResponse(
+        skill_suggestions=[
+            TailoringSuggestion(
+                section="skills",
+                suggested_text="Add Kotlin to your skills section",
+                requirements_addressed=["Kotlin"],
+                skills_added=["Kotlin"],
+                keywords_added=["Kotlin"],
+                source="AI_SUGGESTED",
+                reason="Required by the role.",
+                risk_level="MEDIUM",
+            ),
+            TailoringSuggestion(
+                section="skills",
+                suggested_text="Add Swift to your skills section",
+                requirements_addressed=["Swift"],
+                skills_added=["Swift"],
+                keywords_added=["Swift"],
+                source="AI_SUGGESTED",
+                reason="Preferred by the role.",
+                risk_level="MEDIUM",
+            ),
+        ],
+        keyword_coverage_before=1 / 3,
+        keyword_coverage_after=1.0,
+    )
+    repair = ExperienceSupportResponse(
+        experience_suggestions=[
+            TailoringSuggestion(
+                section="experience",
+                original_text=first_bullet,
+                suggested_text=(
+                    "Developed Kotlin services alongside Java Spring Boot APIs to support "
+                    "mobile-facing healthcare workflows and shared backend integrations."
+                ),
+                requirements_addressed=["Kotlin"],
+                skills_added=["Kotlin"],
+                keywords_added=["Kotlin"],
+                source="AI_SUGGESTED",
+                reason="Integrates Kotlin into the closest backend service context.",
+                risk_level="HIGH",
+            ),
+            TailoringSuggestion(
+                section="experience",
+                original_text=second_bullet,
+                suggested_text=(
+                    "Integrated Swift client workflows with REST APIs and existing Angular-backed "
+                    "administrative services to support consistent mobile and web experiences."
+                ),
+                requirements_addressed=["Swift"],
+                skills_added=["Swift"],
+                keywords_added=["Swift"],
+                source="AI_SUGGESTED",
+                reason="Integrates Swift into the closest client-facing application context.",
+                risk_level="HIGH",
+            ),
+        ]
+    )
+
+    calls = []
+
+    def fake_structured_completion(
+        system_prompt,
+        user_prompt,
+        response_model,
+        *,
+        model_env_var=None,
+    ):
+        calls.append(response_model)
+        if response_model is TailoringResponse:
+            return initial
+        if response_model is ExperienceSupportResponse:
+            return repair
+        raise AssertionError(f"unexpected response model: {response_model}")
+
+    monkeypatch.setattr(
+        "app.providers.openai_provider.structured_completion",
+        fake_structured_completion,
+    )
+
+    result = generate_tailoring_ai(request)
+
+    assert calls == [TailoringResponse, ExperienceSupportResponse]
+    assert {s.skills_added[0] for s in result.skill_suggestions} == {"Kotlin", "Swift"}
+    assert len(result.experience_suggestions) == 2
+    assert all(s.source == "AI_SUGGESTED" for s in result.experience_suggestions)
+    assert all(s.risk_level == "HIGH" for s in result.experience_suggestions)
+    support_text = " ".join(s.suggested_text for s in result.experience_suggestions)
+    assert "Kotlin" in support_text
+    assert "Swift" in support_text
+
+
+def test_max_match_ai_drops_skill_when_repair_cannot_support_it(monkeypatch) -> None:
+    original = "Built Java Spring Boot REST APIs for healthcare workflows."
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Mobile Platform Engineer",
+        master_skills=["Java", "Spring Boot"],
+        master_summary="Java software engineer.",
+        experiences=[
+            ExperienceInput(
+                company="CMS",
+                title="Software Development Engineer",
+                bullets=[original],
+                detected_skills=["Java", "Spring Boot"],
+            )
+        ],
+        required_skills=["Java", "Kotlin"],
+        preferred_skills=["Swift"],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+    initial = TailoringResponse(
+        skill_suggestions=[
+            TailoringSuggestion(
+                section="skills",
+                suggested_text="Add Kotlin",
+                skills_added=["Kotlin"],
+                keywords_added=["Kotlin"],
+                requirements_addressed=["Kotlin"],
+                source="AI_SUGGESTED",
+                reason="Required.",
+            ),
+            TailoringSuggestion(
+                section="skills",
+                suggested_text="Add Swift",
+                skills_added=["Swift"],
+                keywords_added=["Swift"],
+                requirements_addressed=["Swift"],
+                source="AI_SUGGESTED",
+                reason="Preferred.",
+            ),
+        ]
+    )
+    repair = ExperienceSupportResponse(
+        experience_suggestions=[
+            TailoringSuggestion(
+                section="experience",
+                original_text=original,
+                suggested_text=(
+                    "Developed Kotlin services alongside Java Spring Boot APIs for "
+                    "healthcare workflow integrations."
+                ),
+                requirements_addressed=["Kotlin"],
+                skills_added=["Kotlin"],
+                keywords_added=["Kotlin"],
+                source="AI_SUGGESTED",
+                reason="Coherent backend support.",
+                risk_level="HIGH",
+            )
+        ]
+    )
+
+    def fake_structured_completion(
+        system_prompt,
+        user_prompt,
+        response_model,
+        *,
+        model_env_var=None,
+    ):
+        if response_model is TailoringResponse:
+            return initial
+        return repair
+
+    monkeypatch.setattr(
+        "app.providers.openai_provider.structured_completion",
+        fake_structured_completion,
+    )
+
+    result = generate_tailoring_ai(request)
+
+    assert [s.skills_added for s in result.skill_suggestions] == [["Kotlin"]]
+    assert result.keyword_coverage_after == 0.667
+    assert "Swift" not in " ".join(
+        skill
+        for suggestion in result.skill_suggestions
+        for skill in suggestion.skills_added
+    )
