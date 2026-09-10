@@ -1,6 +1,7 @@
 """Tests for the heuristic job-description requirement parser."""
 
-from app.jobs.parsing import parse_job_requirements
+from app.jobs.models import JobRequirements, SkillRequirement
+from app.jobs.parsing import parse_job_requirements, parse_job_requirements_ai
 
 JD = """
 We are looking for a Senior Backend Engineer to join our platform team.
@@ -68,3 +69,43 @@ def test_parse_handles_missing_sections_gracefully() -> None:
     reqs = parse_job_requirements("Engineer", "We use Go and PostgreSQL.")
     assert "Go" in reqs.keywords
     assert reqs.required_experience_years is None
+
+
+def test_ai_parser_moves_degree_requirements_out_of_skill_lists(monkeypatch) -> None:
+    raw = JobRequirements(
+        required_skills=[
+            SkillRequirement(
+                normalized_name="Linux",
+                original_text="Strong Linux OS experience",
+                importance="required",
+            ),
+            SkillRequirement(
+                normalized_name="Bachelor's degree in Computer Science or Engineering",
+                original_text="Bachelor's in CS, Engineering, or related field",
+                importance="required",
+            ),
+        ],
+        preferred_skills=[],
+        education_requirements=[],
+        keywords=["Linux", "Bachelor's degree in Computer Science or Engineering"],
+    )
+
+    def fake_structured_completion(system_prompt, user_prompt, response_model, **kwargs):
+        assert response_model is JobRequirements
+        return raw
+
+    monkeypatch.setattr(
+        "app.providers.openai_provider.structured_completion",
+        fake_structured_completion,
+    )
+
+    reqs = parse_job_requirements_ai(
+        "Senior Platform Engineer",
+        "Bachelor's in CS or Engineering. Strong Linux OS experience.",
+    )
+
+    assert [s.normalized_name for s in reqs.required_skills] == ["Linux"]
+    assert reqs.education_requirements == [
+        "Bachelor's in CS, Engineering, or related field"
+    ]
+    assert reqs.keywords == ["Linux"]
