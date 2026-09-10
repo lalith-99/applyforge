@@ -39,8 +39,10 @@ func versionedRequirementsHash(contentHash string) string {
 }
 
 // GetOrParse returns cached requirements if they're still fresh for both the
-// job content and the current parser semantics. Bumping the parser cache
-// version reparses an existing job once on next use without a bulk migration.
+// job content and the current parser semantics. Alternative/OR semantics are
+// recovered from the original description on every read so an older cached
+// parse can never collapse "Python or Go" into either zero or two hard
+// requirements.
 func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, description, contentHash string) (Requirements, error) {
 	cacheHash := versionedRequirementsHash(contentHash)
 	cached, err := s.repo.Get(ctx, jobID)
@@ -48,7 +50,7 @@ func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, descri
 		if s.usage != nil {
 			s.usage.RecordAsync(ctx, aiusage.Entry{Operation: "parse_job_requirements", Status: "SUCCESS", CacheHit: true})
 		}
-		return cached, nil
+		return withAlternativeRequirements(cached, description), nil
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return Requirements{}, err
@@ -59,5 +61,9 @@ func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, descri
 		return Requirements{}, err
 	}
 
-	return s.repo.Upsert(ctx, jobID, cacheHash, parsed)
+	stored, err := s.repo.Upsert(ctx, jobID, cacheHash, parsed)
+	if err != nil {
+		return Requirements{}, err
+	}
+	return withAlternativeRequirements(stored, description), nil
 }
