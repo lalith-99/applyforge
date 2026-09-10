@@ -45,7 +45,9 @@ func (s *Service) GetOrParse(ctx context.Context, jobID uuid.UUID, title, descri
 	cacheHash := versionedRequirementsHash(contentHash)
 	cached, err := s.repo.Get(ctx, jobID)
 	if err == nil && cached.ContentHash == cacheHash {
-		s.usage.RecordAsync(ctx, aiusage.Entry{Operation: "parse_job_requirements", Status: "SUCCESS", CacheHit: true})
+		if s.usage != nil {
+			s.usage.RecordAsync(ctx, aiusage.Entry{Operation: "parse_job_requirements", Status: "SUCCESS", CacheHit: true})
+		}
 		return cached, nil
 	}
 	if err != nil && !errors.Is(err, ErrNotFound) {
