@@ -33,6 +33,10 @@ _EDUCATION_SKILL_RE = re.compile(
     r"\b(bachelor'?s|master'?s|ph\.?d\.?|degree|b\.?s\.?|m\.?s\.?)\b",
     re.IGNORECASE,
 )
+_ALTERNATIVE_SKILL_MARKER_RE = re.compile(
+    r"\b(one\s+or\s+more|one\s+of|any\s+of|either)\b",
+    re.IGNORECASE,
+)
 _CLEARANCE_RE = re.compile(
     r"(security clearance|top secret|ts/sci|secret clearance)", re.IGNORECASE
 )
@@ -109,7 +113,7 @@ def _extract_responsibilities(description: str) -> list[str]:
 
 
 def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirements:
-    """Keep education requirements out of technical skill matching."""
+    """Normalize education and OR-list semantics before matching/tailoring."""
     education = list(requirements.education_requirements)
     seen_education = {item.strip().lower() for item in education if item.strip()}
 
@@ -130,10 +134,45 @@ def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirement
     requirements.required_skills = filter_skills(requirements.required_skills)
     requirements.preferred_skills = filter_skills(requirements.preferred_skills)
     requirements.education_requirements = education
+
+    # A posting such as "experience in one or more languages: Python, Go,
+    # Rust, Java, C++" describes one alternative capability, not five
+    # mandatory languages. Models sometimes emit every example as required.
+    # When multiple skills share the same explicitly alternative source text,
+    # remove the individual hard requirements and preserve the group statement
+    # as a responsibility/qualification for semantic context.
+    grouped_originals: dict[str, list[SkillRequirement]] = {}
+    for item in requirements.required_skills:
+        original = item.original_text.strip()
+        if original and _ALTERNATIVE_SKILL_MARKER_RE.search(original):
+            grouped_originals.setdefault(original, []).append(item)
+
+    alternative_skill_keys: set[str] = set()
+    alternative_texts: list[str] = []
+    for original, items in grouped_originals.items():
+        if len(items) < 2:
+            continue
+        alternative_texts.append(original)
+        alternative_skill_keys.update(item.normalized_name.strip().lower() for item in items)
+
+    if alternative_skill_keys:
+        requirements.required_skills = [
+            item
+            for item in requirements.required_skills
+            if not (
+                item.normalized_name.strip().lower() in alternative_skill_keys
+                and _ALTERNATIVE_SKILL_MARKER_RE.search(item.original_text)
+            )
+        ]
+        for text in alternative_texts:
+            if text not in requirements.responsibilities:
+                requirements.responsibilities.append(text)
+
     requirements.keywords = [
         keyword
         for keyword in requirements.keywords
         if not _EDUCATION_SKILL_RE.search(keyword)
+        and keyword.strip().lower() not in alternative_skill_keys
     ]
     return requirements
 
@@ -201,6 +240,10 @@ def parse_job_requirements_ai(title: str, description: str) -> JobRequirements:
         "specifically-named methodologies (e.g. 'TDD', 'gRPC', 'Kubernetes', 'PostgreSQL'). Academic "
         "degrees and fields of study are NEVER skills: put Bachelor's/Master's/PhD requirements only "
         "in education_requirements, even when the posting lists them under required qualifications. Never "
+        "When a requirement is explicitly alternative, such as 'one or more of Python, Go, Rust, Java, "
+        "C++' or 'one of AWS/Azure/GCP', DO NOT emit every option as a separate required skill. Preserve "
+        "the alternative group statement in responsibilities instead; the individual examples are not "
+        "all mandatory simultaneously. Do not "
         "include generic role descriptors, competency areas, or soft skills as a skill — phrases like "
         "'backend engineering', 'software engineering', 'system architecture', 'API design', "
         "'problem solving', 'ownership', or years-of-experience statements are NOT skills; capture "
