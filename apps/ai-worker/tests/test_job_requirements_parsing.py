@@ -109,3 +109,40 @@ def test_ai_parser_moves_degree_requirements_out_of_skill_lists(monkeypatch) -> 
         "Bachelor's in CS, Engineering, or related field"
     ]
     assert reqs.keywords == ["Linux"]
+
+
+def test_ai_parser_does_not_turn_one_of_language_list_into_five_requirements(
+    monkeypatch,
+) -> None:
+    original = (
+        "Software development experience in one or more general purpose programming "
+        "languages; Python, Go, Rust, Java, C++."
+    )
+    raw = JobRequirements(
+        required_skills=[
+            SkillRequirement(
+                normalized_name=skill,
+                original_text=original,
+                importance="required",
+            )
+            for skill in ["Python", "Go", "Rust", "Java", "C++"]
+        ],
+        preferred_skills=[],
+        responsibilities=[],
+        keywords=["Python", "Go", "Rust", "Java", "C++"],
+    )
+
+    def fake_structured_completion(system_prompt, user_prompt, response_model, **kwargs):
+        assert "DO NOT emit every option as a separate required skill" in system_prompt
+        return raw
+
+    monkeypatch.setattr(
+        "app.providers.openai_provider.structured_completion",
+        fake_structured_completion,
+    )
+
+    reqs = parse_job_requirements_ai("Staff Software Engineer", original)
+
+    assert reqs.required_skills == []
+    assert original in reqs.responsibilities
+    assert reqs.keywords == []
