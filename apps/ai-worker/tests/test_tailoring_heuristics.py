@@ -154,6 +154,47 @@ def test_equivalent_skill_labels_do_not_create_false_missing_skills() -> None:
 
 
 
+
+def test_summary_kafka_alias_is_not_misclassified_as_new_skill() -> None:
+    original_summary = (
+        "Java engineer with Spring Boot, Apache Kafka, AWS, Docker, and Kubernetes experience."
+    )
+    request = TailoringRequest(
+        mode="MAX_MATCH",
+        job_title="Staff Software Engineer",
+        master_skills=["Java", "Spring Boot", "Apache Kafka", "AWS", "Docker", "Kubernetes"],
+        master_summary=original_summary,
+        experiences=[],
+        required_skills=["Java", "Kafka"],
+        preferred_skills=[],
+        responsibilities=[],
+        transferable_matches=[],
+    )
+    summary = TailoringSuggestion(
+        section="summary",
+        original_text=original_summary,
+        suggested_text=(
+            "Java engineer building low-latency services with Spring Boot, Kafka, AWS, "
+            "Docker, and Kubernetes."
+        ),
+        requirements_addressed=["Java", "Kafka"],
+        skills_added=["Kafka"],
+        keywords_added=["Kafka"],
+        source="AI_SUGGESTED",
+        reason="Foregrounds relevant backend experience.",
+        risk_level="HIGH",
+    )
+
+    classified = _sanitize_ai_tailoring(
+        request,
+        TailoringResponse(summary_suggestion=summary),
+    )
+
+    assert classified.summary_suggestion is not None
+    assert classified.summary_suggestion.source == "MASTER_RESUME"
+    assert classified.summary_suggestion.risk_level == "LOW"
+    assert classified.summary_suggestion.skills_added == []
+
 def test_ai_classifier_keeps_learning_style_draft_for_critic_review() -> None:
     original = (
         "Develop and modernize enterprise healthcare applications using Java 21, "
