@@ -22,6 +22,7 @@ from app.tailoring.critic_models import CritiqueRequest, CritiqueResponse
 from app.tailoring.enrichment import enrich_tailoring_best_effort
 from app.tailoring.heuristics import generate_tailoring, generate_tailoring_ai
 from app.tailoring.models import TAILORING_MODES, TailoringRequest, TailoringResponse
+from app.tailoring.support_bullets import ensure_max_match_support_best_effort
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
         try:
             result = generate_tailoring_ai(request)
             result = enrich_tailoring_best_effort(request, result)
+            result = ensure_max_match_support_best_effort(request, result)
             apply_usage_headers(response)
             return result
         except AIProviderError:
