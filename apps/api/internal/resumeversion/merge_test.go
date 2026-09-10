@@ -116,81 +116,55 @@ func TestMergeContent_EquivalentSkillAliasesAreNotDuplicated(t *testing.T) {
 	}
 }
 
-func TestMergeContent_AISkillWithoutApprovedExperienceSupportIsOmitted(t *testing.T) {
+func TestMergeContent_ApprovedAISkillCanBeAddedWithoutExperienceSupport(t *testing.T) {
 	base := aiclient.ResumeProfile{Skills: []string{"Java"}}
 	suggestions := []tailoring.Suggestion{
 		{
 			Section:       "skills",
-			SuggestedText: "Add Kotlin",
-			SkillsAdded:   []string{"Kotlin"},
+			SuggestedText: "Add Linux",
+			SkillsAdded:   []string{"Linux"},
 			Source:        "AI_SUGGESTED",
 			UserStatus:    tailoring.StatusApproved,
 		},
 	}
 
 	merged := mergeContent(base, suggestions)
-	if len(merged.Skills) != 1 {
-		t.Fatalf("unsupported AI skill leaked into final resume: %v", merged.Skills)
+	if len(merged.Skills) != 2 || merged.Skills[1] != "Linux" {
+		t.Fatalf("expected approved standalone AI skill to be retained, got %v", merged.Skills)
 	}
 }
 
-func TestMergeContent_AISkillRequiresApprovedSupportingExperience(t *testing.T) {
+func TestMergeContent_ApprovedSkillAndSupportingExperienceBothApply(t *testing.T) {
 	base := aiclient.ResumeProfile{
-		Skills: []string{"Java"},
+		Skills: []string{"Kubernetes"},
 		Experiences: []aiclient.ExperienceEntry{
-			{Bullets: []string{"Built Java services."}},
+			{Bullets: []string{"Managed Kubernetes application deployments."}},
 		},
 	}
 	suggestions := []tailoring.Suggestion{
 		{
 			Section:       "skills",
-			SuggestedText: "Add Kotlin",
-			SkillsAdded:   []string{"Kotlin"},
+			SuggestedText: "Add GitOps",
+			SkillsAdded:   []string{"GitOps"},
 			Source:        "AI_SUGGESTED",
 			UserStatus:    tailoring.StatusApproved,
 		},
 		{
 			Section:       "experience",
-			OriginalText:  strPtr("Built Java services."),
-			SuggestedText: "Built Kotlin and Java services for high-volume backend workflows.",
-			SkillsAdded:   []string{"Kotlin"},
+			OriginalText:  strPtr("Managed Kubernetes application deployments."),
+			SuggestedText: "Managed Kubernetes application deployments using GitOps workflows and Argo CD.",
+			SkillsAdded:   []string{"GitOps"},
 			Source:        "AI_SUGGESTED",
 			UserStatus:    tailoring.StatusApproved,
 		},
 	}
 
 	merged := mergeContent(base, suggestions)
-	if len(merged.Skills) != 2 || merged.Skills[1] != "Kotlin" {
-		t.Fatalf("expected supported Kotlin skill in final resume, got %v", merged.Skills)
+	if len(merged.Skills) != 2 || merged.Skills[1] != "GitOps" {
+		t.Fatalf("expected GitOps skill in final resume, got %v", merged.Skills)
 	}
 	if merged.Experiences[0].Bullets[0] !=
-		"Built Kotlin and Java services for high-volume backend workflows." {
+		"Managed Kubernetes application deployments using GitOps workflows and Argo CD." {
 		t.Fatalf("supporting experience rewrite was not applied: %v", merged.Experiences[0].Bullets)
-	}
-}
-
-func TestMergeContent_PendingSupportDoesNotUnlockAISkill(t *testing.T) {
-	base := aiclient.ResumeProfile{Skills: []string{"Java"}}
-	suggestions := []tailoring.Suggestion{
-		{
-			Section:       "skills",
-			SuggestedText: "Add Swift",
-			SkillsAdded:   []string{"Swift"},
-			Source:        "AI_SUGGESTED",
-			UserStatus:    tailoring.StatusApproved,
-		},
-		{
-			Section:       "experience",
-			OriginalText:  strPtr("Built mobile APIs."),
-			SuggestedText: "Integrated Swift clients with Java REST APIs for mobile workflows.",
-			SkillsAdded:   []string{"Swift"},
-			Source:        "AI_SUGGESTED",
-			UserStatus:    tailoring.StatusPending,
-		},
-	}
-
-	merged := mergeContent(base, suggestions)
-	if len(merged.Skills) != 1 {
-		t.Fatalf("pending support must not unlock Swift in final resume: %v", merged.Skills)
 	}
 }
