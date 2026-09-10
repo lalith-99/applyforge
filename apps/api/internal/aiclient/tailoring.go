@@ -61,9 +61,19 @@ type TailoringResponse struct {
 	KeywordCoverageAfter  float64               `json:"keyword_coverage_after"`
 }
 
-// SuggestTailoring requests resume tailoring suggestions for a job.
+// SuggestTailoring requests resume tailoring suggestions for a job. Tailoring
+// is already executed by a background job and can make multiple sequential
+// model calls, so it gets a longer bounded HTTP timeout than interactive AI
+// operations.
 func (c *Client) SuggestTailoring(ctx context.Context, req TailoringRequest) (TailoringResponse, error) {
 	var out TailoringResponse
-	err := c.postJSON(ctx, "suggest_tailoring", "/v1/tailoring/suggest", req, &out)
+	err := c.postJSONWithHTTPClient(
+		ctx,
+		c.tailoringHTTP,
+		"suggest_tailoring",
+		"/v1/tailoring/suggest",
+		req,
+		&out,
+	)
 	return out, err
 }
