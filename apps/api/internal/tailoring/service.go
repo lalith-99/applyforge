@@ -192,8 +192,8 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 			suggestions = append(suggestions, created)
 		}
 	}
-	// Show experience rewrites before their companion skill cards so users
-	// evaluate the evidence-bearing resume bullet before approving the keyword.
+	// Show experience rewrites/new bullets before companion skill cards so
+	// users evaluate evidence-bearing prose before approving a keyword.
 	for _, sg := range aiResp.ExperienceSuggestions {
 		if created, err := s.repo.AddSuggestion(ctx, runID, fromAISuggestion(sg)); err == nil {
 			suggestions = append(suggestions, created)
@@ -328,7 +328,10 @@ func sanitizeKnownSkillSuggestions(resp *aiclient.TailoringResponse, known map[s
 func sanitizeTailoringSuggestions(resp *aiclient.TailoringResponse, known, allowed map[string]bool) {
 	filteredSkills := make([]aiclient.TailoringSuggestion, 0, len(resp.SkillSuggestions))
 	for _, suggestion := range resp.SkillSuggestions {
-		if suggestionTouchesKnownSkill(suggestion, known) {
+		suggestion.SkillsAdded = unknownSkills(suggestion.SkillsAdded, known)
+		suggestion.KeywordsAdded = unknownSkills(suggestion.KeywordsAdded, known)
+		suggestion.SkillCategories = filterSkillCategories(suggestion.SkillCategories, suggestion.SkillsAdded)
+		if len(suggestion.SkillsAdded) == 0 {
 			continue
 		}
 		if len(allowed) > 0 {
@@ -343,19 +346,20 @@ func sanitizeTailoringSuggestions(resp *aiclient.TailoringResponse, known, allow
 			}
 			suggestion.SkillsAdded = keptSkills
 			suggestion.KeywordsAdded = allowedSkills(suggestion.KeywordsAdded, allowed)
+			suggestion.SkillCategories = filterSkillCategories(suggestion.SkillCategories, keptSkills)
 		}
 		filteredSkills = append(filteredSkills, suggestion)
 	}
 	resp.SkillSuggestions = filteredSkills
 
-	// Experience rewrites are valuable resume content and must not be discarded
-	// merely because the model included an already-known technology in
-	// skills_added. Strip known metadata instead; preserve the rewrite itself.
+	// Experience rewrites/new bullets are valuable resume content and must not
+	// be discarded merely because model metadata also names known technology.
 	for i := range resp.ExperienceSuggestions {
 		suggestion := &resp.ExperienceSuggestions[i]
 		suggestion.SkillsAdded = unknownSkills(suggestion.SkillsAdded, known)
 		suggestion.KeywordsAdded = unknownSkills(suggestion.KeywordsAdded, known)
-		if suggestion.Source == "AI_SUGGESTED" && len(suggestion.SkillsAdded) == 0 {
+		suggestion.SkillCategories = filterSkillCategories(suggestion.SkillCategories, suggestion.SkillsAdded)
+		if suggestion.Source == "AI_SUGGESTED" && len(suggestion.SkillsAdded) == 0 && suggestion.Operation != OperationAdd {
 			suggestion.Source = "MASTER_RESUME"
 			suggestion.RiskLevel = "LOW"
 		}
@@ -364,6 +368,10 @@ func sanitizeTailoringSuggestions(resp *aiclient.TailoringResponse, known, allow
 	if resp.SummarySuggestion != nil {
 		resp.SummarySuggestion.SkillsAdded = unknownSkills(resp.SummarySuggestion.SkillsAdded, known)
 		resp.SummarySuggestion.KeywordsAdded = unknownSkills(resp.SummarySuggestion.KeywordsAdded, known)
+		resp.SummarySuggestion.SkillCategories = filterSkillCategories(
+			resp.SummarySuggestion.SkillCategories,
+			resp.SummarySuggestion.SkillsAdded,
+		)
 		if resp.SummarySuggestion.Source == "AI_SUGGESTED" &&
 			len(resp.SummarySuggestion.SkillsAdded) == 0 {
 			resp.SummarySuggestion.Source = "MASTER_RESUME"
@@ -396,6 +404,23 @@ func allowedSkills(values []string, allowed map[string]bool) []string {
 	for _, value := range values {
 		if allowed[tailoringSkillKey(value)] {
 			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func filterSkillCategories(categories map[string]string, skills []string) map[string]string {
+	if len(categories) == 0 || len(skills) == 0 {
+		return map[string]string{}
+	}
+	wanted := map[string]string{}
+	for _, skill := range skills {
+		wanted[tailoringSkillKey(skill)] = skill
+	}
+	out := map[string]string{}
+	for rawSkill, category := range categories {
+		if display, ok := wanted[tailoringSkillKey(rawSkill)]; ok {
+			out[display] = category
 		}
 	}
 	return out
@@ -472,6 +497,10 @@ func toAITransferable(transfers []matching.TransferableSkill) []aiclient.Tailori
 }
 
 func fromAISuggestion(s aiclient.TailoringSuggestion) Suggestion {
+	operation := s.Operation
+	if operation != OperationAdd {
+		operation = OperationRewrite
+	}
 	return Suggestion{
 		Section:               s.Section,
 		OriginalText:          s.OriginalText,
@@ -479,6 +508,10 @@ func fromAISuggestion(s aiclient.TailoringSuggestion) Suggestion {
 		RequirementsAddressed: s.RequirementsAddressed,
 		SkillsAdded:           s.SkillsAdded,
 		KeywordsAdded:         s.KeywordsAdded,
+		SkillCategories:       s.SkillCategories,
+		Operation:             operation,
+		TargetCompany:         s.TargetCompany,
+		TargetTitle:           s.TargetTitle,
 		Source:                s.Source,
 		Reason:                s.Reason,
 		Confidence:            s.Confidence,

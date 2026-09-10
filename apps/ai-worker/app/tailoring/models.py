@@ -8,6 +8,28 @@ from pydantic import BaseModel, Field, field_validator
 
 TAILORING_MODES = ("STRICT", "GROWTH", "MAX_MATCH")
 _RISK_LEVELS = ("LOW", "MEDIUM", "HIGH")
+SKILL_CATEGORIES = (
+    "Languages",
+    "Backend",
+    "Databases & Messaging",
+    "Cloud & DevOps",
+    "Frontend",
+    "Security",
+    "Testing & Tools",
+    "AI / GenAI",
+    "Other",
+)
+SkillCategory = Literal[
+    "Languages",
+    "Backend",
+    "Databases & Messaging",
+    "Cloud & DevOps",
+    "Frontend",
+    "Security",
+    "Testing & Tools",
+    "AI / GenAI",
+    "Other",
+]
 
 
 def _canonical_skill_display(value: str) -> str:
@@ -66,6 +88,10 @@ class TailoringSuggestion(BaseModel):
     requirements_addressed: list[str] = Field(default_factory=list)
     skills_added: list[str] = Field(default_factory=list)
     keywords_added: list[str] = Field(default_factory=list)
+    skill_categories: dict[str, SkillCategory] = Field(default_factory=dict)
+    operation: Literal["REWRITE", "ADD"] = "REWRITE"
+    target_company: str | None = None
+    target_title: str | None = None
     source: Literal["MASTER_RESUME", "AI_SUGGESTED"]
     reason: str
     confidence: float = 0.6
@@ -77,6 +103,24 @@ class TailoringSuggestion(BaseModel):
         if not isinstance(value, list):
             return value
         return [_canonical_skill_display(item) for item in value]
+
+    @field_validator("skill_categories", mode="before")
+    @classmethod
+    def _normalize_skill_categories(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, str] = {}
+        for raw_skill, raw_category in value.items():
+            skill = _canonical_skill_display(str(raw_skill))
+            category = str(raw_category).strip()
+            out[skill] = category if category in SKILL_CATEGORIES else "Other"
+        return out
+
+    @field_validator("operation", mode="before")
+    @classmethod
+    def _normalize_operation(cls, value: str) -> str:
+        upper = str(value).upper()
+        return upper if upper in {"REWRITE", "ADD"} else "REWRITE"
 
     @field_validator("risk_level", mode="before")
     @classmethod

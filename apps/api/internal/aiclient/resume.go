@@ -56,12 +56,13 @@ type ExperienceEntry struct {
 
 // ResumeProfile mirrors app/resume/models.py ResumeProfile.
 type ResumeProfile struct {
-	Contact        ContactInfo       `json:"contact"`
-	Summary        *string           `json:"summary"`
-	Skills         []string          `json:"skills"`
-	Experiences    []ExperienceEntry `json:"experiences"`
-	Education      []string          `json:"education"`
-	Certifications []string          `json:"certifications"`
+	Contact         ContactInfo       `json:"contact"`
+	Summary         *string           `json:"summary"`
+	Skills          []string          `json:"skills"`
+	SkillCategories map[string]string `json:"skill_categories,omitempty"`
+	Experiences     []ExperienceEntry `json:"experiences"`
+	Education       []string          `json:"education"`
+	Certifications  []string          `json:"certifications"`
 }
 
 // ExtractResumeText uploads a resume file and returns its selectable text.

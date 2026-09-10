@@ -19,6 +19,7 @@ from app.providers.openai_provider import (
 )
 from app.tailoring.critic import critique_ai, critique_heuristic
 from app.tailoring.critic_models import CritiqueRequest, CritiqueResponse
+from app.tailoring.enrichment import enrich_tailoring_best_effort
 from app.tailoring.heuristics import generate_tailoring, generate_tailoring_ai
 from app.tailoring.models import TAILORING_MODES, TailoringRequest, TailoringResponse
 
@@ -36,6 +37,7 @@ def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
         clear_usage_metadata()
         try:
             result = generate_tailoring_ai(request)
+            result = enrich_tailoring_best_effort(request, result)
             apply_usage_headers(response)
             return result
         except AIProviderError:

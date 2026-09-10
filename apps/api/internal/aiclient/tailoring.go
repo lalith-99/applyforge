@@ -36,16 +36,20 @@ type TailoringRequest struct {
 
 // TailoringSuggestion mirrors app/tailoring/models.py TailoringSuggestion.
 type TailoringSuggestion struct {
-	Section               string   `json:"section"`
-	OriginalText          *string  `json:"original_text"`
-	SuggestedText         string   `json:"suggested_text"`
-	RequirementsAddressed []string `json:"requirements_addressed"`
-	SkillsAdded           []string `json:"skills_added"`
-	KeywordsAdded         []string `json:"keywords_added"`
-	Source                string   `json:"source"`
-	Reason                string   `json:"reason"`
-	Confidence            float64  `json:"confidence"`
-	RiskLevel             string   `json:"risk_level"`
+	Section               string            `json:"section"`
+	OriginalText          *string           `json:"original_text"`
+	SuggestedText         string            `json:"suggested_text"`
+	RequirementsAddressed []string          `json:"requirements_addressed"`
+	SkillsAdded           []string          `json:"skills_added"`
+	KeywordsAdded         []string          `json:"keywords_added"`
+	SkillCategories       map[string]string `json:"skill_categories"`
+	Operation             string            `json:"operation"`
+	TargetCompany         *string           `json:"target_company"`
+	TargetTitle           *string           `json:"target_title"`
+	Source                string            `json:"source"`
+	Reason                string            `json:"reason"`
+	Confidence            float64           `json:"confidence"`
+	RiskLevel             string            `json:"risk_level"`
 }
 
 // TailoringResponse mirrors app/tailoring/models.py TailoringResponse.

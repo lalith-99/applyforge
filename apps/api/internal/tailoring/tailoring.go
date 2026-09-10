@@ -49,6 +49,11 @@ const (
 	RunStatusFailed     = "FAILED"
 )
 
+const (
+	OperationRewrite = "REWRITE"
+	OperationAdd     = "ADD"
+)
+
 // Run is the domain representation of a tailoring run.
 type Run struct {
 	ID                   uuid.UUID
@@ -102,6 +107,10 @@ type Suggestion struct {
 	RequirementsAddressed []string
 	SkillsAdded           []string
 	KeywordsAdded         []string
+	SkillCategories       map[string]string
+	Operation             string
+	TargetCompany         *string
+	TargetTitle           *string
 	Source                string
 	Reason                string
 	Confidence            float64
@@ -133,6 +142,8 @@ func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
 		RequirementsAddressed: row.RequirementsAddressed,
 		SkillsAdded:           row.SkillsAdded,
 		KeywordsAdded:         row.KeywordsAdded,
+		SkillCategories:       map[string]string{},
+		Operation:             OperationRewrite,
 		Source:                row.Source,
 		Reason:                row.Reason,
 		Confidence:            row.Confidence,
@@ -142,6 +153,21 @@ func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
 		EvidenceStatus:        evidenceStatus,
 		RequiresAttestation:   requiresAttestation,
 	}
+}
+
+func applySuggestionMetadata(s Suggestion, meta db.TailoringSuggestionMetadata) Suggestion {
+	if len(meta.SkillCategories) > 0 {
+		_ = json.Unmarshal(meta.SkillCategories, &s.SkillCategories)
+	}
+	if s.SkillCategories == nil {
+		s.SkillCategories = map[string]string{}
+	}
+	if meta.Operation != "" {
+		s.Operation = meta.Operation
+	}
+	s.TargetCompany = database.TextOrNil(meta.TargetCompany)
+	s.TargetTitle = database.TextOrNil(meta.TargetTitle)
+	return s
 }
 
 // Repository provides access to tailoring_runs / tailoring_suggestions records.
@@ -251,7 +277,32 @@ func (r *Repository) AddSuggestion(ctx context.Context, runID uuid.UUID, s Sugge
 	if err != nil {
 		return Suggestion{}, err
 	}
-	return suggestionFromRow(row), nil
+
+	categories, _ := json.Marshal(s.SkillCategories)
+	if len(categories) == 0 {
+		categories = []byte("{}")
+	}
+	operation := s.Operation
+	if operation != OperationAdd {
+		operation = OperationRewrite
+	}
+	if err := r.q.UpdateTailoringSuggestionMetadata(
+		ctx,
+		row.ID,
+		categories,
+		operation,
+		database.PGText(s.TargetCompany),
+		database.PGText(s.TargetTitle),
+	); err != nil {
+		return Suggestion{}, err
+	}
+
+	created := suggestionFromRow(row)
+	created.SkillCategories = s.SkillCategories
+	created.Operation = operation
+	created.TargetCompany = s.TargetCompany
+	created.TargetTitle = s.TargetTitle
+	return created, nil
 }
 
 // GetSuggestion returns one suggestion belonging to a run.
@@ -266,7 +317,11 @@ func (r *Repository) GetSuggestion(ctx context.Context, suggestionID, runID uuid
 		}
 		return Suggestion{}, err
 	}
-	return suggestionFromRow(row), nil
+	meta, err := r.q.GetTailoringSuggestionMetadata(ctx, row.ID)
+	if err != nil {
+		return Suggestion{}, err
+	}
+	return applySuggestionMetadata(suggestionFromRow(row), meta), nil
 }
 
 // ListSuggestions returns all suggestions for a run, in creation order.
@@ -275,9 +330,22 @@ func (r *Repository) ListSuggestions(ctx context.Context, runID uuid.UUID) ([]Su
 	if err != nil {
 		return nil, err
 	}
+	metas, err := r.q.ListTailoringSuggestionMetadata(ctx, database.UUIDToPG(runID))
+	if err != nil {
+		return nil, err
+	}
+	metadataByID := make(map[uuid.UUID]db.TailoringSuggestionMetadata, len(metas))
+	for _, meta := range metas {
+		metadataByID[database.PGToUUID(meta.ID)] = meta
+	}
+
 	out := make([]Suggestion, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, suggestionFromRow(row))
+		suggestion := suggestionFromRow(row)
+		if meta, ok := metadataByID[suggestion.ID]; ok {
+			suggestion = applySuggestionMetadata(suggestion, meta)
+		}
+		out = append(out, suggestion)
 	}
 	return out, nil
 }
@@ -293,7 +361,11 @@ func (r *Repository) UpdateSuggestionStatus(ctx context.Context, suggestionID, r
 	if err != nil {
 		return Suggestion{}, err
 	}
-	return suggestionFromRow(row), nil
+	meta, err := r.q.GetTailoringSuggestionMetadata(ctx, row.ID)
+	if err != nil {
+		return Suggestion{}, err
+	}
+	return applySuggestionMetadata(suggestionFromRow(row), meta), nil
 }
 
 // ApproveAllPending approves only verified suggestions. AI-suggested items

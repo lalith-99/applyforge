@@ -168,3 +168,109 @@ func TestMergeContent_ApprovedSkillAndSupportingExperienceBothApply(t *testing.T
 		t.Fatalf("supporting experience rewrite was not applied: %v", merged.Experiences[0].Bullets)
 	}
 }
+
+func TestMergeContent_PreservesAISelectedSkillCategory(t *testing.T) {
+	base := aiclient.ResumeProfile{Skills: []string{"Java"}}
+	suggestions := []tailoring.Suggestion{
+		{
+			Section:         "skills",
+			SuggestedText:   "Add Prompt Engineering",
+			SkillsAdded:     []string{"Prompt Engineering"},
+			SkillCategories: map[string]string{"Prompt Engineering": "AI / GenAI"},
+			Source:          "AI_SUGGESTED",
+			UserStatus:      tailoring.StatusApproved,
+		},
+	}
+
+	merged := mergeContent(base, suggestions)
+	if len(merged.Skills) != 2 || merged.Skills[1] != "Prompt Engineering" {
+		t.Fatalf("expected prompt engineering skill, got %v", merged.Skills)
+	}
+	if merged.SkillCategories["Prompt Engineering"] != "AI / GenAI" {
+		t.Fatalf("expected AI-selected category to survive merge, got %v", merged.SkillCategories)
+	}
+}
+
+func TestMergeContent_AddExperienceBulletTargetsExistingRole(t *testing.T) {
+	base := aiclient.ResumeProfile{
+		Experiences: []aiclient.ExperienceEntry{
+			{Company: strPtr("CMS"), Title: strPtr("Software Development Engineer"), Bullets: []string{"Existing CMS bullet."}},
+			{Company: strPtr("Thoughtworks"), Title: strPtr("Software Developer"), Bullets: []string{"Existing TW bullet."}},
+		},
+	}
+	newBullet := "Built agentic testing workflows using prompt engineering and tool calling."
+	suggestions := []tailoring.Suggestion{
+		{
+			Section:       "experience",
+			Operation:     tailoring.OperationAdd,
+			SuggestedText: newBullet,
+			TargetCompany: strPtr("CMS"),
+			TargetTitle:   strPtr("Software Development Engineer"),
+			Source:        "AI_SUGGESTED",
+			UserStatus:    tailoring.StatusApproved,
+		},
+	}
+
+	merged := mergeContent(base, suggestions)
+	if len(merged.Experiences[0].Bullets) != 2 || merged.Experiences[0].Bullets[1] != newBullet {
+		t.Fatalf("expected new bullet under CMS only, got %v", merged.Experiences[0].Bullets)
+	}
+	if len(merged.Experiences[1].Bullets) != 1 {
+		t.Fatalf("unexpected bullet added to other role: %v", merged.Experiences[1].Bullets)
+	}
+}
+
+func TestMergeContent_PendingOrUnknownRoleAddIsIgnored(t *testing.T) {
+	base := aiclient.ResumeProfile{
+		Experiences: []aiclient.ExperienceEntry{
+			{Company: strPtr("CMS"), Title: strPtr("Software Development Engineer"), Bullets: []string{"Existing."}},
+		},
+	}
+	suggestions := []tailoring.Suggestion{
+		{
+			Section:       "experience",
+			Operation:     tailoring.OperationAdd,
+			SuggestedText: "Pending bullet.",
+			TargetCompany: strPtr("CMS"),
+			TargetTitle:   strPtr("Software Development Engineer"),
+			UserStatus:    tailoring.StatusPending,
+		},
+		{
+			Section:       "experience",
+			Operation:     tailoring.OperationAdd,
+			SuggestedText: "Unknown-role bullet.",
+			TargetCompany: strPtr("Invented Company"),
+			TargetTitle:   strPtr("Invented Role"),
+			UserStatus:    tailoring.StatusApproved,
+		},
+	}
+
+	merged := mergeContent(base, suggestions)
+	if len(merged.Experiences[0].Bullets) != 1 {
+		t.Fatalf("expected no new bullets, got %v", merged.Experiences[0].Bullets)
+	}
+}
+
+func TestMergeContent_DeduplicatesApprovedAddedBullet(t *testing.T) {
+	newBullet := "Built agentic testing workflows using prompt engineering and tool calling."
+	base := aiclient.ResumeProfile{
+		Experiences: []aiclient.ExperienceEntry{
+			{Company: strPtr("CMS"), Title: strPtr("Software Development Engineer"), Bullets: []string{newBullet}},
+		},
+	}
+	suggestions := []tailoring.Suggestion{
+		{
+			Section:       "experience",
+			Operation:     tailoring.OperationAdd,
+			SuggestedText: newBullet,
+			TargetCompany: strPtr("CMS"),
+			TargetTitle:   strPtr("Software Development Engineer"),
+			UserStatus:    tailoring.StatusApproved,
+		},
+	}
+
+	merged := mergeContent(base, suggestions)
+	if len(merged.Experiences[0].Bullets) != 1 {
+		t.Fatalf("expected duplicate add to be ignored, got %v", merged.Experiences[0].Bullets)
+	}
+}
