@@ -153,6 +153,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	baseReq := aiclient.TailoringRequest{
 		Mode:                run.Mode,
 		JobTitle:            job.Title,
+		JobDescription:      job.Description,
 		MasterSkills:        masterSkills,
 		MasterSummary:       masterSummary,
 		Experiences:         toAIExperiences(experiences),
@@ -170,7 +171,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 		_ = s.repo.FailRun(ctx, runID)
 		return err
 	}
-	sanitizeKnownSkillSuggestions(&aiResp, skillSet)
+	sanitizeTailoringSuggestions(&aiResp, skillSet, targetSkillKeys(reqs.RequiredSkills, reqs.PreferredSkills))
 
 	if err := s.repo.UpdateStatus(ctx, runID, RunStatusEvaluating); err != nil {
 		return err
@@ -287,7 +288,7 @@ func tailoringSkillKey(value string) string {
 		return "react"
 	case "node.js", "node js":
 		return "nodejs"
-	case "golang":
+	case "golang", "go (golang)":
 		return "go"
 	case "postgres":
 		return "postgresql"
@@ -301,15 +302,47 @@ func tailoringSkillKey(value string) string {
 	return key
 }
 
-// sanitizeKnownSkillSuggestions is a hard business-rule boundary around LLM
-// output. The model may rewrite or emphasize a verified skill, but it must
-// never label a skill already present on the selected resume as a new
-// AI-suggested/learn-first addition.
+func targetSkillKeys(required, preferred []aiclient.SkillRequirement) map[string]bool {
+	allowed := map[string]bool{}
+	for _, req := range append(append([]aiclient.SkillRequirement{}, required...), preferred...) {
+		if len(req.Alternatives) > 0 {
+			for _, alternative := range req.Alternatives {
+				allowed[tailoringSkillKey(alternative)] = true
+			}
+			continue
+		}
+		if key := tailoringSkillKey(req.NormalizedName); key != "" {
+			allowed[key] = true
+		}
+	}
+	return allowed
+}
+
+// sanitizeKnownSkillSuggestions is retained for focused unit tests and legacy
+// callers. Production tailoring additionally constrains standalone skill cards
+// to actual extracted target-job skills via sanitizeTailoringSuggestions.
 func sanitizeKnownSkillSuggestions(resp *aiclient.TailoringResponse, known map[string]bool) {
+	sanitizeTailoringSuggestions(resp, known, nil)
+}
+
+func sanitizeTailoringSuggestions(resp *aiclient.TailoringResponse, known, allowed map[string]bool) {
 	filteredSkills := make([]aiclient.TailoringSuggestion, 0, len(resp.SkillSuggestions))
 	for _, suggestion := range resp.SkillSuggestions {
 		if suggestionTouchesKnownSkill(suggestion, known) {
 			continue
+		}
+		if len(allowed) > 0 {
+			keptSkills := make([]string, 0, len(suggestion.SkillsAdded))
+			for _, skill := range suggestion.SkillsAdded {
+				if allowed[tailoringSkillKey(skill)] {
+					keptSkills = append(keptSkills, skill)
+				}
+			}
+			if len(keptSkills) == 0 {
+				continue
+			}
+			suggestion.SkillsAdded = keptSkills
+			suggestion.KeywordsAdded = allowedSkills(suggestion.KeywordsAdded, allowed)
 		}
 		filteredSkills = append(filteredSkills, suggestion)
 	}
@@ -358,6 +391,16 @@ func unknownSkills(values []string, known map[string]bool) []string {
 	return out
 }
 
+func allowedSkills(values []string, allowed map[string]bool) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if allowed[tailoringSkillKey(value)] {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func buildCritiqueRequest(jobTitle string, masterSummary *string, masterSkills, requiredNames, preferredNames, responsibilities []string, aiResp aiclient.TailoringResponse) aiclient.CritiqueRequest {
 	all := make([]aiclient.CritiqueSuggestion, 0, len(aiResp.SkillSuggestions)+len(aiResp.ExperienceSuggestions)+1)
 	if aiResp.SummarySuggestion != nil {
@@ -393,6 +436,10 @@ func toCritiqueSuggestion(s aiclient.TailoringSuggestion) aiclient.CritiqueSugge
 func skillRequirementNames(reqs []aiclient.SkillRequirement) []string {
 	out := make([]string, 0, len(reqs))
 	for _, r := range reqs {
+		if len(r.Alternatives) > 0 {
+			out = append(out, strings.Join(r.Alternatives, " or "))
+			continue
+		}
 		out = append(out, r.NormalizedName)
 	}
 	return out

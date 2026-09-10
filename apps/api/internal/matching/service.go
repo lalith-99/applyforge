@@ -206,7 +206,17 @@ func (s *Service) matchJobWithContext(
 func toSkillRequirements(reqs []aiclient.SkillRequirement) []SkillRequirement {
 	out := make([]SkillRequirement, 0, len(reqs))
 	for _, r := range reqs {
-		out = append(out, SkillRequirement{NormalizedName: strings.ToLower(r.NormalizedName), Importance: r.Importance})
+		alternatives := make([]string, 0, len(r.Alternatives))
+		for _, alternative := range r.Alternatives {
+			if value := strings.ToLower(strings.TrimSpace(alternative)); value != "" {
+				alternatives = append(alternatives, value)
+			}
+		}
+		out = append(out, SkillRequirement{
+			NormalizedName: strings.ToLower(r.NormalizedName),
+			Importance:     r.Importance,
+			Alternatives:   alternatives,
+		})
 	}
 	return out
 }

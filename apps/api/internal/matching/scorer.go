@@ -136,22 +136,63 @@ func indexTransferable(skills []TransferableSkill) map[string][]TransferableSkil
 	return idx
 }
 
+func requirementOptions(req SkillRequirement) []string {
+	if len(req.Alternatives) > 0 {
+		options := make([]string, 0, len(req.Alternatives))
+		seen := map[string]bool{}
+		for _, alternative := range req.Alternatives {
+			key := strings.ToLower(strings.TrimSpace(alternative))
+			if key != "" && !seen[key] {
+				options = append(options, key)
+				seen[key] = true
+			}
+		}
+		if len(options) > 0 {
+			return options
+		}
+	}
+	key := strings.ToLower(strings.TrimSpace(req.NormalizedName))
+	if key == "" {
+		return nil
+	}
+	return []string{key}
+}
+
+func matchedRequirementOption(req SkillRequirement, skills map[string]bool) (string, bool) {
+	for _, option := range requirementOptions(req) {
+		if skills[option] {
+			return option, true
+		}
+	}
+	return "", false
+}
+
 // coverSkills partitions requirements into direct matches, transferable
 // matches, and misses, and returns the fractional "credit" earned toward
 // coverage: 1.0 per direct match, transferability_score/100 (capped below
-// direct-match value) per transferable match, 0 for a miss. Transferable
-// credit intentionally never reaches 1.0 — it must always score lower than
-// actually having the skill (see MASTER_REQUIREMENTS.md §24).
+// direct-match value) per transferable match, 0 for a miss. An alternative
+// group counts as exactly one requirement and is satisfied by any one option.
 func coverSkills(reqs []SkillRequirement, candidateSkills map[string]bool, transferable map[string][]TransferableSkill) (matched, missing []string, transfers []TransferableMatch, credit float64) {
 	for _, req := range reqs {
-		key := strings.ToLower(req.NormalizedName)
-		if candidateSkills[key] {
-			matched = append(matched, req.NormalizedName)
+		if option, ok := matchedRequirementOption(req, candidateSkills); ok {
+			if len(req.Alternatives) > 0 {
+				matched = append(matched, option)
+			} else {
+				matched = append(matched, req.NormalizedName)
+			}
 			credit += 1.0
 			continue
 		}
 
-		if best := bestTransfer(transferable[key]); best != nil && best.TransferabilityScore > 0 {
+		var best *TransferableSkill
+		for _, option := range requirementOptions(req) {
+			candidate := bestTransfer(transferable[option])
+			if candidate != nil && candidate.TransferabilityScore > 0 &&
+				(best == nil || candidate.TransferabilityScore > best.TransferabilityScore) {
+				best = candidate
+			}
+		}
+		if best != nil {
 			transfers = append(transfers, TransferableMatch{
 				SourceSkill:        best.SourceSkill,
 				TargetSkill:        req.NormalizedName,
@@ -208,20 +249,22 @@ func responsibilityAlignment(
 	totalCredit := 0.0
 	for _, resp := range responsibilities {
 		lower := strings.ToLower(resp)
-		mentioned := make([]string, 0, 2)
+		mentionedReqs := make([]SkillRequirement, 0, 2)
 		for _, req := range jobSkills {
-			skill := strings.ToLower(strings.TrimSpace(req.NormalizedName))
-			if skill != "" && strings.Contains(lower, skill) {
-				mentioned = append(mentioned, skill)
+			for _, option := range requirementOptions(req) {
+				if option != "" && strings.Contains(lower, option) {
+					mentionedReqs = append(mentionedReqs, req)
+					break
+				}
 			}
 		}
 
-		if len(mentioned) == 0 {
+		if len(mentionedReqs) == 0 {
 			totalCredit += 0.7
 			continue
 		}
-		for _, skill := range mentioned {
-			if candidateSkills[skill] {
+		for _, req := range mentionedReqs {
+			if _, ok := matchedRequirementOption(req, candidateSkills); ok {
 				totalCredit += 1.0
 				break
 			}
@@ -237,7 +280,6 @@ func domainAlignment(candidateDomains, jobDomains []string) float64 {
 	if len(candidateDomains) == 0 {
 		return 0.7
 	}
-
 	matched := 0
 	for _, jobDomain := range jobDomains {
 		job := normalizeDomain(jobDomain)
@@ -386,6 +428,11 @@ func clampScore(v float64) int {
 	return int(v + 0.5)
 }
 
+func targetHasRequirement(req SkillRequirement, targetSkills map[string]bool) bool {
+	_, ok := matchedRequirementOption(req, targetSkills)
+	return ok
+}
+
 func profileMatch(in Input, requiredMatched, requiredMissing []string, transfers []TransferableMatch) (current, target int, suggestedAdditions []string) {
 	current = clampScore(coverageRatio(len(in.RequiredSkills), len(requiredMatched)) * 100)
 
@@ -393,6 +440,17 @@ func profileMatch(in Input, requiredMatched, requiredMissing []string, transfers
 	// meaningful transferable paths — never presented as current capability.
 	targetCredit := len(requiredMatched)
 	for _, missing := range requiredMissing {
+		matchedTarget := false
+		for _, req := range in.RequiredSkills {
+			if strings.EqualFold(req.NormalizedName, missing) && targetHasRequirement(req, in.CandidateTargetSkills) {
+				targetCredit++
+				matchedTarget = true
+				break
+			}
+		}
+		if matchedTarget {
+			continue
+		}
 		if in.CandidateTargetSkills[strings.ToLower(missing)] {
 			targetCredit++
 			continue

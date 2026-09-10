@@ -32,15 +32,39 @@ func permSupportRelevant(in Input) bool {
 		in.PermSupportPreferred
 }
 
+func conditionalH1BRestriction(text string) string {
+	if !strings.Contains(text, "h-1b") && !strings.Contains(text, "h1b") {
+		return ""
+	}
+	conditional := []string{
+		"may not be able to",
+		"may be unable to",
+		"may not support",
+		"may not sponsor",
+		"might not be able to",
+		"might be unable to",
+	}
+	for _, phrase := range conditional {
+		if !strings.Contains(text, phrase) {
+			continue
+		}
+		if strings.Contains(text, "sponsor") || strings.Contains(text, "sponsorship") || strings.Contains(text, "support") {
+			return "current posting indicates H-1B sponsorship/support may be unavailable"
+		}
+	}
+	return ""
+}
+
 // AssessImmigration applies evidence in strict precedence order:
 //  1. explicit negative role text
-//  2. explicit positive role text
-//  3. recent historical DOL employer evidence
-//  4. unknown
+//  2. conditional/ambiguous negative role text
+//  3. explicit positive role text
+//  4. recent historical DOL employer evidence
+//  5. unknown
 //
 // Historical employer evidence is deliberately not called "SUPPORTED": it
 // proves that the employer has recently used H-1B LCA/PERM pathways, not that
-// this particular role will sponsor.
+// this particular role will sponsor. Current role-level language always wins.
 func AssessImmigration(in Input) ImmigrationAssessment {
 	text := strings.ToLower(strings.Join([]string{
 		in.WorkAuthorizationRequirements,
@@ -78,6 +102,19 @@ func AssessImmigration(in Input) ImmigrationAssessment {
 				LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
 				MatchedEmployers:         in.CompanyEvidenceEmployers,
 			}
+		}
+	}
+
+	if evidence := conditionalH1BRestriction(text); evidence != "" {
+		return ImmigrationAssessment{
+			Status:                   "UNKNOWN",
+			Confidence:               "MEDIUM",
+			Evidence:                 evidence,
+			EvidenceSource:           "JOB_POSTING",
+			H1BCertifiedCases:        in.CompanyH1BCertifiedCases,
+			PERMCertifiedCases:       in.CompanyPERMCertifiedCases,
+			LatestEvidenceFiscalYear: in.CompanyEvidenceLatestFY,
+			MatchedEmployers:         in.CompanyEvidenceEmployers,
 		}
 	}
 

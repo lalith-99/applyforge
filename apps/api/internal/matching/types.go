@@ -7,9 +7,12 @@ package matching
 import "time"
 
 // SkillRequirement is a normalized requirement extracted from a job posting.
+// Alternatives is non-empty when the posting requires any one option rather
+// than every option, e.g. "Python or Go".
 type SkillRequirement struct {
 	NormalizedName string
 	Importance     string // "required" | "preferred"
+	Alternatives   []string
 }
 
 // TransferableSkill describes how much a known skill transfers toward a

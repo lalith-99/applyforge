@@ -10,6 +10,28 @@ TAILORING_MODES = ("STRICT", "GROWTH", "MAX_MATCH")
 _RISK_LEVELS = ("LOW", "MEDIUM", "HIGH")
 
 
+def _canonical_skill_display(value: str) -> str:
+    """Normalize model-generated skill labels before they reach final rendering.
+
+    The master resume keeps its source-faithful spelling, but AI suggestions
+    should use one canonical display name so variants such as "Go (Golang)"
+    do not fall into the renderer's generic Other category.
+    """
+    stripped = str(value).strip()
+    aliases = {
+        "golang": "Go",
+        "go (golang)": "Go",
+        "reactjs": "React",
+        "react.js": "React",
+        "node js": "Node.js",
+        "nodejs": "Node.js",
+        "amazon web services": "AWS",
+        "apache kafka": "Kafka",
+        "argo cd": "ArgoCD",
+    }
+    return aliases.get(stripped.lower(), stripped)
+
+
 class ExperienceInput(BaseModel):
     company: str | None = None
     title: str | None = None
@@ -27,6 +49,7 @@ class TransferableMatchInput(BaseModel):
 class TailoringRequest(BaseModel):
     mode: str
     job_title: str
+    job_description: str = ""
     master_skills: list[str] = Field(default_factory=list)
     master_summary: str | None = None
     experiences: list[ExperienceInput] = Field(default_factory=list)
@@ -47,6 +70,13 @@ class TailoringSuggestion(BaseModel):
     reason: str
     confidence: float = 0.6
     risk_level: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
+
+    @field_validator("skills_added", "keywords_added", mode="before")
+    @classmethod
+    def _normalize_skill_labels(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [_canonical_skill_display(item) for item in value]
 
     @field_validator("risk_level", mode="before")
     @classmethod

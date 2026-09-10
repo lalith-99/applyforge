@@ -64,7 +64,11 @@ func CheckEligibility(in Input) EligibilityResult {
 			result.Eligible = false
 			result.HardFailures = append(result.HardFailures, "IMMIGRATION_INCOMPATIBLE: job posting explicitly states sponsorship is unavailable")
 		case "UNKNOWN":
-			result.Warnings = append(result.Warnings, "H-1B/immigration support is not explicit in this posting")
+			if result.Immigration.EvidenceSource == "JOB_POSTING" && result.Immigration.Evidence != "" {
+				result.Warnings = append(result.Warnings, "H-1B CAUTION: "+result.Immigration.Evidence+"; verify transfer eligibility with the recruiter before applying")
+			} else {
+				result.Warnings = append(result.Warnings, "H-1B/immigration support is not explicit in this posting")
+			}
 		}
 	}
 
