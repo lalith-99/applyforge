@@ -37,6 +37,9 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
   const job = jobQuery.data;
   const match = matchQuery.data;
+  const practiceProjects = Array.from(
+    new Set(qualifyMutation.data?.LearningPlan.Projects ?? []),
+  );
 
   return (
     <>
@@ -45,7 +48,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
         <div>
           <h1 className="text-2xl font-semibold">{job.title}</h1>
           <p className="text-black/60 dark:text-white/60">
-            {job.company_name} {job.location_text ? `\u00b7 ${job.location_text}` : ""}
+            {job.company_name} {job.location_text ? `· ${job.location_text}` : ""}
           </p>
         </div>
 
@@ -254,12 +257,12 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            {qualifyMutation.data.LearningPlan.Projects.length > 0 && (
+            {practiceProjects.length > 0 && (
               <div className="mt-4">
                 <p className="mb-1 text-sm font-medium">Practice Projects</p>
                 <ul className="list-inside list-disc text-sm">
-                  {qualifyMutation.data.LearningPlan.Projects.map((p) => (
-                    <li key={p}>{p}</li>
+                  {practiceProjects.map((project, index) => (
+                    <li key={`project-${index}`}>{project}</li>
                   ))}
                 </ul>
               </div>
