@@ -146,3 +146,22 @@ def test_ai_parser_does_not_turn_one_of_language_list_into_five_requirements(
     assert reqs.required_skills == []
     assert original in reqs.responsibilities
     assert reqs.keywords == []
+
+
+def test_heuristic_parser_ignores_explicit_one_or_more_language_examples() -> None:
+    description = (
+        "Requirements:\n"
+        "- 7+ years building distributed systems.\n"
+        "- Software development experience in one or more general purpose programming "
+        "languages; Python, Go, Rust, Java, C++.\n"
+        "- Experience with HTTP, TLS, and load balancing."
+    )
+
+    reqs = parse_job_requirements("Staff Software Engineer", description)
+    names = {skill.normalized_name for skill in reqs.required_skills}
+
+    assert "Python" not in names
+    assert "Go" not in names
+    assert "Rust" not in names
+    assert "Java" not in names
+    assert "C++" not in names
