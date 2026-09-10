@@ -137,34 +137,32 @@ def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirement
 
     # A posting such as "experience in one or more languages: Python, Go,
     # Rust, Java, C++" describes one alternative capability, not five
-    # mandatory languages. Models sometimes emit every example as required.
-    # When multiple skills share the same explicitly alternative source text,
-    # remove the individual hard requirements and preserve the group statement
-    # as a responsibility/qualification for semantic context.
-    grouped_originals: dict[str, list[SkillRequirement]] = {}
-    for item in requirements.required_skills:
-        original = item.original_text.strip()
-        if original and _ALTERNATIVE_SKILL_MARKER_RE.search(original):
-            grouped_originals.setdefault(original, []).append(item)
-
+    # mandatory languages. If the source sentence explicitly signals OR
+    # semantics and names multiple canonical technologies, remove any
+    # individual hard-skill requirements sourced from that sentence and keep
+    # the statement as contextual qualification text instead.
     alternative_skill_keys: set[str] = set()
     alternative_texts: list[str] = []
-    for original, items in grouped_originals.items():
-        if len(items) < 2:
+    for item in requirements.required_skills:
+        original = item.original_text.strip()
+        if not original or not _ALTERNATIVE_SKILL_MARKER_RE.search(original):
+            continue
+        named = _find_skills(original)
+        if len(named) < 2:
             continue
         alternative_texts.append(original)
-        alternative_skill_keys.update(item.normalized_name.strip().lower() for item in items)
+        alternative_skill_keys.update(skill.strip().lower() for skill in named)
 
     if alternative_skill_keys:
         requirements.required_skills = [
             item
             for item in requirements.required_skills
             if not (
-                item.normalized_name.strip().lower() in alternative_skill_keys
-                and _ALTERNATIVE_SKILL_MARKER_RE.search(item.original_text)
+                _ALTERNATIVE_SKILL_MARKER_RE.search(item.original_text)
+                and len(_find_skills(item.original_text)) >= 2
             )
         ]
-        for text in alternative_texts:
+        for text in dict.fromkeys(alternative_texts):
             if text not in requirements.responsibilities:
                 requirements.responsibilities.append(text)
 
@@ -177,10 +175,23 @@ def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirement
     return requirements
 
 
+def _remove_alternative_skill_sentences(text: str) -> str:
+    parts = re.split(r"(?<=[.!?])\s+|\n+", text)
+    kept: list[str] = []
+    for part in parts:
+        if (
+            _ALTERNATIVE_SKILL_MARKER_RE.search(part)
+            and len(_find_skills(part)) >= 2
+        ):
+            continue
+        kept.append(part)
+    return "\n".join(kept)
+
+
 def parse_job_requirements(title: str, description: str) -> JobRequirements:
     required_text, preferred_text = _split_required_preferred(description)
 
-    required_skill_names = _find_skills(required_text)
+    required_skill_names = _find_skills(_remove_alternative_skill_sentences(required_text))
     preferred_skill_names = [
         s for s in _find_skills(preferred_text) if s not in required_skill_names
     ]
