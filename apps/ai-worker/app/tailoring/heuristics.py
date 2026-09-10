@@ -8,11 +8,13 @@ AI_API_KEY configured. STRICT/GROWTH/MAX_MATCH mode rules are enforced here.
 
 from __future__ import annotations
 
+import json
 import re
 
 from app.core.skills_dictionary import canonical_skills
 from app.tailoring.models import (
     ExperienceInput,
+    ExperienceSupportResponse,
     TailoringRequest,
     TailoringResponse,
     TailoringSuggestion,
@@ -336,6 +338,149 @@ def _display_names_for_keys(request: TailoringRequest, keys: set[str]) -> list[s
     return out
 
 
+
+def _text_mentions_skill(text: str, skill: str) -> bool:
+    value = skill.strip().lower()
+    if not value:
+        return False
+    pattern = r"(?<![\\w+#.-])" + re.escape(value) + r"(?![\\w+#-])"
+    return bool(re.search(pattern, text.lower()))
+
+
+def _skill_keys_in_text(request: TailoringRequest, text: str) -> set[str]:
+    found = _skills_in_text(text)
+    for skill in request.required_skills + request.preferred_skills + request.master_skills:
+        if _text_mentions_skill(text, skill):
+            found.add(_skill_key(skill))
+    return found
+
+
+def _experience_support_keys(result: TailoringResponse) -> set[str]:
+    candidate_skills = [
+        skill
+        for suggestion in result.skill_suggestions
+        for skill in suggestion.skills_added
+        if skill.strip()
+    ]
+    supported: set[str] = set()
+    for suggestion in result.experience_suggestions:
+        explicit = _lower_set(suggestion.skills_added)
+        for skill in candidate_skills:
+            key = _skill_key(skill)
+            if key in explicit and _text_mentions_skill(suggestion.suggested_text, skill):
+                supported.add(key)
+                continue
+            if _text_mentions_skill(suggestion.suggested_text, skill):
+                supported.add(key)
+    return supported
+
+
+def _skills_missing_experience_support(result: TailoringResponse) -> list[str]:
+    supported = _experience_support_keys(result)
+    missing: list[str] = []
+    seen: set[str] = set()
+    for suggestion in result.skill_suggestions:
+        for skill in suggestion.skills_added:
+            key = _skill_key(skill)
+            if key and key not in supported and key not in seen:
+                missing.append(skill)
+                seen.add(key)
+    return missing
+
+
+def _recompute_keyword_coverage(
+    request: TailoringRequest, result: TailoringResponse
+) -> None:
+    before = _lower_set(request.master_skills)
+    after = set(before)
+    for suggestion in result.skill_suggestions:
+        after.update(_lower_set(suggestion.skills_added))
+
+    requirements = request.required_skills + request.preferred_skills
+    if not requirements:
+        result.keyword_coverage_before = 1.0
+        result.keyword_coverage_after = 1.0
+        return
+
+    result.keyword_coverage_before = round(
+        sum(1 for skill in requirements if _skill_key(skill) in before) / len(requirements),
+        3,
+    )
+    result.keyword_coverage_after = round(
+        sum(1 for skill in requirements if _skill_key(skill) in after) / len(requirements),
+        3,
+    )
+
+
+def _drop_skills_without_experience_support(
+    request: TailoringRequest, result: TailoringResponse
+) -> TailoringResponse:
+    """Never ship a MAX_MATCH skill into the resume without a supporting draft."""
+    supported = _experience_support_keys(result)
+    filtered: list[TailoringSuggestion] = []
+    for suggestion in result.skill_suggestions:
+        keys = {_skill_key(skill) for skill in suggestion.skills_added if skill.strip()}
+        if keys and keys.issubset(supported):
+            filtered.append(suggestion)
+    result.skill_suggestions = filtered
+    _recompute_keyword_coverage(request, result)
+    return result
+
+
+def _generate_missing_experience_support_ai(
+    request: TailoringRequest,
+    result: TailoringResponse,
+    missing_skills: list[str],
+) -> ExperienceSupportResponse:
+    from app.providers.openai_provider import structured_completion
+
+    used_originals = [
+        suggestion.original_text
+        for suggestion in result.experience_suggestions
+        if suggestion.original_text
+    ]
+    payload = {
+        "job_title": request.job_title,
+        "missing_skills_requiring_support": missing_skills,
+        "required_skills": request.required_skills,
+        "preferred_skills": request.preferred_skills,
+        "job_responsibilities": request.responsibilities,
+        "master_experiences": [experience.model_dump() for experience in request.experiences],
+        "already_used_original_bullets": used_originals,
+    }
+    system = (
+        "You are a senior technical resume writer performing a focused repair pass. "
+        "The first tailoring pass added target-job skills but failed to create professional "
+        "experience bullets supporting them. Produce only high-quality experience rewrites that "
+        "close that gap. Every suggestion must replace one exact existing bullet from "
+        "master_experiences: original_text must match the source bullet character-for-character. "
+        "Choose the most context-compatible bullet based on the actual work, system type, domain, "
+        "and surrounding stack - never just the first bullet. Do not reuse a bullet listed in "
+        "already_used_original_bullets, and do not use the same original_text twice. "
+        "The new skill must perform a concrete technical role in the sentence (implementation, "
+        "integration, testing, deployment, data flow, client development, or service development), "
+        "not appear as a detached keyword. Preserve the source role's domain and plausible scope. "
+        "If two missing skills naturally belong to one technical scenario, cover them in one rewrite; "
+        "otherwise use separate source bullets. Set section='experience', source='AI_SUGGESTED', "
+        "risk_level='HIGH', and skills_added/keywords_added to the exact missing skills introduced. "
+        "Every skill in skills_added must appear literally in suggested_text. Keep bullets concise, "
+        "specific, and human-written (normally 18-32 words). Never use wording such as learning, "
+        "building proficiency, gaining exposure, growth area, transferable to, applicable to this "
+        "role, candidate verification, or similar disclaimers. Do not invent certifications, employers, "
+        "dates, promotions, team sizes, numerical metrics, or named outcomes. You may preserve an "
+        "existing metric only when the rewritten bullet clearly describes the same underlying outcome. "
+        "If a skill cannot be integrated into any existing experience without producing an implausible "
+        "or random bullet, omit that skill entirely; the application will then remove it from the "
+        "skills section. Quality and coherence are more important than forcing every keyword."
+    )
+    return structured_completion(
+        system,
+        json.dumps(payload, indent=2),
+        ExperienceSupportResponse,
+        model_env_var="OPENAI_TAILORING_MODEL",
+    )
+
+
 def _sanitize_ai_tailoring(
     request: TailoringRequest, result: TailoringResponse
 ) -> TailoringResponse:
@@ -356,7 +501,7 @@ def _sanitize_ai_tailoring(
 
     summary = result.summary_suggestion
     if summary:
-        introduced = _skills_in_text(summary.suggested_text) - verified_master
+        introduced = _skill_keys_in_text(request, summary.suggested_text) - verified_master
         if introduced:
             # Keep the professional summary evidence-based; speculative content
             # belongs in individually reviewable experience/skill cards.
@@ -366,10 +511,13 @@ def _sanitize_ai_tailoring(
             summary.risk_level = "LOW"
 
     classified_experience: list[TailoringSuggestion] = []
+    used_originals: set[str] = set()
     for suggestion in result.experience_suggestions:
         if not suggestion.original_text:
             continue
 
+        if suggestion.original_text in used_originals:
+            continue
         evidence = _experience_evidence_for_bullet(request, suggestion.original_text)
         if evidence is None:
             continue
@@ -380,7 +528,7 @@ def _sanitize_ai_tailoring(
             # resume bullet. The model gets one critic-driven regeneration pass.
             continue
 
-        introduced = _skills_in_text(suggestion.suggested_text) - evidence
+        introduced = _skill_keys_in_text(request, suggestion.suggested_text) - evidence
         if introduced:
             introduced_names = _display_names_for_keys(request, introduced)
             suggestion.source = "AI_SUGGESTED"
@@ -402,6 +550,7 @@ def _sanitize_ai_tailoring(
             suggestion.risk_level = "LOW"
             suggestion.skills_added = []
         classified_experience.append(suggestion)
+        used_originals.add(suggestion.original_text)
 
     result.summary_suggestion = summary
     result.experience_suggestions = classified_experience
@@ -471,4 +620,26 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         TailoringResponse,
         model_env_var="OPENAI_TAILORING_MODEL",
     )
-    return _sanitize_ai_tailoring(request, result)
+    result = _sanitize_ai_tailoring(request, result)
+
+    if request.mode == "MAX_MATCH":
+        from app.providers.openai_provider import AIProviderError
+
+        missing_support = _skills_missing_experience_support(result)
+        if missing_support:
+            try:
+                repair = _generate_missing_experience_support_ai(
+                    request,
+                    result,
+                    missing_support,
+                )
+                result.experience_suggestions.extend(repair.experience_suggestions)
+                result = _sanitize_ai_tailoring(request, result)
+            except AIProviderError:
+                # A skill without an experience support draft must not leak into
+                # the generated resume just because the repair call failed.
+                pass
+
+        result = _drop_skills_without_experience_support(request, result)
+
+    return result
