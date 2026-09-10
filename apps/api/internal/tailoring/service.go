@@ -213,7 +213,7 @@ func (s *Service) ProcessRun(ctx context.Context, runID uuid.UUID) error {
 	}
 	for _, sg := range aiResp.SkillSuggestions {
 		for _, added := range sg.SkillsAdded {
-			afterSkillSet[strings.ToLower(added)] = true
+			afterSkillSet[tailoringSkillKey(added)] = true
 		}
 	}
 	alignmentAfter := ComputeAlignment(afterSkillSet, requiredNames, preferredNames, reqs.Responsibilities)
