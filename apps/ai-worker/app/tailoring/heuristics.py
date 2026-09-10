@@ -412,21 +412,6 @@ def _recompute_keyword_coverage(
     )
 
 
-def _drop_skills_without_experience_support(
-    request: TailoringRequest, result: TailoringResponse
-) -> TailoringResponse:
-    """Never ship a MAX_MATCH skill into the resume without a supporting draft."""
-    supported = _experience_support_keys(result)
-    filtered: list[TailoringSuggestion] = []
-    for suggestion in result.skill_suggestions:
-        keys = {_skill_key(skill) for skill in suggestion.skills_added if skill.strip()}
-        if keys and keys.issubset(supported):
-            filtered.append(suggestion)
-    result.skill_suggestions = filtered
-    _recompute_keyword_coverage(request, result)
-    return result
-
-
 def _generate_missing_experience_support_ai(
     request: TailoringRequest,
     result: TailoringResponse,
