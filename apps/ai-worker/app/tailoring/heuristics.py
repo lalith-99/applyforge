@@ -276,10 +276,11 @@ _MODE_POLICY = {
         "candidate already has to that missing skill. Do not suggest any skill without transfer support."
     ),
     "MAX_MATCH": (
-        "MAX_MATCH mode: aggressively optimize for the target job. Suggest every important missing "
-        "required/preferred skill in the skills section. For high-value missing technologies, also "
-        "draft a polished Professional Experience rewrite that shows a coherent, realistic way the "
-        "technology would have been used in the context of the closest existing bullet. These drafts "
+        "MAX_MATCH mode: aggressively optimize for the target job. Every missing skill that you "
+        "propose adding to the skills section MUST also have at least one polished Professional "
+        "Experience rewrite that uses that skill in a coherent, realistic technical scenario. Draft "
+        "the support bullet from the most context-compatible existing experience, not a random one. "
+        "These drafts "
         "are review candidates only: set source='AI_SUGGESTED', risk_level='HIGH', and include every "
         "new technology in skills_added so the application can require explicit candidate attestation "
         "before the bullet is allowed into a final resume. Do not weaken the resume sentence with "
@@ -338,12 +339,11 @@ def _display_names_for_keys(request: TailoringRequest, keys: set[str]) -> list[s
     return out
 
 
-
 def _text_mentions_skill(text: str, skill: str) -> bool:
     value = skill.strip().lower()
     if not value:
         return False
-    pattern = r"(?<![\\w+#.-])" + re.escape(value) + r"(?![\\w+#-])"
+    pattern = r"(?<![\w+#.-])" + re.escape(value) + r"(?![\w+#-])"
     return bool(re.search(pattern, text.lower()))
 
 
@@ -593,6 +593,8 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "bullet itself as a clean completed-work accomplishment because the UI, not the resume text, "
         "will carry the candidate-attestation warning. Do not invent metrics for such drafts. For a "
         "missing skill, also create section='skills', original_text=null, when the mode allows it. "
+        "In MAX_MATCH, never return a skills-only addition: every skill_suggestion must be paired "
+        "with an experience_suggestion that literally contains that skill in the resume sentence. "
         "Prefer one coherent technical scenario over appending a keyword to an unrelated sentence. "
         "When the JD only names a broad platform such as Azure or AWS, do not invent extra named "
         "sub-services unless the JD or source resume mentions them; use realistic platform-level "
