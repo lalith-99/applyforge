@@ -2,7 +2,52 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, BeforeValidator, Field, WithJsonSchema
+
+
+def _normalize_string_map(value: object) -> dict[str, str]:
+    """Accept either the application's map or OpenAI's fixed assignment list."""
+    if isinstance(value, list):
+        converted: dict[str, str] = {}
+        for item in value:
+            if isinstance(item, BaseModel):
+                item = item.model_dump()
+            if not isinstance(item, dict):
+                continue
+            skill = str(item.get("skill", "")).strip()
+            category = str(item.get("category", "")).strip()
+            if skill:
+                converted[skill] = category
+        return converted
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(skill).strip(): str(category).strip()
+        for skill, category in value.items()
+        if str(skill).strip()
+    }
+
+
+_STRING_MAP_WIRE_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "skill": {"type": "string"},
+            "category": {"type": "string"},
+        },
+        "required": ["skill", "category"],
+        "additionalProperties": False,
+    },
+}
+
+StringMap = Annotated[
+    dict[str, str],
+    BeforeValidator(_normalize_string_map),
+    WithJsonSchema(_STRING_MAP_WIRE_SCHEMA),
+]
 
 
 class ContactInfo(BaseModel):
@@ -29,10 +74,9 @@ class ResumeProfile(BaseModel):
     contact: ContactInfo = Field(default_factory=ContactInfo)
     summary: str | None = None
     skills: list[str] = Field(default_factory=list)
-    # Explicit category overrides are produced by the tailoring model for
-    # newly added skills. Source/master skills may omit this map and continue
-    # through the deterministic renderer fallback.
-    skill_categories: dict[str, str] = Field(default_factory=dict)
+    # Runtime stays a dict for the renderer/API. The validation schema exposes
+    # a fixed assignment list so OpenAI strict Structured Outputs can parse it.
+    skill_categories: StringMap = Field(default_factory=dict)
     experiences: list[ExperienceEntry] = Field(default_factory=list)
     education: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
