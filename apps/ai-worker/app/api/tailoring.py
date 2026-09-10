@@ -44,14 +44,11 @@ def suggest(request: TailoringRequest, response: Response) -> TailoringResponse:
             )
 
     fallback = generate_tailoring(request)
-    # When the AI provider is unavailable, keep the master resume intact rather
-    # than producing a skills-only "tailored" resume. Gap analysis can still
-    # surface missing technologies elsewhere in the product, but resume changes
-    # must have polished supporting experience copy.
+    # When the AI provider is unavailable, avoid heuristic prose rewrites but
+    # still surface missing skills for user review. A skills-only fallback is
+    # better than returning an empty tailoring run.
     fallback.summary_suggestion = None
-    fallback.skill_suggestions = []
     fallback.experience_suggestions = []
-    fallback.keyword_coverage_after = fallback.keyword_coverage_before
     return fallback
 
 
