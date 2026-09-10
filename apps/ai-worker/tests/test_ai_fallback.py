@@ -98,3 +98,33 @@ def test_tailoring_suggest_falls_back_to_heuristic_on_ai_error(monkeypatch) -> N
         },
     )
     assert response.status_code == 200
+
+
+def test_tailoring_fallback_keeps_missing_skill_suggestions(monkeypatch) -> None:
+    monkeypatch.setattr(tailoring_module, "is_configured", lambda: True)
+
+    def failing_ai(request):
+        raise AIProviderError("boom")
+
+    monkeypatch.setattr(tailoring_module, "generate_tailoring_ai", failing_ai)
+
+    response = client.post(
+        "/v1/tailoring/suggest",
+        json={
+            "mode": "MAX_MATCH",
+            "job_title": "Senior Platform Engineer",
+            "master_skills": ["Kubernetes", "Docker"],
+            "master_summary": "Platform-minded software engineer.",
+            "experiences": [],
+            "required_skills": ["Kubernetes", "Docker", "GitOps", "Linux"],
+            "preferred_skills": [],
+            "responsibilities": [],
+            "transferable_matches": [],
+        },
+    )
+
+    assert response.status_code == 200
+    suggestions = response.json()["skill_suggestions"]
+    added = {skill for suggestion in suggestions for skill in suggestion["skills_added"]}
+    assert added == {"GitOps", "Linux"}
+    assert response.json()["experience_suggestions"] == []
