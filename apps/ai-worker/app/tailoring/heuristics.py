@@ -30,6 +30,8 @@ def _skill_key(value: str) -> str:
         "golang": "go",
         "postgres": "postgresql",
         "amazon web services": "aws",
+        "apache kafka": "kafka",
+        "argo cd": "argocd",
     }
     if key in aliases:
         return aliases[key]
