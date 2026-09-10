@@ -413,6 +413,8 @@ def _sanitize_ai_tailoring(
         else:
             summary.source = "MASTER_RESUME"
             summary.risk_level = "LOW"
+            summary.skills_added = []
+            summary.keywords_added = []
 
     source_bullets = {
         bullet
@@ -449,6 +451,7 @@ def _sanitize_ai_tailoring(
             suggestion.source = "MASTER_RESUME"
             suggestion.risk_level = "LOW"
             suggestion.skills_added = []
+            suggestion.keywords_added = []
 
         # If the model accidentally rewrites the same source bullet twice, keep
         # the richer one instead of rejecting both or letting merge order decide.
