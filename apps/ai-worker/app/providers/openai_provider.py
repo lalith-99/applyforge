@@ -133,6 +133,10 @@ def structured_completion[T: BaseModel](
     model_env_var allows high-value/low-frequency operations such as resume
     parsing or tailoring to use a stronger model without forcing high-volume
     ranking/classification calls onto the same expensive model.
+
+    Do not send custom sampling parameters here. GPT-5.x reasoning models can
+    reject non-default temperature/top_p values, which would make the product
+    silently fall back to heuristics instead of using the configured model.
     """
     client = _get_client()
     model = (
@@ -148,7 +152,6 @@ def structured_completion[T: BaseModel](
                 {"role": "user", "content": user_prompt},
             ],
             response_format=response_model,
-            temperature=0.2,
         )
     except Exception as exc:  # openai raises several distinct exception types
         raise AIProviderError(f"OpenAI request failed: {exc}") from exc

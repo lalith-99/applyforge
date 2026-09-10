@@ -7,7 +7,6 @@ from app.tailoring.heuristics import (
 )
 from app.tailoring.models import (
     ExperienceInput,
-    ExperienceSupportResponse,
     TailoringRequest,
     TailoringResponse,
     TailoringSuggestion,
@@ -155,7 +154,7 @@ def test_equivalent_skill_labels_do_not_create_false_missing_skills() -> None:
 
 
 
-def test_ai_sanitizer_rejects_learning_style_azure_experience_rewrite() -> None:
+def test_ai_classifier_keeps_learning_style_draft_for_critic_review() -> None:
     original = (
         "Develop and modernize enterprise healthcare applications using Java 21, "
         "Spring Boot, REST APIs, JPA, Oracle, and Angular 19."
@@ -203,7 +202,11 @@ def test_ai_sanitizer_rejects_learning_style_azure_experience_rewrite() -> None:
 
     sanitized = _sanitize_ai_tailoring(request, result)
 
-    assert sanitized.experience_suggestions == []
+    assert len(sanitized.experience_suggestions) == 1
+    suggestion = sanitized.experience_suggestions[0]
+    assert suggestion.source == "AI_SUGGESTED"
+    assert suggestion.risk_level == "HIGH"
+    assert "Azure" in suggestion.skills_added
 
 
 
@@ -301,7 +304,7 @@ def test_ai_sanitizer_keeps_evidence_based_experience_rewrite() -> None:
     assert sanitized.experience_suggestions == [suggestion]
 
 
-def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
+def test_max_match_ai_uses_one_pass_and_keeps_multiple_experience_rewrites(
     monkeypatch,
 ) -> None:
     first_bullet = "Built Java Spring Boot REST APIs for healthcare workflows."
@@ -348,10 +351,6 @@ def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
                 risk_level="MEDIUM",
             ),
         ],
-        keyword_coverage_before=1 / 3,
-        keyword_coverage_after=1.0,
-    )
-    repair = ExperienceSupportResponse(
         experience_suggestions=[
             TailoringSuggestion(
                 section="experience",
@@ -364,24 +363,26 @@ def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
                 skills_added=["Kotlin"],
                 keywords_added=["Kotlin"],
                 source="AI_SUGGESTED",
-                reason="Integrates Kotlin into the closest backend service context.",
+                reason="Aligns backend service work to the target mobile platform stack.",
                 risk_level="HIGH",
             ),
             TailoringSuggestion(
                 section="experience",
                 original_text=second_bullet,
                 suggested_text=(
-                    "Integrated Swift client workflows with REST APIs and existing Angular-backed "
+                    "Integrated Swift client workflows with REST APIs and Angular-backed "
                     "administrative services to support consistent mobile and web experiences."
                 ),
                 requirements_addressed=["Swift"],
                 skills_added=["Swift"],
                 keywords_added=["Swift"],
                 source="AI_SUGGESTED",
-                reason="Integrates Swift into the closest client-facing application context.",
+                reason="Aligns client-facing work to the preferred mobile technology.",
                 risk_level="HIGH",
             ),
-        ]
+        ],
+        keyword_coverage_before=1 / 3,
+        keyword_coverage_after=1.0,
     )
 
     calls = []
@@ -394,11 +395,8 @@ def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
         model_env_var=None,
     ):
         calls.append(response_model)
-        if response_model is TailoringResponse:
-            return initial
-        if response_model is ExperienceSupportResponse:
-            return repair
-        raise AssertionError(f"unexpected response model: {response_model}")
+        assert "at least 3 distinct experience rewrites" in system_prompt
+        return initial
 
     monkeypatch.setattr(
         "app.providers.openai_provider.structured_completion",
@@ -407,97 +405,62 @@ def test_max_match_ai_repairs_skills_only_result_with_supporting_bullets(
 
     result = generate_tailoring_ai(request)
 
-    assert calls == [TailoringResponse, ExperienceSupportResponse]
+    assert calls == [TailoringResponse]
     assert {s.skills_added[0] for s in result.skill_suggestions} == {"Kotlin", "Swift"}
     assert len(result.experience_suggestions) == 2
     assert all(s.source == "AI_SUGGESTED" for s in result.experience_suggestions)
     assert all(s.risk_level == "HIGH" for s in result.experience_suggestions)
-    support_text = " ".join(s.suggested_text for s in result.experience_suggestions)
-    assert "Kotlin" in support_text
-    assert "Swift" in support_text
 
 
-def test_max_match_ai_keeps_skill_when_repair_cannot_support_it(monkeypatch) -> None:
+def test_ai_classifier_keeps_richer_duplicate_source_rewrite() -> None:
     original = "Built Java Spring Boot REST APIs for healthcare workflows."
     request = TailoringRequest(
         mode="MAX_MATCH",
-        job_title="Mobile Platform Engineer",
+        job_title="Platform Engineer",
         master_skills=["Java", "Spring Boot"],
         master_summary="Java software engineer.",
         experiences=[
             ExperienceInput(
                 company="CMS",
-                title="Software Development Engineer",
+                title="Software Engineer",
                 bullets=[original],
                 detected_skills=["Java", "Spring Boot"],
             )
         ],
-        required_skills=["Java", "Kotlin"],
-        preferred_skills=["Swift"],
+        required_skills=["Java", "Kubernetes", "Linux"],
+        preferred_skills=[],
         responsibilities=[],
         transferable_matches=[],
     )
-    initial = TailoringResponse(
-        skill_suggestions=[
-            TailoringSuggestion(
-                section="skills",
-                suggested_text="Add Kotlin",
-                skills_added=["Kotlin"],
-                keywords_added=["Kotlin"],
-                requirements_addressed=["Kotlin"],
-                source="AI_SUGGESTED",
-                reason="Required.",
-            ),
-            TailoringSuggestion(
-                section="skills",
-                suggested_text="Add Swift",
-                skills_added=["Swift"],
-                keywords_added=["Swift"],
-                requirements_addressed=["Swift"],
-                source="AI_SUGGESTED",
-                reason="Preferred.",
-            ),
-        ]
-    )
-    repair = ExperienceSupportResponse(
+    result = TailoringResponse(
         experience_suggestions=[
             TailoringSuggestion(
                 section="experience",
                 original_text=original,
+                suggested_text="Built Java Spring Boot REST APIs for healthcare workflows.",
+                requirements_addressed=["Java"],
+                source="MASTER_RESUME",
+                reason="Basic rewrite.",
+            ),
+            TailoringSuggestion(
+                section="experience",
+                original_text=original,
                 suggested_text=(
-                    "Developed Kotlin services alongside Java Spring Boot APIs for "
-                    "healthcare workflow integrations."
+                    "Built and operated Java Spring Boot services on Kubernetes and Linux "
+                    "for resilient healthcare workflows."
                 ),
-                requirements_addressed=["Kotlin"],
-                skills_added=["Kotlin"],
-                keywords_added=["Kotlin"],
+                requirements_addressed=["Java", "Kubernetes", "Linux"],
+                skills_added=["Kubernetes", "Linux"],
                 source="AI_SUGGESTED",
-                reason="Coherent backend support.",
+                reason="Stronger platform alignment.",
                 risk_level="HIGH",
-            )
+            ),
         ]
     )
 
-    def fake_structured_completion(
-        system_prompt,
-        user_prompt,
-        response_model,
-        *,
-        model_env_var=None,
-    ):
-        if response_model is TailoringResponse:
-            return initial
-        return repair
+    classified = _sanitize_ai_tailoring(request, result)
 
-    monkeypatch.setattr(
-        "app.providers.openai_provider.structured_completion",
-        fake_structured_completion,
-    )
+    assert len(classified.experience_suggestions) == 1
+    assert "Kubernetes" in classified.experience_suggestions[0].suggested_text
+    assert "Linux" in classified.experience_suggestions[0].suggested_text
 
-    result = generate_tailoring_ai(request)
-
-    assert [s.skills_added for s in result.skill_suggestions] == [["Kotlin"], ["Swift"]]
-    assert result.keyword_coverage_after == 1.0
-    support_text = " ".join(s.suggested_text for s in result.experience_suggestions)
-    assert "Kotlin" in support_text
-    assert "Swift" not in support_text
