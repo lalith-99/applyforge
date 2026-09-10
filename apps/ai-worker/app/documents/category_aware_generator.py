@@ -24,8 +24,8 @@ _VALID_CATEGORIES = {
     "AI / GenAI",
     "Other",
 }
-_category_overrides: ContextVar[dict[str, str]] = ContextVar(
-    "resume_skill_category_overrides", default={}
+_category_overrides: ContextVar[dict[str, str] | None] = ContextVar(
+    "resume_skill_category_overrides", default=None
 )
 _original_skill_category = generator._skill_category
 
@@ -81,7 +81,7 @@ def _enhanced_fallback(skill: str) -> str:
 
 
 def _category_for(skill: str) -> str:
-    overrides = _category_overrides.get()
+    overrides = _category_overrides.get() or {}
     category = overrides.get(skill.casefold())
     if category in _VALID_CATEGORIES:
         return category
