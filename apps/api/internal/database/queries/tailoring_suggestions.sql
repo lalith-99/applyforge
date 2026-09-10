@@ -1,22 +1,34 @@
 -- name: CreateTailoringSuggestion :one
 INSERT INTO tailoring_suggestions (
     tailoring_run_id, section, original_text, suggested_text, requirements_addressed,
-    skills_added, keywords_added, skill_categories, operation, target_company, target_title,
-    source, reason, confidence, risk_level
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-RETURNING *;
+    skills_added, keywords_added, source, reason, confidence, risk_level
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, tailoring_run_id, section, original_text, suggested_text,
+          requirements_addressed, skills_added, keywords_added, source, reason,
+          confidence, risk_level, user_status, edited_text, created_at, updated_at;
 
 -- name: ListTailoringSuggestions :many
-SELECT * FROM tailoring_suggestions WHERE tailoring_run_id = $1 ORDER BY created_at ASC;
+SELECT id, tailoring_run_id, section, original_text, suggested_text,
+       requirements_addressed, skills_added, keywords_added, source, reason,
+       confidence, risk_level, user_status, edited_text, created_at, updated_at
+FROM tailoring_suggestions
+WHERE tailoring_run_id = $1
+ORDER BY created_at ASC;
 
 -- name: GetTailoringSuggestion :one
-SELECT * FROM tailoring_suggestions WHERE id = $1 AND tailoring_run_id = $2;
+SELECT id, tailoring_run_id, section, original_text, suggested_text,
+       requirements_addressed, skills_added, keywords_added, source, reason,
+       confidence, risk_level, user_status, edited_text, created_at, updated_at
+FROM tailoring_suggestions
+WHERE id = $1 AND tailoring_run_id = $2;
 
 -- name: UpdateTailoringSuggestionStatus :one
 UPDATE tailoring_suggestions
 SET user_status = $3, edited_text = $4, updated_at = now()
 WHERE id = $1 AND tailoring_run_id = $2
-RETURNING *;
+RETURNING id, tailoring_run_id, section, original_text, suggested_text,
+          requirements_addressed, skills_added, keywords_added, source, reason,
+          confidence, risk_level, user_status, edited_text, created_at, updated_at;
 
 -- name: ApproveAllPendingSuggestions :exec
 UPDATE tailoring_suggestions
