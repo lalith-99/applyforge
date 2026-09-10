@@ -29,6 +29,10 @@ class ResumeProfile(BaseModel):
     contact: ContactInfo = Field(default_factory=ContactInfo)
     summary: str | None = None
     skills: list[str] = Field(default_factory=list)
+    # Explicit category overrides are produced by the tailoring model for
+    # newly added skills. Source/master skills may omit this map and continue
+    # through the deterministic renderer fallback.
+    skill_categories: dict[str, str] = Field(default_factory=dict)
     experiences: list[ExperienceEntry] = Field(default_factory=list)
     education: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
