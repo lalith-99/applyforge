@@ -130,12 +130,10 @@ def _sanitize_requirement_types(requirements: JobRequirements) -> JobRequirement
     requirements.required_skills = filter_skills(requirements.required_skills)
     requirements.preferred_skills = filter_skills(requirements.preferred_skills)
     requirements.education_requirements = education
-    skill_names = {
-        item.normalized_name.strip().lower()
-        for item in requirements.required_skills + requirements.preferred_skills
-    }
     requirements.keywords = [
-        keyword for keyword in requirements.keywords if keyword.strip().lower() in skill_names
+        keyword
+        for keyword in requirements.keywords
+        if not _EDUCATION_SKILL_RE.search(keyword)
     ]
     return requirements
 
