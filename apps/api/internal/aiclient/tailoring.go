@@ -24,6 +24,7 @@ type TailoringTransferableMatch struct {
 type TailoringRequest struct {
 	Mode                string                       `json:"mode"`
 	JobTitle            string                       `json:"job_title"`
+	JobDescription      string                       `json:"job_description"`
 	MasterSkills        []string                     `json:"master_skills"`
 	MasterSummary       *string                      `json:"master_summary"`
 	Experiences         []TailoringExperience        `json:"experiences"`
