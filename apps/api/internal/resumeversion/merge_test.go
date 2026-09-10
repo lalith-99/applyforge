@@ -116,7 +116,6 @@ func TestMergeContent_EquivalentSkillAliasesAreNotDuplicated(t *testing.T) {
 	}
 }
 
-
 func TestMergeContent_AISkillWithoutApprovedExperienceSupportIsOmitted(t *testing.T) {
 	base := aiclient.ResumeProfile{Skills: []string{"Java"}}
 	suggestions := []tailoring.Suggestion{
