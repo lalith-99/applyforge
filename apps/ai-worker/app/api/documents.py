@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Response
 
-from app.documents.generator import render_docx, render_pdf
+from app.documents.category_aware_generator import render_docx, render_pdf
 from app.resume.models import ResumeProfile
 
 router = APIRouter(prefix="/v1/documents", tags=["documents"])
