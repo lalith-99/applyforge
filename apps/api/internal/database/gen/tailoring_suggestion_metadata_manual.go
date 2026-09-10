@@ -20,7 +20,7 @@ type TailoringSuggestionMetadata struct {
 func (q *Queries) UpdateTailoringSuggestionMetadata(
 	ctx context.Context,
 	id pgtype.UUID,
-	skillCategories []byte,
+	skillCategories string,
 	operation string,
 	targetCompany pgtype.Text,
 	targetTitle pgtype.Text,
