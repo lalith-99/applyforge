@@ -6,11 +6,12 @@ import (
 
 // SkillRequirement mirrors app/jobs/models.py SkillRequirement.
 type SkillRequirement struct {
-	NormalizedName string  `json:"normalized_name"`
-	OriginalText   string  `json:"original_text"`
-	Importance     string  `json:"importance"`
-	Category       string  `json:"category"`
-	Confidence     float64 `json:"confidence"`
+	NormalizedName string   `json:"normalized_name"`
+	OriginalText   string   `json:"original_text"`
+	Importance     string   `json:"importance"`
+	Category       string   `json:"category"`
+	Confidence     float64  `json:"confidence"`
+	Alternatives   []string `json:"alternatives,omitempty"`
 }
 
 // JobRequirements mirrors app/jobs/models.py JobRequirements.
