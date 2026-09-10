@@ -8,13 +8,11 @@ AI_API_KEY configured. STRICT/GROWTH/MAX_MATCH mode rules are enforced here.
 
 from __future__ import annotations
 
-import json
 import re
 
 from app.core.skills_dictionary import canonical_skills
 from app.tailoring.models import (
     ExperienceInput,
-    ExperienceSupportResponse,
     TailoringRequest,
     TailoringResponse,
     TailoringSuggestion,
@@ -276,15 +274,16 @@ _MODE_POLICY = {
         "candidate already has to that missing skill. Do not suggest any skill without transfer support."
     ),
     "MAX_MATCH": (
-        "MAX_MATCH mode: aggressively optimize for the target job. For every important missing skill, "
-        "always return a skills-section suggestion. Strongly prefer pairing that skill with at least "
-        "one polished Professional Experience rewrite using it in a coherent, realistic technical "
-        "scenario. Draft support from the most context-compatible existing experience, not a random one. "
-        "These drafts "
-        "are review candidates only: set source='AI_SUGGESTED', risk_level='HIGH', and include every "
-        "new technology in skills_added so the application can require explicit candidate attestation "
-        "before the bullet is allowed into a final resume. Do not weaken the resume sentence with "
-        "learning, hypothetical, transferable, or verification language."
+        "MAX_MATCH mode: perform a full resume alignment pass, not just a missing-skills pass. "
+        "Always suggest every important missing required/preferred skill in the skills section. "
+        "Also rewrite multiple existing Professional Experience bullets to align the candidate's "
+        "strongest relevant work with this job's responsibilities, architecture, tools, and terminology. "
+        "When the resume has enough source bullets, return at least 3 and preferably 4-5 distinct "
+        "experience rewrites, even when many required skills are already matched. For missing target "
+        "technologies that can fit coherently into an existing bullet, draft a strong completed-work "
+        "resume sentence and mark it source='AI_SUGGESTED', risk_level='HIGH', listing every introduced "
+        "technology in skills_added so the application can require candidate attestation. The attestation "
+        "warning belongs in metadata/UI, never inside the resume prose."
     ),
 }
 
@@ -355,39 +354,6 @@ def _skill_keys_in_text(request: TailoringRequest, text: str) -> set[str]:
     return found
 
 
-def _experience_support_keys(result: TailoringResponse) -> set[str]:
-    candidate_skills = [
-        skill
-        for suggestion in result.skill_suggestions
-        for skill in suggestion.skills_added
-        if skill.strip()
-    ]
-    supported: set[str] = set()
-    for suggestion in result.experience_suggestions:
-        explicit = _lower_set(suggestion.skills_added)
-        for skill in candidate_skills:
-            key = _skill_key(skill)
-            if key in explicit and _text_mentions_skill(suggestion.suggested_text, skill):
-                supported.add(key)
-                continue
-            if _text_mentions_skill(suggestion.suggested_text, skill):
-                supported.add(key)
-    return supported
-
-
-def _skills_missing_experience_support(result: TailoringResponse) -> list[str]:
-    supported = _experience_support_keys(result)
-    missing: list[str] = []
-    seen: set[str] = set()
-    for suggestion in result.skill_suggestions:
-        for skill in suggestion.skills_added:
-            key = _skill_key(skill)
-            if key and key not in supported and key not in seen:
-                missing.append(skill)
-                seen.add(key)
-    return missing
-
-
 def _recompute_keyword_coverage(
     request: TailoringRequest, result: TailoringResponse
 ) -> None:
@@ -412,71 +378,15 @@ def _recompute_keyword_coverage(
     )
 
 
-def _generate_missing_experience_support_ai(
-    request: TailoringRequest,
-    result: TailoringResponse,
-    missing_skills: list[str],
-) -> ExperienceSupportResponse:
-    from app.providers.openai_provider import structured_completion
-
-    used_originals = [
-        suggestion.original_text
-        for suggestion in result.experience_suggestions
-        if suggestion.original_text
-    ]
-    payload = {
-        "job_title": request.job_title,
-        "missing_skills_requiring_support": missing_skills,
-        "required_skills": request.required_skills,
-        "preferred_skills": request.preferred_skills,
-        "job_responsibilities": request.responsibilities,
-        "master_experiences": [experience.model_dump() for experience in request.experiences],
-        "already_used_original_bullets": used_originals,
-    }
-    system = (
-        "You are a senior technical resume writer performing a focused repair pass. "
-        "The first tailoring pass added target-job skills but failed to create professional "
-        "experience bullets supporting them. Produce only high-quality experience rewrites that "
-        "close that gap. Every suggestion must replace one exact existing bullet from "
-        "master_experiences: original_text must match the source bullet character-for-character. "
-        "Choose the most context-compatible bullet based on the actual work, system type, domain, "
-        "and surrounding stack - never just the first bullet. Do not reuse a bullet listed in "
-        "already_used_original_bullets, and do not use the same original_text twice. "
-        "The new skill must perform a concrete technical role in the sentence (implementation, "
-        "integration, testing, deployment, data flow, client development, or service development), "
-        "not appear as a detached keyword. Preserve the source role's domain and plausible scope. "
-        "If two missing skills naturally belong to one technical scenario, cover them in one rewrite; "
-        "otherwise use separate source bullets. Set section='experience', source='AI_SUGGESTED', "
-        "risk_level='HIGH', and skills_added/keywords_added to the exact missing skills introduced. "
-        "Every skill in skills_added must appear literally in suggested_text. Keep bullets concise, "
-        "specific, and human-written (normally 18-32 words). Never use wording such as learning, "
-        "building proficiency, gaining exposure, growth area, transferable to, applicable to this "
-        "role, candidate verification, or similar disclaimers. Do not invent certifications, employers, "
-        "dates, promotions, team sizes, numerical metrics, or named outcomes. You may preserve an "
-        "existing metric only when the rewritten bullet clearly describes the same underlying outcome. "
-        "If a skill cannot be integrated into any existing experience without producing an implausible "
-        "or random bullet, omit only the experience rewrite. Keep the skills-section suggestion so the "
-        "candidate can still review and approve that keyword independently. Quality and coherence are "
-        "more important than forcing a bad bullet."
-    )
-    return structured_completion(
-        system,
-        json.dumps(payload, indent=2),
-        ExperienceSupportResponse,
-        model_env_var="OPENAI_TAILORING_MODEL",
-    )
-
-
 def _sanitize_ai_tailoring(
     request: TailoringRequest, result: TailoringResponse
 ) -> TailoringResponse:
-    """Classify unsupported drafts for attestation without weakening resume prose.
+    """Classify AI drafts for review without turning classification into censorship.
 
-    Verified rewrites remain MASTER_RESUME suggestions. If an experience rewrite
-    introduces a technology that is not evidenced by the matched source bullet,
-    preserve the strong draft but mark it AI_SUGGESTED/HIGH and enumerate the
-    introduced technologies in skills_added. The Go/API layer uses that metadata
-    to require explicit candidate attestation before approval.
+    The LLM is responsible for writing quality. This post-pass only makes the
+    suggestions merge-safe and labels newly introduced technologies so the API
+    can require candidate attestation. It intentionally does not discard a
+    professional rewrite merely because it adds a target-job technology.
     """
     verified_master = _lower_set(request.master_skills)
     verified_master.update(
@@ -485,35 +395,38 @@ def _sanitize_ai_tailoring(
         for skill in exp.detected_skills
     )
 
-    summary = result.summary_suggestion
-    if summary:
+    if result.summary_suggestion:
+        summary = result.summary_suggestion
         introduced = _skill_keys_in_text(request, summary.suggested_text) - verified_master
         if introduced:
-            # Keep the professional summary evidence-based; speculative content
-            # belongs in individually reviewable experience/skill cards.
-            summary = None
+            introduced_names = _display_names_for_keys(request, introduced)
+            summary.source = "AI_SUGGESTED"
+            summary.risk_level = "HIGH"
+            summary.skills_added = list(
+                dict.fromkeys([*summary.skills_added, *introduced_names])
+            )
+            summary.keywords_added = list(
+                dict.fromkeys([*summary.keywords_added, *introduced_names])
+            )
         else:
             summary.source = "MASTER_RESUME"
             summary.risk_level = "LOW"
 
-    classified_experience: list[TailoringSuggestion] = []
-    used_originals: set[str] = set()
+    source_bullets = {
+        bullet
+        for experience in request.experiences
+        for bullet in experience.bullets
+    }
+    by_original: dict[str, TailoringSuggestion] = {}
+
     for suggestion in result.experience_suggestions:
-        if not suggestion.original_text:
+        original = suggestion.original_text
+        if not original or original not in source_bullets:
+            # The final merge replaces exact source bullets. Invalid anchors
+            # cannot be applied reliably, so only this structural case is dropped.
             continue
 
-        if suggestion.original_text in used_originals:
-            continue
-        evidence = _experience_evidence_for_bullet(request, suggestion.original_text)
-        if evidence is None:
-            continue
-
-        lowered = suggestion.suggested_text.lower()
-        if any(phrase in lowered for phrase in _LEARNING_PHRASES):
-            # Weak "learning/proficiency" prose should never be shown as a
-            # resume bullet. The model gets one critic-driven regeneration pass.
-            continue
-
+        evidence = _experience_evidence_for_bullet(request, original) or set()
         introduced = _skill_keys_in_text(request, suggestion.suggested_text) - evidence
         if introduced:
             introduced_names = _display_names_for_keys(request, introduced)
@@ -528,20 +441,35 @@ def _sanitize_ai_tailoring(
             if "candidate verification" not in suggestion.reason.lower():
                 suggestion.reason = (
                     suggestion.reason.rstrip(".")
-                    + ". Drafted as a strong target-role bullet; candidate verification is "
-                    "required before it can be approved into the final resume."
+                    + ". Candidate verification is required before approval."
                 )
         else:
             suggestion.source = "MASTER_RESUME"
             suggestion.risk_level = "LOW"
             suggestion.skills_added = []
-        classified_experience.append(suggestion)
-        used_originals.add(suggestion.original_text)
 
-    result.summary_suggestion = summary
-    result.experience_suggestions = classified_experience
+        # If the model accidentally rewrites the same source bullet twice, keep
+        # the richer one instead of rejecting both or letting merge order decide.
+        existing = by_original.get(original)
+        if existing is None:
+            by_original[original] = suggestion
+        else:
+            existing_score = len(existing.requirements_addressed) + len(existing.skills_added)
+            candidate_score = (
+                len(suggestion.requirements_addressed) + len(suggestion.skills_added)
+            )
+            if candidate_score > existing_score:
+                by_original[original] = suggestion
+
+    result.experience_suggestions = list(by_original.values())
+
+    for suggestion in result.skill_suggestions:
+        suggestion.source = "AI_SUGGESTED"
+        if suggestion.risk_level == "LOW" and not suggestion.skills_added:
+            suggestion.risk_level = "MEDIUM"
+
+    _recompute_keyword_coverage(request, result)
     return result
-
 
 def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
     """Real LLM-backed tailoring suggestion generation. Raises
@@ -567,21 +495,27 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         "'candidate verification'. Evidence/verification belongs in metadata and UI, never inside "
         "the resume sentence. Keep suggestions concise and compatible with standard ATS parsing: plain text, "
         "clear section semantics, no tables/columns/symbol-heavy formatting. Rewrite the summary (if "
-        "one exists) to foreground the candidate's most relevant verified skills and experience for "
-        "this role - section='summary' and original_text must be the exact existing summary. In STRICT "
-        "or GROWTH mode, suggest up to three high-value evidence-based experience rewrites. In "
-        "MAX_MATCH mode, also draft strong experience rewrites for important missing technologies "
-        "when they can be integrated into a technically coherent scenario based on an existing bullet. "
+        "one exists) to foreground the candidate's most relevant experience for this role - "
+        "section='summary' and original_text must be the exact existing summary. In STRICT or GROWTH "
+        "mode, suggest up to three high-value evidence-based experience rewrites. In MAX_MATCH mode, "
+        "this is a resume-wide tailoring pass: rewrite multiple distinct existing bullets around the "
+        "job's strongest responsibilities and technical requirements, including already-matched skills "
+        "such as Kubernetes, Docker, Java, Go, AWS, Kafka, or observability when relevant. Do not return "
+        "only skill suggestions unless the candidate has no experience bullets at all. With a normal "
+        "multi-bullet resume, return at least 3 distinct experience rewrites and preferably 4-5. "
         "Every experience rewrite must use original_text equal to an exact existing bullet so the app "
-        "can replace it deterministically; do not create free-floating new employment rows. When a "
+        "can replace it deterministically; each original_text may be used at most once. Choose the "
+        "source bullet whose existing system/domain/stack makes the rewrite technically coherent. "
+        "Do not create free-floating new employment rows. When a "
         "rewrite introduces a technology not evidenced in that source experience, set "
         "source='AI_SUGGESTED', risk_level='HIGH', and put the technology in skills_added. Write the "
         "bullet itself as a clean completed-work accomplishment because the UI, not the resume text, "
         "will carry the candidate-attestation warning. Do not invent metrics for such drafts. For a "
         "missing skill, also create section='skills', original_text=null, when the mode allows it. "
-        "In MAX_MATCH, make a best effort to pair each skill_suggestion with an experience_suggestion "
-        "that literally contains that skill in the resume sentence. If no coherent support bullet exists, "
-        "keep the skill_suggestion rather than fabricating a random experience rewrite. "
+        "In MAX_MATCH, missing skills and experience alignment are separate goals: keep every useful "
+        "skill suggestion, and independently produce several strong experience rewrites. Pair a missing "
+        "skill with a bullet when technically coherent, but do not sacrifice the broader 3-5 bullet "
+        "alignment pass just because one missing keyword lacks a natural home. "
         "Prefer one coherent technical scenario over appending a keyword to an unrelated sentence. "
         "When the JD only names a broad platform such as Azure or AWS, do not invent extra named "
         "sub-services unless the JD or source resume mentions them; use realistic platform-level "
@@ -609,26 +543,4 @@ def generate_tailoring_ai(request: TailoringRequest) -> TailoringResponse:
         TailoringResponse,
         model_env_var="OPENAI_TAILORING_MODEL",
     )
-    result = _sanitize_ai_tailoring(request, result)
-
-    if request.mode == "MAX_MATCH":
-        from app.providers.openai_provider import AIProviderError
-
-        missing_support = _skills_missing_experience_support(result)
-        if missing_support:
-            try:
-                repair = _generate_missing_experience_support_ai(
-                    request,
-                    result,
-                    missing_support,
-                )
-                result.experience_suggestions.extend(repair.experience_suggestions)
-                result = _sanitize_ai_tailoring(request, result)
-            except AIProviderError:
-                # A skill without an experience support draft must not leak into
-                # the generated resume just because the repair call failed.
-                pass
-
-        _recompute_keyword_coverage(request, result)
-
-    return result
+    return _sanitize_ai_tailoring(request, result)
