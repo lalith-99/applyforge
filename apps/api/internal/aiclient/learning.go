@@ -89,7 +89,15 @@ func (c *Client) GenerateLearningPlan(ctx context.Context, jobTitle string, miss
 
 // postJSON is a small shared helper for simple JSON-in/JSON-out AI-worker
 // endpoints; operation is recorded via the usage recorder (see usage.go).
-func (c *Client) postJSON(ctx context.Context, operation, path string, body any, out any) (err error) {
+func (c *Client) postJSON(ctx context.Context, operation, path string, body any, out any) error {
+	return c.postJSONWithHTTPClient(ctx, c.http, operation, path, body, out)
+}
+
+// postJSONWithHTTPClient is the common implementation for JSON AI-worker calls.
+// Most operations use the default 60-second client. Long-running background
+// tailoring uses a dedicated bounded client so a healthy multi-stage Sol run is
+// not cancelled before the worker can return response headers.
+func (c *Client) postJSONWithHTTPClient(ctx context.Context, httpClient *http.Client, operation, path string, body any, out any) (err error) {
 	var responseHeaders http.Header
 	if c.detailedUsageRecorder != nil {
 		defer c.trackDetailed(ctx, operation, &responseHeaders)(&err)
@@ -108,7 +116,10 @@ func (c *Client) postJSON(ctx context.Context, operation, path string, body any,
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.http.Do(req)
+	if httpClient == nil {
+		httpClient = c.http
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("call ai-worker %s: %w", path, err)
 	}

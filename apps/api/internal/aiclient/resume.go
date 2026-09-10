@@ -16,10 +16,16 @@ import (
 	"time"
 )
 
+const (
+	defaultAIWorkerTimeout   = 60 * time.Second
+	tailoringAIWorkerTimeout = 5 * time.Minute
+)
+
 // Client calls the AI worker's HTTP API.
 type Client struct {
 	baseURL               string
 	http                  *http.Client
+	tailoringHTTP         *http.Client
 	usageRecorder         UsageRecorder
 	detailedUsageRecorder DetailedUsageRecorder
 }
@@ -27,8 +33,9 @@ type Client struct {
 // New builds a Client pointed at the given AI worker base URL.
 func New(baseURL string) *Client {
 	return &Client{
-		baseURL: baseURL,
-		http:    &http.Client{Timeout: 60 * time.Second},
+		baseURL:       baseURL,
+		http:          &http.Client{Timeout: defaultAIWorkerTimeout},
+		tailoringHTTP: &http.Client{Timeout: tailoringAIWorkerTimeout},
 	}
 }
 
