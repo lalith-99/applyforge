@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Required supporting experience drafts for MAX_MATCH skill additions.
 
 The primary tailoring pass and category enrichment stay authoritative. This
@@ -110,9 +111,7 @@ def _exact_role_exists(
     return False
 
 
-def _category_for_card(
-    result: TailoringResponse, card_display: str
-) -> str:
+def _category_for_card(result: TailoringResponse, card_display: str) -> str:
     wanted_key = _skill_key(card_display)
     for suggestion in result.skill_suggestions:
         for skill, category in suggestion.skill_categories.items():
