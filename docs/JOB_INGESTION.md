@@ -48,9 +48,11 @@ type JobSource interface {
 }
 ```
 
-Current employer-direct connectors include Greenhouse, Lever, Ashby, SmartRecruiters, Workable and Workday. ApplyForge can also monitor public career pages that expose structured `schema.org/JobPosting` data. Broad/gap discovery adapters include Arbeitnow, Bright Data LinkedIn keyword discovery, and optional SerpAPI Google Jobs.
+Current employer-direct connectors include Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday and iCIMS. ApplyForge can also monitor public career pages that expose structured `schema.org/JobPosting` data. Broad/gap discovery adapters include Arbeitnow, Bright Data LinkedIn keyword discovery, and optional SerpAPI Google Jobs.
 
-Unsupported ATS portals are still valuable: iCIMS, Oracle and known custom vendors such as SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG and Jobvite are retained in `company_source_registry` so connector work can be prioritized from measured coverage instead of rediscovering companies later.
+iCIMS is deliberately verification-gated. Public listing pages are used to enumerate the complete active ID set, while `schema.org/JobPosting` data on detail pages supplies richer metadata and `hiringOrganization` identity. An iCIMS registry candidate becomes monitorable only after that provider-backed employer identity agrees with the sponsor/company identity. Tenant-local numeric job IDs are namespaced with the iCIMS tenant host so `(source, external_id)` remains globally idempotent across employers.
+
+Unsupported ATS portals are still valuable: Oracle and known custom vendors such as SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG and Jobvite are retained in `company_source_registry` so connector work can be prioritized from measured coverage instead of rediscovering companies later.
 
 ## Source discovery flywheel
 
@@ -80,7 +82,7 @@ A company may legitimately have more than one external ATS tenant because of acq
 
 Primary identity is `source + external_id`. Secondary identity is a normalized cross-source fingerprint based on company, title, location and description. Repeated polling is idempotent. When a new posting matches an already-active canonical job from another source, the higher-priority source becomes canonical and the duplicate is linked instead of displayed separately.
 
-Direct full-snapshot sources can close postings that disappear from the board. Aggregator and bounded-discovery sources are not allowed to infer closure merely because a posting did not appear in one poll.
+Direct full-snapshot sources can close postings that disappear from the board. Aggregator and bounded-discovery sources are not allowed to infer closure merely because a posting did not appear in one poll. Connectors with a safety pagination bound, including iCIMS, fail the poll instead of performing closure when the complete listing cannot be proven.
 
 ## Freshness
 

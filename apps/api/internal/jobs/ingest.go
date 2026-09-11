@@ -272,6 +272,12 @@ func BuildSource(cfg JobSourceConfig) (JobSource, string, error) {
 			return nil, "", err
 		}
 		return source, "WORKDAY", nil
+	case "ICIMS":
+		source, err := NewICIMSSource(cfg.BoardToken)
+		if err != nil {
+			return nil, "", err
+		}
+		return source, "ICIMS", nil
 	case "CAREER_PAGE":
 		source, err := NewCareerPageSource(cfg.BoardToken)
 		if err != nil {
@@ -379,7 +385,7 @@ func strOrNil(s string) *string {
 
 func sourcePriority(source string) int {
 	switch source {
-	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY":
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY", "ICIMS":
 		return 100
 	case "CAREER_PAGE":
 		return 85
