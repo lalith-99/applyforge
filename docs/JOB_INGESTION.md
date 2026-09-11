@@ -1,6 +1,45 @@
-# ApplyForge — Job Ingestion
+# ApplyForge — Job Supply & Ingestion
 
-## Sources
+Job acquisition is infrastructure, not candidate-specific matching logic. ApplyForge maintains a canonical job catalog first; candidate eligibility, H-1B preference, ranking, resume alignment, and tailoring run downstream of that catalog.
+
+## Supply-plane architecture
+
+```text
+Company / sponsor evidence      Broad discovery feeds
+          │                              │
+          ├──────────────┐     ┌─────────┤
+          ▼              ▼     ▼         ▼
+   company identity   source discovery / ATS directories
+          │                    │
+          └────────────┬───────┘
+                       ▼
+               company_source_registry
+                       │
+             verify / inspect / promote
+                       ▼
+                  job_sources
+                       │
+                 poll scheduler
+                       │
+        ┌──────────────┼────────────────┐
+        ▼              ▼                ▼
+    direct ATS     career pages    broad providers
+        └──────────────┼────────────────┘
+                       ▼
+                    RawJob
+                       ▼
+       normalize → classify → deduplicate
+                       ▼
+              canonical jobs catalog
+                       ▼
+       immigration / candidate enrichment
+                       ▼
+           eligibility → match → rank
+```
+
+The important boundary is that the catalog exists independently of a user. The H-1B sponsor watchlist prioritizes which employer-direct sources are worth discovering and how often they should be polled; it does not prevent broad discovery sources from teaching ApplyForge about employers and postings outside the existing source graph.
+
+## Connector contract
 
 ```go
 type JobSource interface {
@@ -9,51 +48,84 @@ type JobSource interface {
 }
 ```
 
-Initial connectors (Phase 3): Greenhouse, Lever, Ashby. Also supported: manual JD paste, manual job URL,
-manually created opportunity. No unauthorized scraping as the ingestion foundation; connectors stay modular
-so more sources can be added later.
+Current employer-direct connectors include Greenhouse, Lever, Ashby, SmartRecruiters, Workable and Workday. ApplyForge can also monitor public career pages that expose structured `schema.org/JobPosting` data. Broad/gap discovery adapters include Arbeitnow, Bright Data LinkedIn keyword discovery, and optional SerpAPI Google Jobs.
 
-## Deduplication
+Unsupported ATS portals are still valuable: iCIMS, Oracle and known custom vendors such as SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG and Jobvite are retained in `company_source_registry` so connector work can be prioritized from measured coverage instead of rediscovering companies later.
 
-Primary identity: `source + external_id`. Secondary fingerprint: normalized company + normalized title +
-location + description hash. Ingestion must be idempotent — repeated polls must never create duplicate rows.
+## Source discovery flywheel
+
+A source should ideally be paid/discovered once and then polled directly:
+
+```text
+unknown company
+    ↓
+ATS inventory / observed apply URL / career-page inspection / optional web discovery
+    ↓
+identify careers URL + ATS tenant/site
+    ↓
+company_source_registry
+    ↓
+verify monitorability
+    ↓
+job_sources
+    ↓
+direct polling on sponsor-tier cadence
+```
+
+Known ATS URLs are detected from ingested `apply_url` and `source_url` values and promoted automatically when the company belongs to the sponsor watchlist. Optional DataForSEO discovery searches unresolved sponsor companies for their career/ATS endpoints. The public ATS directory bootstrap provides a free first pass across the sponsor watchlist.
+
+A company may legitimately have more than one external ATS tenant because of acquisitions, business units or migrations. The free source bootstrap therefore permits a small bounded set of up to three high-confidence directly monitorable sources per company. Additional candidates remain registry-only. Cross-source canonicalization prevents duplicate postings from surfacing independently.
+
+## Ingestion and deduplication
+
+Primary identity is `source + external_id`. Secondary identity is a normalized cross-source fingerprint based on company, title, location and description. Repeated polling is idempotent. When a new posting matches an already-active canonical job from another source, the higher-priority source becomes canonical and the duplicate is linked instead of displayed separately.
+
+Direct full-snapshot sources can close postings that disappear from the board. Aggregator and bounded-discovery sources are not allowed to infer closure merely because a posting did not appear in one poll.
 
 ## Freshness
 
-Filters: last 1h/3h/6h/12h/24h/3d/7d. Display as relative time ("18m ago", "1h ago", "Yesterday"). The UI
-always distinguishes "posted by employer" (`posted_at`) from "first discovered by ApplyForge"
-(`first_seen_at`) — exact posting time is never fabricated when unavailable.
+The catalog stores both employer-provided `posted_at` and ApplyForge `first_seen_at`. Exact posting times are never fabricated. User-facing filters can use last 1h/3h/6h/12h/24h/3d/7d while acquisition health separately measures how many canonical U.S. software jobs and employers actually produced inventory in the last 24 hours.
 
-## Scheduler
+## Scheduling and workers
 
-Polls job sources on a configurable interval (default: hourly). Pipeline: ingest → normalize → deduplicate →
-parse requirements once (cached by content hash) → cheap deterministic candidate filtering → deterministic
-scoring → show top matches. AI is only invoked for expensive, explicitly-requested, personalized operations —
-never run against every job for every user automatically.
+The scheduler queues one `sync_job_source` task per due source instead of polling every source serially. Background workers can therefore fetch independent ATS tenants concurrently while retaining Postgres as the queue and scheduler state store for the MVP. Slow or permanently invalid boards do not block other sources; permanent source failures are quarantined.
+
+Sponsor tiers control direct-source cadence: HOT sources are checked most frequently, then WARM, COOL and COLD. Broad providers have their own explicit budget and polling cadence. This keeps the direct-source catalog inexpensive while preserving fresh discovery.
+
+## Acquisition control plane
+
+`GET /api/v1/admin/job-sources/health` is the primary supply-plane diagnostic endpoint. It reports:
+
+- catalog freshness and canonical U.S. software inventory;
+- queue backlog/dead-letter state;
+- latest per-source poll results and latency;
+- source discovery and provider usage;
+- sponsor coverage by HOT/WARM/COOL/COLD tier;
+- source-registry, monitorable-source and enabled-direct-source company counts;
+- quarantined and stale enabled sources;
+- fresh job-producing companies, rather than only raw source/job counts;
+- coverage by source type, including registered, monitorable, enabled, failing and fresh-producing counts.
+
+The key operating funnel is:
+
+```text
+sponsor companies
+  → companies with discovered sources
+  → companies with monitorable sources
+  → companies with enabled direct sources
+  → companies polled successfully
+  → companies producing fresh jobs
+  → companies producing fresh U.S. software jobs
+```
+
+Connector/source work should target the stage with the largest measured drop instead of adding providers blindly.
 
 ## Canonical Job model
 
-`id, source, external_id, company_name, company_domain, title, normalized_title, seniority, description,
-country, state, city, location_text, remote_type, employment_type, salary_min, salary_max, salary_currency,
-apply_url, source_url, posted_at, first_seen_at, updated_at, last_seen_at, content_hash, status, created_at`.
-
-## Status (through Phase 3)
-
-Implemented: `internal/jobs` with the `JobSource` interface and three real connectors (Greenhouse, Lever,
-Ashby — all public, unauthenticated APIs), title/company normalization, idempotent dedup
-(`source+external_id` unique constraint, `content_hash` for change detection), and `internal/scheduler`
-(hourly ticker by default, `JOB_POLL_INTERVAL_MINUTES` env override). An admin endpoint
-(`POST /api/v1/admin/job-sources/sync`) allows a manual trigger without waiting for the schedule. Job
-sources to poll are configured via the `job_sources` table (seeded with one real board per connector type).
+The canonical catalog includes source identity, employer identity, title/classification, description, normalized location/workplace metadata, employment type, compensation where available, apply/source URLs, employer posting time, ApplyForge discovery/update timestamps, content hash, cross-source fingerprint/canonical link and lifecycle status.
 
 ## Local development bootstrap
 
-Production remains sponsor-first: direct employer ATS polling is enabled from the H-1B sponsor
-watchlist and discovered source registry.
+Non-production startup performs a best-effort free sponsor-source bootstrap using public ATS inventories and the H-1B sponsor watchlist. Verified supported ATS sources are promoted to `job_sources`; unsupported or lower-confidence portals remain in `company_source_registry` for later inspection/connectors. Structured career-page inspection and paid discovery providers remain explicit environment-controlled capabilities.
 
-In non-production only, ApplyForge recreates the historically verified public Greenhouse/Lever/Ashby
-seed rows removed by migration 00050, then enables seed companies that are already present on the H-1B
-sponsor watchlist. If a fresh local database has no DOL evidence/watchlist yet, all verified seed rows
-are enabled temporarily so the initial scheduler run can populate real jobs and the U.S.-only Jobs page
-is not empty. Paid providers remain disabled unless explicitly configured.
-
+No hardcoded seed-company list is the production acquisition strategy. The intended steady state is an independently maintained source graph plus broad discovery feeds that continuously teach the graph about new employers, ATS tenants and postings.
