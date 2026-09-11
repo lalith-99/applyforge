@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	brightDataModeMarketplaceFilter            = "marketplace_filter"
-	brightDataModeLinkedInKeyword              = "linkedin_keyword"
-	defaultBrightDataLinkedInKeywordDatasetID  = "gd_lpfll7v5hcqtkxl6l"
-	defaultBrightDataKeywordLocation           = "United States"
-	defaultBrightDataKeywordTimeRange          = "Past 24 hours"
-	defaultBrightDataKeywordEmploymentType     = "Full-time"
+	brightDataModeMarketplaceFilter           = "marketplace_filter"
+	brightDataModeLinkedInKeyword             = "linkedin_keyword"
+	defaultBrightDataLinkedInKeywordDatasetID = "gd_lpfll7v5hcqtkxl6l"
+	defaultBrightDataKeywordLocation          = "United States"
+	defaultBrightDataKeywordTimeRange         = "Past 24 hours"
+	defaultBrightDataKeywordEmploymentType    = "Full-time"
 )
 
 // brightDataKeywordShards deliberately keeps the single-user core shard broad
