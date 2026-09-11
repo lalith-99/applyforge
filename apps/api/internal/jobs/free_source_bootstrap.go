@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	defaultFreeSourceDirectoryBaseURL      = "https://raw.githubusercontent.com/kalil0321/ats-scrapers/main/ats-companies"
-	defaultFreeSourceRefreshAfter          = 7 * 24 * time.Hour
+	defaultFreeSourceDirectoryBaseURL     = "https://raw.githubusercontent.com/kalil0321/ats-scrapers/main/ats-companies"
+	defaultFreeSourceRefreshAfter         = 7 * 24 * time.Hour
 	maxFreeAutoMonitoredSourcesPerCompany = 3
 )
 
