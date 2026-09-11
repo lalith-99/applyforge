@@ -54,7 +54,7 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			FROM company_source_registry csr
 			JOIN company_sponsor_watchlist w ON w.company_id = csr.company_id
 			WHERE csr.monitorable = false
-			  AND csr.source_type IN ('WORKDAY', 'ICIMS', 'ORACLE', 'CUSTOM')
+			  AND csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'ORACLE', 'CUSTOM')
 			  AND csr.inspection_status IN ('PENDING', 'FAILED')
 			  AND (
 			      csr.next_inspection_at IS NULL
@@ -182,6 +182,10 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 		return errors.New("source URL is required")
 	}
 
+	if strings.EqualFold(payload.SourceType, "SMARTRECRUITERS") {
+		return w.verifySmartRecruitersSource(ctx, registryID, companyID, payload)
+	}
+
 	inspection, inspectErr := w.inspector.Inspect(ctx, payload.SourceURL)
 	if inspectErr != nil {
 		if markErr := w.repo.MarkCompanySourceInspectionOutcome(
@@ -279,6 +283,103 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 		0,
 		nil,
 	)
+}
+
+func (w *CompanySourceInspectionWorker) verifySmartRecruitersSource(
+	ctx context.Context,
+	registryID uuid.UUID,
+	companyID uuid.UUID,
+	payload InspectCompanySourcePayload,
+) error {
+	var candidate *DiscoveredCompanySource
+	for _, discovery := range DetectCompanySources(payload.SourceURL) {
+		if discovery.SourceType != "SMARTRECRUITERS" || discovery.BoardToken == "" {
+			continue
+		}
+		copy := discovery
+		candidate = &copy
+		break
+	}
+	if candidate == nil {
+		invalidErr := errors.New("SmartRecruiters registry URL did not contain a verifiable company identifier")
+		return w.repo.MarkCompanySourceInspectionOutcome(
+			ctx,
+			registryID,
+			"FAILED",
+			30*24*time.Hour,
+			invalidErr,
+		)
+	}
+
+	source := NewSmartRecruitersSource(candidate.BoardToken)
+	verification, verifyErr := source.VerifyCompanyOwnership(ctx, payload.CompanyName)
+	if verifyErr != nil {
+		if markErr := w.repo.MarkCompanySourceInspectionOutcome(
+			ctx,
+			registryID,
+			"FAILED",
+			7*24*time.Hour,
+			verifyErr,
+		); markErr != nil {
+			return markErr
+		}
+		slog.Info("SmartRecruiters source verification deferred",
+			"company_id", companyID,
+			"company_name", payload.CompanyName,
+			"board_token", candidate.BoardToken,
+			"error", verifyErr,
+		)
+		return nil
+	}
+	if !verification.Verified {
+		mismatchErr := fmt.Errorf(
+			"SmartRecruiters tenant identity mismatch: expected %q, provider returned %q",
+			payload.CompanyName,
+			verification.ObservedName,
+		)
+		if markErr := w.repo.MarkCompanySourceInspectionOutcome(
+			ctx,
+			registryID,
+			"FAILED",
+			30*24*time.Hour,
+			mismatchErr,
+		); markErr != nil {
+			return markErr
+		}
+		slog.Warn("SmartRecruiters source identity mismatch",
+			"company_id", companyID,
+			"company_name", payload.CompanyName,
+			"board_token", candidate.BoardToken,
+			"observed_company_name", verification.ObservedName,
+			"observed_company_identifier", verification.ObservedIdentifier,
+		)
+		return nil
+	}
+
+	candidate.DiscoveryMethod = "MANUAL"
+	candidate.Confidence = 0.99
+	candidate.Monitorable = true
+	if err := w.repo.RecordDiscoveredCompanySources(ctx, companyID, []DiscoveredCompanySource{*candidate}); err != nil {
+		if markErr := w.repo.MarkCompanySourceInspectionOutcome(
+			ctx,
+			registryID,
+			"FAILED",
+			7*24*time.Hour,
+			err,
+		); markErr != nil {
+			return markErr
+		}
+		return nil
+	}
+
+	slog.Info("verified SmartRecruiters source ownership",
+		"company_id", companyID,
+		"company_name", payload.CompanyName,
+		"board_token", candidate.BoardToken,
+		"observed_company_name", verification.ObservedName,
+		"observed_company_identifier", verification.ObservedIdentifier,
+	)
+	return w.repo.MarkCompanySourceInspectionOutcome(ctx, registryID, "RESOLVED", 0, nil)
 }
 
 type CompanySourceInspectionScheduler struct {
