@@ -81,11 +81,15 @@ provider can expose a direct application URL. ApplyForge inspects those URLs loc
 - SmartRecruiters
 - Workable
 - Workday (direct public CXS monitoring)
-- iCIMS (registry only today)
+- iCIMS (provider-identity verification before direct polling)
+- SuccessFactors (public RSS / legacy XML verification before direct polling)
 - Oracle Cloud Recruiting (registry only today)
 
-Supported public ATS connectors are automatically inserted into `job_sources` and enabled. This
-turns paid discovery into a bootstrap mechanism rather than a permanent dependency for every job.
+Supported public ATS connectors are inserted into `job_sources` once their source/company identity
+requirements are satisfied. Greenhouse, Lever, Ashby, Workable, and suitable Workday boards can be
+promoted directly from high-confidence source discovery. SmartRecruiters, iCIMS, and SuccessFactors
+use provider-backed employer verification before polling is enabled. This turns paid discovery into
+a bootstrap mechanism rather than a permanent dependency for every job.
 
 Example:
 
@@ -125,9 +129,13 @@ The bootstrap deliberately uses conservative identity rules:
 - only exact normalized employer-name matches are accepted automatically;
 - Greenhouse, Lever, Ashby, Workable, and non-secondary Workday boards may be
   promoted to direct polling;
-- SmartRecruiters candidates are retained for review rather than auto-enabled;
-- iCIMS, Oracle, SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP,
-  Cornerstone, UKG, and Jobvite URLs are retained as registry-only candidates;
+- SmartRecruiters, iCIMS, and SuccessFactors candidates are retained for
+  provider-backed ownership verification before direct polling is enabled;
+- Oracle, Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG, and Jobvite
+  URLs remain registry-only candidates until dedicated connector support exists;
+- historical SuccessFactors bootstrap rows stored as `CUSTOM` with a
+  `SUCCESSFACTORS|...` token are re-inspected and can be promoted without
+  rediscovering the employer;
 - obvious secondary Workday sites such as internal, campus, student, contractor,
   redeployment, APAC/India, or parenthesized subsidiary boards are not treated
   as the employer's primary feed;
@@ -184,10 +192,12 @@ company_sponsor_watchlist (PENDING / PARTIAL / FAILED)
 ```
 
 The first implementation uses DataForSEO Google Organic Live search for
-`<legal employer name> careers jobs`. It inspects the organic result URLs locally and promotes
-known Greenhouse, Lever, Ashby, SmartRecruiters, Workable, or exact Workday tenant/site endpoints
-into direct polling. iCIMS, Oracle, and generic company career pages are retained in the source
-registry and inspected by the structured career-page stage rather than guessed into unsupported
+`<legal employer name> careers jobs`. It inspects the organic result URLs locally and records
+known ATS/career endpoints in the registry. Greenhouse, Lever, Ashby, Workable, and exact suitable
+Workday endpoints can become direct sources immediately; SmartRecruiters, iCIMS, and SuccessFactors
+are verification-gated and become direct sources only after provider-backed employer identity
+matches the canonical company. Oracle and generic company career pages remain registry candidates
+for structured inspection or future connector support rather than being guessed into unsupported
 vendor APIs.
 
 ### Budget controls
@@ -249,16 +259,18 @@ career URL and looks for two deterministic signals:
 1. links or embeds that resolve to a supported direct ATS;
 2. schema.org `JobPosting` JSON-LD rendered in the page HTML.
 
-If a supported ATS is found, the normal direct connector is promoted. If structured JobPosting
-records are found, the page is promoted to a lower-priority `CAREER_PAGE` source and polled at the
-same sponsor-tier cadence.
+Provider-specific verification is used for verification-gated ATS families such as SmartRecruiters,
+iCIMS, and SuccessFactors. If another supported ATS is found, the normal direct connector is
+promoted. If structured JobPosting records are found, the page is promoted to a lower-priority
+`CAREER_PAGE` source and polled at the same sponsor-tier cadence.
 
 ```text
 company_source_registry
+  -> provider identity verifier? ------> verified direct ATS source
   -> bounded public HTML fetch
-  -> ATS links? ---------------------> direct ATS source
-  -> JobPosting JSON-LD? ------------> CAREER_PAGE source
-  -> neither ------------------------> long retry window
+  -> ATS links? -----------------------> direct ATS source
+  -> JobPosting JSON-LD? --------------> CAREER_PAGE source
+  -> neither --------------------------> long retry window
 ```
 
 The generic career-page source deliberately does not close jobs merely because they disappear from
@@ -267,22 +279,25 @@ strong enough closure evidence.
 
 ### Network safety
 
-Career-page requests use a dedicated public-internet HTTP client:
+Career-page and verification requests use the existing public-internet-safe HTTP path:
 
 - only HTTP/HTTPS URLs are accepted;
 - URLs containing credentials are rejected;
 - loopback, RFC1918/private, link-local, metadata, carrier-grade NAT, documentation, multicast,
   and reserved IP ranges are blocked;
 - DNS is resolved before dialing and only public addresses are used;
-- redirects are capped at five and revalidated;
-- response bodies are capped at 2 MiB;
+- redirects are capped and revalidated;
+- response bodies are bounded by connector-specific safety limits;
 - blocked pages are not bypassed with browser automation or anti-bot evasion.
 
-This stage is disabled by default because it performs outbound requests to employer career sites.
-The default enabled configuration is intentionally modest: 100 registry entries every 30 minutes.
+Structured generic career-page inspection is disabled by default because it performs outbound
+requests to employer career sites. The default enabled configuration is intentionally modest: 100
+registry entries every 30 minutes. Provider-specific verification uses the same source-inspection
+queue and sponsor-priority ordering.
 
 ### Operational visibility
 
-`GET /api/v1/admin/job-sources/health` now includes a `discovery` section with watchlist status,
+`GET /api/v1/admin/job-sources/health` includes a `discovery` section with watchlist status,
 registry monitorability, inspection status, monthly provider-request counts, estimated provider
-cost metadata, and registry coverage by source type.
+cost metadata, and registry coverage by source type. Direct-source coverage metrics include
+verified iCIMS and SuccessFactors sources alongside the other employer ATS connectors.
