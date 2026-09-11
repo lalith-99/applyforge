@@ -257,14 +257,20 @@ func (h *Handlers) handleSourceHealth(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not load source discovery health")
 		return
 	}
+	sponsorCoverage, err := h.repo.GetSponsorCoverageHealth(r.Context())
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "could not load sponsor coverage health")
+		return
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"catalog":   catalog,
-		"market":    market,
-		"discovery": discovery,
-		"queue":     queue,
-		"ai":        ai,
-		"sources":   sources,
+		"catalog":          catalog,
+		"market":           market,
+		"discovery":        discovery,
+		"sponsor_coverage": sponsorCoverage,
+		"queue":            queue,
+		"ai":               ai,
+		"sources":          sources,
 	})
 }
 
