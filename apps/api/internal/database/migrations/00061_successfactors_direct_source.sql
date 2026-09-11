@@ -21,6 +21,19 @@ ALTER TABLE company_source_registry
         )
     );
 
+-- Older free-source bootstrap runs stored SuccessFactors inventory entries as
+-- CUSTOM with a SUCCESSFACTORS|... board-token prefix. Keep those rows in place
+-- so the inspection worker can verify provider identity from source_url and
+-- promote a clean SUCCESSFACTORS row, but make them immediately eligible for
+-- reinspection under the new connector.
+UPDATE company_source_registry
+SET inspection_status = 'PENDING',
+    next_inspection_at = now(),
+    inspection_last_error = NULL
+WHERE source_type = 'CUSTOM'
+  AND upper(board_token) LIKE 'SUCCESSFACTORS|%'
+  AND monitorable = false;
+
 ALTER TABLE job_sources DROP CONSTRAINT job_sources_source_type_check;
 ALTER TABLE job_sources ADD CONSTRAINT job_sources_source_type_check
     CHECK (source_type IN (
