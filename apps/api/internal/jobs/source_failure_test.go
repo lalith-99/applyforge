@@ -16,6 +16,7 @@ func TestIsPermanentSourcePollFailure(t *testing.T) {
 		{name: "ashby 404", sourceType: "ASHBY", err: errors.New("ashby board acme returned 404 Not Found"), want: true},
 		{name: "workable 410", sourceType: "WORKABLE", err: errors.New("workable account acme returned 410 Gone"), want: true},
 		{name: "workday 422", sourceType: "WORKDAY", err: errors.New("Workday board acme/careers returned 422 Unprocessable Entity"), want: true},
+		{name: "icims 404", sourceType: "ICIMS", err: errors.New("iCIMS source returned 404 Not Found"), want: true},
 		{name: "broad provider 404 stays retryable", sourceType: "BRIGHTDATA", err: errors.New("Bright Data returned 404 Not Found"), want: false},
 		{name: "broad provider 422 stays retryable", sourceType: "BRIGHTDATA", err: errors.New("Bright Data returned 422 Unprocessable Entity"), want: false},
 		{name: "rate limit", sourceType: "GREENHOUSE", err: errors.New("greenhouse board acme returned 429 Too Many Requests"), want: false},
