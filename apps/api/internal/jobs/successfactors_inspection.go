@@ -10,6 +10,14 @@ import (
 	"github.com/google/uuid"
 )
 
+func isSuccessFactorsInspectionPayload(payload InspectCompanySourcePayload) bool {
+	if strings.EqualFold(strings.TrimSpace(payload.SourceType), "SUCCESSFACTORS") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(payload.SourceType), "CUSTOM") &&
+		strings.HasPrefix(strings.ToUpper(strings.TrimSpace(payload.BoardToken)), "SUCCESSFACTORS|")
+}
+
 func (w *CompanySourceInspectionWorker) verifySuccessFactorsSource(
 	ctx context.Context,
 	registryID uuid.UUID,
