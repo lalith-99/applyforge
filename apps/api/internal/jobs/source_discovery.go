@@ -185,18 +185,44 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 			DO UPDATE SET
 				discovery_method = EXCLUDED.discovery_method,
 				confidence = GREATEST(company_source_registry.confidence, EXCLUDED.confidence),
-				monitorable = company_source_registry.monitorable OR EXCLUDED.monitorable,
+				monitorable = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN false
+					ELSE company_source_registry.monitorable OR EXCLUDED.monitorable
+				END,
 				inspection_status = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN 'FAILED'
 					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN 'RESOLVED'
 					ELSE company_source_registry.inspection_status
 				END,
 				next_inspection_at = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN company_source_registry.next_inspection_at
 					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN NULL
 					ELSE company_source_registry.next_inspection_at
 				END,
 				last_verified_at = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN company_source_registry.last_verified_at
 					WHEN company_source_registry.monitorable OR EXCLUDED.monitorable THEN now()
 					ELSE company_source_registry.last_verified_at
+				END,
+				last_error = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN company_source_registry.last_error
+					ELSE NULL
+				END,
+				inspection_last_error = CASE
+					WHEN company_source_registry.last_error LIKE $9
+					 AND company_source_registry.last_inspection_at > now() - INTERVAL '7 days'
+					THEN company_source_registry.inspection_last_error
+					ELSE NULL
 				END,
 				last_seen_at = now()
 		`,
@@ -208,24 +234,42 @@ func (r *Repository) RecordDiscoveredCompanySources(ctx context.Context, company
 			d.Confidence,
 			d.Monitorable,
 			inspectionStatus,
+			permanentSourceErrorPrefix+"%",
 		); err != nil {
 			return fmt.Errorf("record discovered %s source: %w", d.SourceType, err)
 		}
 
 		if d.Monitorable && d.BoardToken != "" && watchlisted {
-			if _, err := r.pool.Exec(ctx, `
+			var enabled bool
+			if err := r.pool.QueryRow(ctx, `
 				INSERT INTO job_sources (
 					source_type, company_id, board_token, enabled, poll_interval_minutes
 				) VALUES ($1, $2, $3, true, $4)
 				ON CONFLICT (source_type, board_token)
 				DO UPDATE SET
 					company_id = EXCLUDED.company_id,
-					enabled = true,
-					poll_interval_minutes = EXCLUDED.poll_interval_minutes
-			`, d.SourceType, companyID, d.BoardToken, pollMinutes); err != nil {
+					enabled = CASE
+						WHEN job_sources.last_error LIKE $5
+						 AND job_sources.last_polled_at > now() - INTERVAL '7 days'
+						THEN false
+						ELSE true
+					END,
+					poll_interval_minutes = EXCLUDED.poll_interval_minutes,
+					last_error = CASE
+						WHEN job_sources.last_error LIKE $5
+						 AND job_sources.last_polled_at > now() - INTERVAL '7 days'
+						THEN job_sources.last_error
+						ELSE NULL
+					END
+				RETURNING enabled
+			`, d.SourceType, companyID, d.BoardToken, pollMinutes, permanentSourceErrorPrefix+"%").Scan(&enabled); err != nil {
 				return fmt.Errorf("enable discovered %s source: %w", d.SourceType, err)
 			}
-			resolved = true
+			if enabled {
+				resolved = true
+			} else {
+				partial = true
+			}
 		} else if d.Monitorable {
 			// Keep the endpoint in the registry, but do not spend polling
 			// capacity on companies outside the H-1B sponsor watchlist.
