@@ -61,6 +61,15 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	if err != nil {
 		return fmt.Errorf("load job source: %w", err)
 	}
+	enabled, err := w.repo.JobSourceEnabled(ctx, cfg.ID)
+	if err != nil {
+		return fmt.Errorf("check job source state: %w", err)
+	}
+	if !enabled {
+		// A previous queued attempt may have quarantined or disabled this source
+		// after this job was enqueued. Treat the stale queue item as complete.
+		return nil
+	}
 
 	startedAt := time.Now().UTC()
 	source, sourceName, err := BuildSource(cfg)
