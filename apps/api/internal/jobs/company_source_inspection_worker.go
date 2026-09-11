@@ -21,6 +21,7 @@ type CompanySourceInspectionTarget struct {
 	CompanyID     uuid.UUID
 	CompanyName   string
 	SourceType    string
+	BoardToken    string
 	SourceURL     string
 	WatchlistRank int
 }
@@ -30,6 +31,7 @@ type InspectCompanySourcePayload struct {
 	CompanyID   string `json:"company_id"`
 	CompanyName string `json:"company_name"`
 	SourceType  string `json:"source_type"`
+	BoardToken  string `json:"board_token"`
 	SourceURL   string `json:"source_url"`
 }
 
@@ -54,7 +56,7 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			FROM company_source_registry csr
 			JOIN company_sponsor_watchlist w ON w.company_id = csr.company_id
 			WHERE csr.monitorable = false
-			  AND csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'ORACLE', 'CUSTOM')
+			  AND csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'SUCCESSFACTORS', 'ORACLE', 'CUSTOM')
 			  AND csr.inspection_status IN ('PENDING', 'FAILED')
 			  AND (
 			      csr.next_inspection_at IS NULL
@@ -69,13 +71,14 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			SET next_inspection_at = now() + make_interval(secs => $2)
 			FROM candidates c
 			WHERE csr.id = c.id
-			RETURNING csr.id, csr.company_id, csr.source_type, csr.source_url
+			RETURNING csr.id, csr.company_id, csr.source_type, csr.board_token, csr.source_url
 		)
 		SELECT
 			reserved.id,
 			reserved.company_id,
 			c.name,
 			reserved.source_type,
+			reserved.board_token,
 			reserved.source_url,
 			w.watchlist_rank
 		FROM reserved
@@ -96,6 +99,7 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			&target.CompanyID,
 			&target.CompanyName,
 			&target.SourceType,
+			&target.BoardToken,
 			&target.SourceURL,
 			&target.WatchlistRank,
 		); err != nil {
@@ -187,6 +191,10 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 	}
 	if strings.EqualFold(payload.SourceType, "ICIMS") {
 		return w.verifyICIMSSource(ctx, registryID, companyID, payload)
+	}
+	if strings.EqualFold(payload.SourceType, "SUCCESSFACTORS") ||
+		(strings.EqualFold(payload.SourceType, "CUSTOM") && strings.HasPrefix(strings.ToUpper(strings.TrimSpace(payload.BoardToken)), "SUCCESSFACTORS|")) {
+		return w.verifySuccessFactorsSource(ctx, registryID, companyID, payload)
 	}
 
 	inspection, inspectErr := w.inspector.Inspect(ctx, payload.SourceURL)
@@ -419,6 +427,7 @@ func (s *CompanySourceInspectionScheduler) EnqueueDue(ctx context.Context) (int,
 			CompanyID:   target.CompanyID.String(),
 			CompanyName: target.CompanyName,
 			SourceType:  target.SourceType,
+			BoardToken:  target.BoardToken,
 			SourceURL:   target.SourceURL,
 		}
 		if err := s.queue.Enqueue(ctx, JobTypeInspectCompanySource, payload, 1); err != nil {

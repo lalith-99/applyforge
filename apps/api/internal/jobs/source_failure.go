@@ -14,7 +14,7 @@ const permanentSourceErrorPrefix = "PERMANENT_SOURCE: "
 
 func quarantinableDirectSource(sourceType string) bool {
 	switch strings.ToUpper(strings.TrimSpace(sourceType)) {
-	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY", "ICIMS", "CAREER_PAGE":
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY", "ICIMS", "SUCCESSFACTORS", "CAREER_PAGE":
 		return true
 	default:
 		return false

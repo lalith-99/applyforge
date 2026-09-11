@@ -48,6 +48,7 @@ func TestDetectCompanySourcesPreservesRegistryURL(t *testing.T) {
 		sourceType string
 	}{
 		{"https://jobs-acme.icims.com/jobs/123/software-engineer/job?mode=job", "ICIMS"},
+		{"https://career8.successfactors.com/sfcareer/jobreqcareer?jobId=42&company=pfizer", "SUCCESSFACTORS"},
 		{"https://acme.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/123", "ORACLE"},
 	}
 
@@ -65,5 +66,16 @@ func TestDetectCompanySourcesPreservesRegistryURL(t *testing.T) {
 		if got[0].Monitorable {
 			t.Fatalf("%s: registry-only source must not be directly monitorable", tc.raw)
 		}
+	}
+}
+
+func TestDetectCompanySources_SuccessFactorsKeepsCompanyQueryInBoardToken(t *testing.T) {
+	raw := "https://career8.successfactors.com/sfcareer/jobreqcareer?jobId=42&company=pfizer"
+	got := DetectCompanySources(raw)
+	if len(got) != 1 {
+		t.Fatalf("expected one SuccessFactors discovery, got %+v", got)
+	}
+	if got[0].BoardToken != raw {
+		t.Fatalf("board token must preserve SuccessFactors company identity query; got %q", got[0].BoardToken)
 	}
 }
