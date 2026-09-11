@@ -48,7 +48,7 @@ type IngestResult struct {
 // since most board APIs don't include a company display name in their
 // payload). Aggregator sources (e.g. Arbeitnow) that DO return a per-job
 // company name via raw.CompanyName have that company dynamically
-// upserted/reused instead, so a single job_sources row can ingest postings
+// resolved/reused instead, so a single job_sources row can ingest postings
 // from many different companies.
 func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source JobSource, companyID uuid.UUID, companyName string) (IngestResult, error) {
 	pollStart := time.Now()
@@ -67,24 +67,51 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		}
 	}
 
-	// Cache resolved companies within this poll to avoid re-upserting the
-	// same company for every one of its postings.
-	resolvedCompanies := map[string]uuid.UUID{}
+	// Cache name-only company resolutions within this poll. Jobs that expose a
+	// direct ATS source are resolved through the source graph first because that
+	// identity evidence is stronger than the provider's display-name spelling.
+	type resolvedCompany struct {
+		id   uuid.UUID
+		name string
+	}
+	resolvedCompanies := map[string]resolvedCompany{}
 
 	result := IngestResult{Fetched: len(rawJobs)}
 	for _, raw := range rawJobs {
 		jobCompanyID, jobCompanyName := companyID, companyName
+		discoveries := DetectCompanySources(raw.ApplyURL, raw.SourceURL)
+
 		if raw.CompanyName != "" {
-			normalized := normalizeCompanyName(raw.CompanyName)
-			if id, ok := resolvedCompanies[normalized]; ok {
-				jobCompanyID = id
-			} else if id, err := s.repo.UpsertCompany(ctx, raw.CompanyName, normalized); err == nil {
-				jobCompanyID = id
-				resolvedCompanies[normalized] = id
-			} else {
-				slog.Error("upsert company failed, falling back to source company", "source", sourceName, "company_name", raw.CompanyName, "error", err)
+			resolvedBySource := false
+			if len(discoveries) > 0 {
+				resolvedID, resolvedName, ok, resolveErr := s.repo.ResolveCompanyByDiscoveredSources(ctx, discoveries)
+				if resolveErr != nil {
+					slog.Error("resolve company from discovered source failed",
+						"source", sourceName,
+						"company_name", raw.CompanyName,
+						"error", resolveErr,
+					)
+				} else if ok {
+					jobCompanyID = resolvedID
+					jobCompanyName = resolvedName
+					resolvedBySource = true
+				}
 			}
-			jobCompanyName = raw.CompanyName
+
+			if !resolvedBySource {
+				normalized := normalizeCompanyName(raw.CompanyName)
+				if cached, ok := resolvedCompanies[normalized]; ok {
+					jobCompanyID = cached.id
+					jobCompanyName = cached.name
+				} else if id, err := s.repo.UpsertCompany(ctx, raw.CompanyName, normalized); err == nil {
+					jobCompanyID = id
+					jobCompanyName = raw.CompanyName
+					resolvedCompanies[normalized] = resolvedCompany{id: id, name: raw.CompanyName}
+				} else {
+					slog.Error("upsert company failed, falling back to source company", "source", sourceName, "company_name", raw.CompanyName, "error", err)
+					jobCompanyName = raw.CompanyName
+				}
+			}
 		}
 
 		location := normalizeLocation(raw)
@@ -137,9 +164,8 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 
 		// Aggregated discovery sources frequently carry the employer's direct
 		// application URL. Learn supported ATS board tokens from those URLs and
-		// promote the company to direct polling automatically. This is best-
-		// effort: a source-registry failure must never discard the job itself.
-		discoveries := DetectCompanySources(raw.ApplyURL, raw.SourceURL)
+		// promote the canonical company to direct polling automatically. This is
+		// best-effort: a source-registry failure must never discard the job itself.
 		if len(discoveries) > 0 {
 			if err := s.repo.RecordDiscoveredCompanySources(ctx, jobCompanyID, discoveries); err != nil {
 				slog.Error("record discovered company source failed",
