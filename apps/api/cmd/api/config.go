@@ -66,9 +66,17 @@ func validateProductionConfig(environment string) error {
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("BRIGHTDATA_ENABLED")), "true") {
 		return errors.New("production BRIGHTDATA_ENABLED must be true for market-wide U.S. job discovery")
 	}
-	for _, key := range []string{"BRIGHTDATA_API_KEY", "BRIGHTDATA_JOBS_DATASET_ID"} {
-		if strings.TrimSpace(os.Getenv(key)) == "" {
-			return fmt.Errorf("production %s is required when market-wide job discovery is enabled", key)
+	if strings.TrimSpace(os.Getenv("BRIGHTDATA_API_KEY")) == "" {
+		return errors.New("production BRIGHTDATA_API_KEY is required when market-wide job discovery is enabled")
+	}
+
+	// LinkedIn keyword discovery uses Bright Data's fixed public scraper
+	// dataset id and therefore does not require a Marketplace dataset id.
+	// The legacy Marketplace filter mode still does.
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("BRIGHTDATA_MODE")))
+	if mode == "marketplace" || mode == "marketplace_filter" || mode == "dataset_filter" {
+		if strings.TrimSpace(os.Getenv("BRIGHTDATA_JOBS_DATASET_ID")) == "" {
+			return errors.New("production BRIGHTDATA_JOBS_DATASET_ID is required for BRIGHTDATA_MODE=marketplace_filter")
 		}
 	}
 
