@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	defaultFreeSourceDirectoryBaseURL = "https://raw.githubusercontent.com/kalil0321/ats-scrapers/main/ats-companies"
-	defaultFreeSourceRefreshAfter     = 7 * 24 * time.Hour
+	defaultFreeSourceDirectoryBaseURL      = "https://raw.githubusercontent.com/kalil0321/ats-scrapers/main/ats-companies"
+	defaultFreeSourceRefreshAfter          = 7 * 24 * time.Hour
+	maxFreeAutoMonitoredSourcesPerCompany = 3
 )
 
 type freeSourceInventory struct {
@@ -242,10 +243,15 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 		result.MatchedCompanies++
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Score > candidates[j].Score })
 
-		discoveries := make([]DiscoveredCompanySource, 0, 4)
-		monitorableChosen := false
+		// A company may legitimately expose multiple external ATS tenants (for
+		// example a primary Workday board plus an acquired business on Greenhouse).
+		// Cross-source canonicalization already protects the catalog from duplicate
+		// postings, so keeping a small bounded set is safer than throwing away
+		// verified supply. Lower-confidence candidates remain registry-only.
+		discoveries := make([]DiscoveredCompanySource, 0, 6)
+		monitorableCount := 0
 		for _, candidate := range candidates {
-			if len(discoveries) >= 4 {
+			if len(discoveries) >= 6 {
 				break
 			}
 			discovery, ok := candidate.toDiscoveredSource()
@@ -253,14 +259,12 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 				continue
 			}
 
-			// Poll at most one public ATS per sponsor during the MVP. Keep
-			// additional exact portals in the registry for later verification.
 			if discovery.Monitorable {
-				if monitorableChosen {
+				if monitorableCount >= maxFreeAutoMonitoredSourcesPerCompany {
 					discovery.Monitorable = false
 					discovery.Confidence = minFloat32(discovery.Confidence, 0.90)
 				} else {
-					monitorableChosen = true
+					monitorableCount++
 					result.EnabledJobSources++
 				}
 			}
@@ -279,7 +283,7 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 			)
 			continue
 		}
-		if monitorableChosen {
+		if monitorableCount > 0 {
 			result.ResolvedCompanies++
 		} else {
 			result.PartialCompanies++
