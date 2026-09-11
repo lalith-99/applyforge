@@ -109,6 +109,15 @@ func DetectCompanySources(rawURLs ...string) []DiscoveredCompanySource {
 				SourceURL:  candidate.String(),
 				Confidence: 0.95, Monitorable: false,
 			})
+		case isSuccessFactorsLegacyHost(host):
+			candidate := *u
+			candidate.Fragment = ""
+			candidateURL := candidate.String()
+			add(DiscoveredCompanySource{
+				SourceType: "SUCCESSFACTORS", BoardToken: candidateURL,
+				SourceURL:  candidateURL,
+				Confidence: 0.95, Monitorable: false,
+			})
 		case strings.HasSuffix(host, ".oraclecloud.com"):
 			candidate := *u
 			candidate.Fragment = ""
