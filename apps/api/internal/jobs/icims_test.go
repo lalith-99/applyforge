@@ -57,7 +57,7 @@ func TestICIMSSource_Fetch_PaginatesAndEnrichesUSSoftware(t *testing.T) {
 		t.Fatalf("expected one job, got %d", len(raw))
 	}
 	job := raw[0]
-	if job.ExternalID != "123" || job.Title != "Backend Engineer" {
+	if job.ExternalID != "careers-acme.icims.com:123" || job.Title != "Backend Engineer" {
 		t.Fatalf("unexpected job identity: %+v", job)
 	}
 	if job.CompanyName != "Acme Corporation" {
@@ -70,7 +70,7 @@ func TestICIMSSource_Fetch_PaginatesAndEnrichesUSSoftware(t *testing.T) {
 		t.Fatalf("expected enriched detail fields: %+v", job)
 	}
 	seen := source.SeenExternalIDs()
-	if len(seen) != 1 || seen[0] != "123" {
+	if len(seen) != 1 || seen[0] != "careers-acme.icims.com:123" {
 		t.Fatalf("unexpected complete snapshot ids: %#v", seen)
 	}
 }
