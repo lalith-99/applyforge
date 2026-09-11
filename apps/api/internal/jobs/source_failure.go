@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const permanentSourceErrorPrefix = "PERMANENT_SOURCE: "
@@ -36,6 +38,22 @@ func isPermanentSourcePollFailure(sourceType string, err error) bool {
 
 func isPermanentSourceErrorText(message string) bool {
 	return strings.HasPrefix(strings.TrimSpace(message), permanentSourceErrorPrefix)
+}
+
+// JobSourceEnabled rechecks source state when an async sync job starts. A
+// source can be quarantined after multiple sync jobs were already queued, so
+// scheduler-time filtering alone is not sufficient.
+func (r *Repository) JobSourceEnabled(ctx context.Context, id uuid.UUID) (bool, error) {
+	if r.pool == nil {
+		// Query-backed unit-test repositories do not expose the raw pool; preserve
+		// historical behavior there.
+		return true, nil
+	}
+	var enabled bool
+	if err := r.pool.QueryRow(ctx, `SELECT enabled FROM job_sources WHERE id = $1`, id).Scan(&enabled); err != nil {
+		return false, err
+	}
+	return enabled, nil
 }
 
 // QuarantineJobSource disables a permanently invalid direct source and marks
