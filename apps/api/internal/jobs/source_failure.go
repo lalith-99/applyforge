@@ -12,11 +12,20 @@ import (
 
 const permanentSourceErrorPrefix = "PERMANENT_SOURCE: "
 
+func quarantinableDirectSource(sourceType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(sourceType)) {
+	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY", "CAREER_PAGE":
+		return true
+	default:
+		return false
+	}
+}
+
 // isPermanentSourcePollFailure classifies failures that indicate the configured
-// board/account itself is no longer valid. Transient transport/provider errors
-// must remain retryable.
+// direct employer board/account itself is no longer valid. Transient errors and
+// broad market providers must remain retryable.
 func isPermanentSourcePollFailure(sourceType string, err error) bool {
-	if err == nil {
+	if err == nil || !quarantinableDirectSource(sourceType) {
 		return false
 	}
 	message := strings.ToLower(err.Error())
@@ -25,15 +34,9 @@ func isPermanentSourcePollFailure(sourceType string, err error) bool {
 		return true
 	}
 
-	// 422 from the public ATS endpoints below is normally a malformed or retired
-	// tenant/site identifier, not a transient provider outage. Do not generalize
-	// this to broad providers such as Bright Data/Google Jobs.
-	switch strings.ToUpper(strings.TrimSpace(sourceType)) {
-	case "GREENHOUSE", "LEVER", "ASHBY", "SMARTRECRUITERS", "WORKABLE", "WORKDAY", "CAREER_PAGE":
-		return strings.Contains(message, "returned 422 unprocessable entity")
-	default:
-		return false
-	}
+	// 422 from these public ATS endpoints normally means a malformed or retired
+	// tenant/site identifier rather than a transient provider outage.
+	return strings.Contains(message, "returned 422 unprocessable entity")
 }
 
 func isPermanentSourceErrorText(message string) bool {
@@ -66,6 +69,9 @@ func (r *Repository) QuarantineJobSource(ctx context.Context, cfg JobSourceConfi
 	}
 	if pollErr == nil {
 		return errors.New("cannot quarantine job source without a poll error")
+	}
+	if !quarantinableDirectSource(cfg.SourceType) {
+		return fmt.Errorf("source type %s is not eligible for quarantine", cfg.SourceType)
 	}
 
 	reason := permanentSourceErrorPrefix + pollErr.Error()
