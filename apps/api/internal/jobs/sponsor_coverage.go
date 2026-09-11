@@ -62,7 +62,7 @@ func (r *Repository) GetSponsorCoverageHealth(ctx context.Context) (SponsorCover
 
 	const directSourceTypes = `(
 		'GREENHOUSE', 'LEVER', 'ASHBY', 'SMARTRECRUITERS',
-		'WORKABLE', 'WORKDAY', 'ICIMS', 'CAREER_PAGE'
+		'WORKABLE', 'WORKDAY', 'ICIMS', 'SUCCESSFACTORS', 'CAREER_PAGE'
 	)`
 
 	var health SponsorCoverageHealth
