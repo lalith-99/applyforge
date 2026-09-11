@@ -17,7 +17,8 @@ import (
 // EnqueueSyncTasks.
 const JobTypeSyncSource = "sync_job_source"
 
-// SyncSourcePayload is the JSON payload enqueued for a sync_job_source job.
+// SyncSourcePayload is the JSON payload enqueued per job source by
+// EnqueueSyncTasks.
 type SyncSourcePayload struct {
 	JobSourceID string `json:"job_source_id"`
 }
@@ -60,6 +61,15 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	if err != nil {
 		return fmt.Errorf("load job source: %w", err)
 	}
+	enabled, err := w.repo.JobSourceEnabled(ctx, cfg.ID)
+	if err != nil {
+		return fmt.Errorf("check job source state: %w", err)
+	}
+	if !enabled {
+		// A previous queued attempt may have quarantined or disabled this source
+		// after this job was enqueued. Treat the stale queue item as complete.
+		return nil
+	}
 
 	startedAt := time.Now().UTC()
 	source, sourceName, err := BuildSource(cfg)
@@ -70,6 +80,24 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 	}
 
 	result, ingestErr := w.ingestion.Ingest(ctx, sourceName, source, cfg.CompanyID, cfg.CompanyName)
+	if ingestErr != nil && isPermanentSourcePollFailure(cfg.SourceType, ingestErr) {
+		w.recordPoll(ctx, cfg, startedAt, result, ingestErr)
+		if quarantineErr := w.repo.QuarantineJobSource(ctx, cfg, ingestErr); quarantineErr != nil {
+			return fmt.Errorf("quarantine invalid %s source %s: %w", sourceName, cfg.BoardToken, quarantineErr)
+		}
+		slog.Warn("quarantined permanently invalid job source",
+			"job_source_id", cfg.ID,
+			"source", sourceName,
+			"board_token", cfg.BoardToken,
+			"company", cfg.CompanyName,
+			"error", ingestErr,
+		)
+		// Quarantining is a successful terminal handling decision for this queue
+		// attempt. Returning nil prevents the background queue from retrying the
+		// same known-dead board three times.
+		return nil
+	}
+
 	if touchErr := w.repo.TouchJobSource(ctx, cfg.ID, ingestErr); touchErr != nil {
 		slog.Error("touch job source failed", "job_source_id", cfg.ID, "error", touchErr)
 	}

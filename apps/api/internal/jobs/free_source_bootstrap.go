@@ -61,11 +61,13 @@ type FreeSourceBootstrapConfig struct {
 	RefreshAfter time.Duration
 }
 
-// FreeSourceBootstrapResult summarizes one best-effort HOT+WARM sponsor pass.
+// FreeSourceBootstrapResult summarizes one best-effort sponsor-watchlist pass.
 type FreeSourceBootstrapResult struct {
 	PriorityCompanies  int
 	HotCompanies       int
 	WarmCompanies      int
+	CoolCompanies      int
+	ColdCompanies      int
 	DirectoryEntries   int
 	MatchedCompanies   int
 	ResolvedCompanies  int
@@ -145,7 +147,9 @@ var workdayReviewOnlyTokens = []string{
 }
 
 // BootstrapFreePriorityCompanySources uses the public MIT-licensed ats-scrapers
-// company inventories as a discovery accelerator for HOT and WARM H-1B sponsors.
+// company inventories as a discovery accelerator for the complete H-1B sponsor
+// watchlist. Tier-specific poll intervals keep lower-priority COOL/COLD sources
+// cheap after discovery (8 hours and 24 hours respectively).
 //
 // The directory is not treated as authoritative identity evidence: only exact
 // normalized company-name matches are accepted automatically. Supported ATS
@@ -177,6 +181,10 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 			result.HotCompanies++
 		case "WARM":
 			result.WarmCompanies++
+		case "COOL":
+			result.CoolCompanies++
+		case "COLD":
+			result.ColdCompanies++
 		}
 	}
 	if len(companies) == 0 {
@@ -286,14 +294,19 @@ func (r *Repository) priorityCompaniesDueForFreeSourceBootstrap(ctx context.Cont
 		SELECT c.id, c.name, w.employer_normalized_name, w.tier
 		FROM company_sponsor_watchlist w
 		JOIN companies c ON c.id = w.company_id
-		WHERE w.tier IN ('HOT', 'WARM')
+		WHERE w.tier IN ('HOT', 'WARM', 'COOL', 'COLD')
 		  AND (
 		      w.last_source_discovery_at IS NULL
-		      OR w.source_discovery_status IN ('PENDING', 'PARTIAL', 'FAILED')
+		      OR w.source_discovery_status IN ('PENDING', 'PARTIAL')
 		      OR w.last_source_discovery_at < now() - ($1::bigint * interval '1 second')
 		  )
 		ORDER BY
-			CASE w.tier WHEN 'HOT' THEN 0 ELSE 1 END,
+			CASE w.tier
+				WHEN 'HOT' THEN 0
+				WHEN 'WARM' THEN 1
+				WHEN 'COOL' THEN 2
+				ELSE 3
+			END,
 			w.watchlist_rank
 	`, int64(refreshAfter.Seconds()))
 	if err != nil {
