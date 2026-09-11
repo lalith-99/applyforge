@@ -80,6 +80,14 @@ func (s *ICIMSSource) SeenExternalIDs() []string {
 	return out
 }
 
+func (s *ICIMSSource) canonicalExternalID(rawID string) string {
+	rawID = strings.TrimSpace(rawID)
+	if rawID == "" {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(s.BoardToken)) + ":" + rawID
+}
+
 func (s *ICIMSSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor, error) {
 	maxPages := s.MaxPages
 	if maxPages <= 0 {
@@ -103,6 +111,7 @@ func (s *ICIMSSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor, 
 
 		newJobs := 0
 		for _, job := range pageJobs {
+			job.ExternalID = s.canonicalExternalID(job.ExternalID)
 			if job.ExternalID == "" || seen[job.ExternalID] {
 				continue
 			}
@@ -220,6 +229,9 @@ func parseICIMSJobCard(baseURL *url.URL, card *xhtml.Node) (RawJob, bool) {
 	titleNode := firstDescendant(anchor, func(node *xhtml.Node) bool {
 		return node.Type == xhtml.ElementNode && strings.EqualFold(node.Data, "h3")
 	})
+	if titleNode == nil {
+		return RawJob{}, false
+	}
 	title := strings.TrimSpace(strings.Join(strings.Fields(rawNodeText(titleNode)), " "))
 	if title == "" {
 		return RawJob{}, false
