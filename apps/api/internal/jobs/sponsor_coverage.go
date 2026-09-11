@@ -5,13 +5,13 @@ import "context"
 // SponsorTierCoverage makes source expansion measurable by sponsor tier instead
 // of relying on raw job counts alone.
 type SponsorTierCoverage struct {
-	Tier                  string `json:"tier"`
-	Companies             int64  `json:"companies"`
-	ResolvedCompanies     int64  `json:"resolved_companies"`
-	MonitorableCompanies  int64  `json:"monitorable_companies"`
-	EnabledDirectSources  int64  `json:"enabled_direct_sources"`
-	FreshUSSoftwareJobs24H int64 `json:"fresh_us_software_jobs_24h"`
-	FreshJobCompanies24H  int64  `json:"fresh_job_companies_24h"`
+	Tier                   string `json:"tier"`
+	Companies              int64  `json:"companies"`
+	ResolvedCompanies      int64  `json:"resolved_companies"`
+	MonitorableCompanies   int64  `json:"monitorable_companies"`
+	EnabledDirectSources   int64  `json:"enabled_direct_sources"`
+	FreshUSSoftwareJobs24H int64  `json:"fresh_us_software_jobs_24h"`
+	FreshJobCompanies24H   int64  `json:"fresh_job_companies_24h"`
 }
 
 // SponsorCoverageHealth summarizes whether broader sponsor discovery is
