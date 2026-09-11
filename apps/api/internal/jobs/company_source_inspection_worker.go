@@ -185,6 +185,9 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 	if strings.EqualFold(payload.SourceType, "SMARTRECRUITERS") {
 		return w.verifySmartRecruitersSource(ctx, registryID, companyID, payload)
 	}
+	if strings.EqualFold(payload.SourceType, "ICIMS") {
+		return w.verifyICIMSSource(ctx, registryID, companyID, payload)
+	}
 
 	inspection, inspectErr := w.inspector.Inspect(ctx, payload.SourceURL)
 	if inspectErr != nil {
