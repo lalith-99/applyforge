@@ -103,7 +103,7 @@ func (r *Repository) QuarantineJobSource(ctx context.Context, cfg JobSourceConfi
 		WHERE company_id = $1
 		  AND source_type = $2
 		  AND board_token = $3
-	`, cfg.CompanyID, cfg.SourceType, cfg.BoardToken, reason, int((7*24*time.Hour).Seconds())); err != nil {
+	`, cfg.CompanyID, cfg.SourceType, cfg.BoardToken, reason, int((7 * 24 * time.Hour).Seconds())); err != nil {
 		return fmt.Errorf("mark invalid source registry candidate: %w", err)
 	}
 
