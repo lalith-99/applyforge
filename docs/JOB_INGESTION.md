@@ -48,11 +48,13 @@ type JobSource interface {
 }
 ```
 
-Current employer-direct connectors include Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday and iCIMS. ApplyForge can also monitor public career pages that expose structured `schema.org/JobPosting` data. Broad/gap discovery adapters include Arbeitnow, Bright Data LinkedIn keyword discovery, and optional SerpAPI Google Jobs.
+Current employer-direct connectors include Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday, iCIMS and SuccessFactors. ApplyForge can also monitor public career pages that expose structured `schema.org/JobPosting` data. Broad/gap discovery adapters include Arbeitnow, Bright Data LinkedIn keyword discovery, and optional SerpAPI Google Jobs.
 
 iCIMS is deliberately verification-gated. Public listing pages are used to enumerate the complete active ID set, while `schema.org/JobPosting` data on detail pages supplies richer metadata and `hiringOrganization` identity. An iCIMS registry candidate becomes monitorable only after that provider-backed employer identity agrees with the sponsor/company identity. Tenant-local numeric job IDs are namespaced with the iCIMS tenant host so `(source, external_id)` remains globally idempotent across employers.
 
-Unsupported ATS portals are still valuable: Oracle and known custom vendors such as SuccessFactors, Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG and Jobvite are retained in `company_source_registry` so connector work can be prioritized from measured coverage instead of rediscovering companies later.
+SuccessFactors is also verification-gated. ApplyForge supports credential-free Recruiting Marketing / Career Site Builder RSS feeds and legacy Recruiting Management `Job-Listing` XML feeds. Feed-provided employer identity must match the sponsor/company identity before the source is promoted to direct polling. Historical free-bootstrap entries stored as `CUSTOM` with a `SUCCESSFACTORS|...` token are re-inspected and promoted without requiring rediscovery. Feed IDs are namespaced by tenant/company identity and complete feeds participate in closure detection.
+
+Unsupported ATS portals are still valuable: Oracle and known custom vendors such as Eightfold, Taleo, Phenom, Avature, ADP, Cornerstone, UKG and Jobvite are retained in `company_source_registry` so connector work can be prioritized from measured coverage instead of rediscovering companies later.
 
 ## Source discovery flywheel
 
