@@ -126,3 +126,25 @@ func TestHandleWatchlistRefreshReturnsErrorWhenEnqueueFails(t *testing.T) {
 		t.Fatalf("expected %d, got %d", http.StatusInternalServerError, rec.Code)
 	}
 }
+
+
+func TestWatchlistSummaryIncludesSourceResolutionRuntime(t *testing.T) {
+	// This test only verifies the response shape helper wiring; repository-backed
+	// summary behavior is covered by repository/integration tests.
+	status := SourceResolutionRuntime{
+		ProactiveDiscoveryEnabled:   true,
+		DiscoveryProvider:           "DATAFORSEO",
+		CareerPageInspectionEnabled: true,
+	}
+	h := NewHandlers(nil, "test-admin-token").WithSourceResolutionRuntime(status)
+
+	if !h.sourceResolutionRuntime.ProactiveDiscoveryEnabled {
+		t.Fatal("expected proactive discovery runtime status")
+	}
+	if h.sourceResolutionRuntime.DiscoveryProvider != "DATAFORSEO" {
+		t.Fatalf("unexpected discovery provider %q", h.sourceResolutionRuntime.DiscoveryProvider)
+	}
+	if !h.sourceResolutionRuntime.CareerPageInspectionEnabled {
+		t.Fatal("expected career-page inspection runtime status")
+	}
+}

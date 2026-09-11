@@ -16,10 +16,17 @@ type jobEnqueuer interface {
 	Enqueue(ctx context.Context, jobType string, payload any, maxAttempts int32) error
 }
 
+type SourceResolutionRuntime struct {
+	ProactiveDiscoveryEnabled bool   `json:"proactive_discovery_enabled"`
+	DiscoveryProvider         string `json:"discovery_provider,omitempty"`
+	CareerPageInspectionEnabled bool `json:"career_page_inspection_enabled"`
+}
+
 type Handlers struct {
-	repo       *Repository
-	queue      jobEnqueuer
-	adminToken string
+	repo                    *Repository
+	queue                   jobEnqueuer
+	adminToken              string
+	sourceResolutionRuntime SourceResolutionRuntime
 }
 
 func NewHandlers(repo *Repository, adminToken string) *Handlers {
@@ -28,6 +35,11 @@ func NewHandlers(repo *Repository, adminToken string) *Handlers {
 
 func (h *Handlers) WithQueue(queue jobEnqueuer) *Handlers {
 	h.queue = queue
+	return h
+}
+
+func (h *Handlers) WithSourceResolutionRuntime(status SourceResolutionRuntime) *Handlers {
+	h.sourceResolutionRuntime = status
 	return h
 }
 
@@ -117,5 +129,11 @@ func (h *Handlers) handleWatchlistSummary(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, summary)
+	httpx.WriteJSON(w, http.StatusOK, struct {
+		SponsorWatchlistSummary
+		SourceResolution SourceResolutionRuntime `json:"source_resolution"`
+	}{
+		SponsorWatchlistSummary: summary,
+		SourceResolution:        h.sourceResolutionRuntime,
+	})
 }

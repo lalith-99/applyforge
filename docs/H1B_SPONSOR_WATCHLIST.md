@@ -286,3 +286,22 @@ The default enabled configuration is intentionally modest: 100 registry entries 
 `GET /api/v1/admin/job-sources/health` now includes a `discovery` section with watchlist status,
 registry monitorability, inspection status, monthly provider-request counts, estimated provider
 cost metadata, and registry coverage by source type.
+
+## Runtime source-resolution status
+
+The watchlist summary now includes the runtime configuration that determines whether pending sponsor
+companies can actually progress:
+
+```json
+{
+  "pending_sources": 10000,
+  "source_resolution": {
+    "proactive_discovery_enabled": false,
+    "career_page_inspection_enabled": false
+  }
+}
+```
+
+When proactive discovery is enabled, `discovery_provider` reports the configured provider. This separates
+a configuration-disabled backlog from a worker/provider failure without exposing credentials.
+
