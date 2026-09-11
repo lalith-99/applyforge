@@ -23,16 +23,16 @@ type SponsorTierCoverage struct {
 // show what ApplyForge can poll today, and fresh counts show whether the source
 // is producing useful inventory rather than merely existing in configuration.
 type SourceTypeCoverage struct {
-	SourceType              string `json:"source_type"`
-	RegistrySources         int64  `json:"registry_sources"`
-	RegistryCompanies       int64  `json:"registry_companies"`
-	MonitorableSources      int64  `json:"monitorable_sources"`
-	FailedRegistrySources   int64  `json:"failed_registry_sources"`
-	EnabledSources          int64  `json:"enabled_sources"`
-	EnabledCompanies        int64  `json:"enabled_companies"`
-	FreshCanonicalJobs24H   int64  `json:"fresh_canonical_jobs_24h"`
-	FreshUSSoftwareJobs24H  int64  `json:"fresh_us_software_jobs_24h"`
-	FreshJobCompanies24H    int64  `json:"fresh_job_companies_24h"`
+	SourceType             string `json:"source_type"`
+	RegistrySources        int64  `json:"registry_sources"`
+	RegistryCompanies      int64  `json:"registry_companies"`
+	MonitorableSources     int64  `json:"monitorable_sources"`
+	FailedRegistrySources  int64  `json:"failed_registry_sources"`
+	EnabledSources         int64  `json:"enabled_sources"`
+	EnabledCompanies       int64  `json:"enabled_companies"`
+	FreshCanonicalJobs24H  int64  `json:"fresh_canonical_jobs_24h"`
+	FreshUSSoftwareJobs24H int64  `json:"fresh_us_software_jobs_24h"`
+	FreshJobCompanies24H   int64  `json:"fresh_job_companies_24h"`
 }
 
 // SponsorCoverageHealth is the acquisition control-plane view. It measures the
@@ -51,7 +51,7 @@ type SponsorCoverageHealth struct {
 	StaleEnabledSources       int64                 `json:"stale_enabled_sources"`
 	UnlistedFreshJobs24H      int64                 `json:"unlisted_fresh_jobs_24h"`
 	UnlistedFreshCompanies24H int64                 `json:"unlisted_fresh_companies_24h"`
-	BySourceType              []SourceTypeCoverage   `json:"by_source_type"`
+	BySourceType              []SourceTypeCoverage  `json:"by_source_type"`
 	ByTier                    []SponsorTierCoverage `json:"by_tier"`
 }
 
