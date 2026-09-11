@@ -10,7 +10,8 @@ import (
 
 func TestICIMSSource_Fetch_PaginatesAndEnrichesUSSoftware(t *testing.T) {
 	var searchCalls, detailCalls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if strings.Contains(r.URL.Path, "/jobs/123/") {
 			detailCalls++
@@ -76,7 +77,8 @@ func TestICIMSSource_Fetch_PaginatesAndEnrichesUSSoftware(t *testing.T) {
 
 func TestICIMSSource_Fetch_DoesNotDetailFetchIrrelevantJobs(t *testing.T) {
 	var detailCalls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		if strings.Contains(r.URL.Path, "/jobs/") && r.URL.Path != "/jobs/search" {
 			detailCalls++
@@ -108,7 +110,8 @@ func TestICIMSSource_Fetch_DoesNotDetailFetchIrrelevantJobs(t *testing.T) {
 }
 
 func TestICIMSSource_Fetch_RefusesPartialSnapshotAtPageBound(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		id := r.URL.Query().Get("pr")
 		if id == "" {
@@ -132,7 +135,8 @@ func TestICIMSSource_Fetch_RefusesPartialSnapshotAtPageBound(t *testing.T) {
 }
 
 func TestICIMSSource_VerifyCompanyOwnership(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		if strings.Contains(r.URL.Path, "/jobs/123/") {
 			_, _ = w.Write([]byte(icimsDetailFixture("Deloitte", "123", "Software Engineer")))
@@ -159,7 +163,8 @@ func TestICIMSSource_VerifyCompanyOwnership(t *testing.T) {
 }
 
 func TestICIMSSource_VerifyCompanyOwnershipRejectsMismatch(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		if strings.Contains(r.URL.Path, "/jobs/123/") {
 			_, _ = w.Write([]byte(icimsDetailFixture("Another Company", "123", "Software Engineer")))
