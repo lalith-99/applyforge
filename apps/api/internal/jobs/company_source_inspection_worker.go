@@ -54,7 +54,7 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			FROM company_source_registry csr
 			JOIN company_sponsor_watchlist w ON w.company_id = csr.company_id
 			WHERE csr.monitorable = false
-			  AND csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'ORACLE', 'CUSTOM')
+			  AND csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'SUCCESSFACTORS', 'ORACLE', 'CUSTOM')
 			  AND csr.inspection_status IN ('PENDING', 'FAILED')
 			  AND (
 			      csr.next_inspection_at IS NULL
@@ -187,6 +187,9 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 	}
 	if strings.EqualFold(payload.SourceType, "ICIMS") {
 		return w.verifyICIMSSource(ctx, registryID, companyID, payload)
+	}
+	if strings.EqualFold(payload.SourceType, "SUCCESSFACTORS") {
+		return w.verifySuccessFactorsSource(ctx, registryID, companyID, payload)
 	}
 
 	inspection, inspectErr := w.inspector.Inspect(ctx, payload.SourceURL)
