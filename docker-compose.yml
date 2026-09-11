@@ -59,6 +59,10 @@ services:
       S3_SECRET_KEY: "applyforge123"
       S3_USE_SSL: "false"
       ADMIN_SYNC_TOKEN: "${ADMIN_SYNC_TOKEN:-}"
+      # Local single-user MVP: inspect only already-discovered public career
+      # sources. The inspector is SSRF-safe/bounded and also verifies
+      # SmartRecruiters tenant ownership before enabling direct polling.
+      CAREER_PAGE_INSPECTION_ENABLED: "true"
     ports:
       - "8080:8080"
     depends_on:
