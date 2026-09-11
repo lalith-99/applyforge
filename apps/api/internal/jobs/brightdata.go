@@ -107,6 +107,7 @@ type BrightDataConfig struct {
 	APIKey          string
 	DatasetID       string
 	BaseURL         string
+	Mode            string
 	RecordsLimit    int
 	SnapshotTimeout time.Duration
 	PollInterval    time.Duration
@@ -117,10 +118,21 @@ type BrightDataConfig struct {
 }
 
 func BrightDataConfigFromEnv() (BrightDataConfig, error) {
+	mode := normalizeBrightDataMode(envOr("BRIGHTDATA_MODE", brightDataModeLinkedInKeyword))
+	if mode != brightDataModeLinkedInKeyword && mode != brightDataModeMarketplaceFilter {
+		return BrightDataConfig{}, fmt.Errorf("unsupported BRIGHTDATA_MODE %q", mode)
+	}
+
+	datasetID := strings.TrimSpace(os.Getenv("BRIGHTDATA_JOBS_DATASET_ID"))
+	if mode == brightDataModeLinkedInKeyword {
+		datasetID = envOr("BRIGHTDATA_LINKEDIN_KEYWORD_DATASET_ID", defaultBrightDataLinkedInKeywordDatasetID)
+	}
+
 	cfg := BrightDataConfig{
 		APIKey:          strings.TrimSpace(os.Getenv("BRIGHTDATA_API_KEY")),
-		DatasetID:       strings.TrimSpace(os.Getenv("BRIGHTDATA_JOBS_DATASET_ID")),
+		DatasetID:       datasetID,
 		BaseURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("BRIGHTDATA_API_BASE_URL")), "/"),
+		Mode:            mode,
 		RecordsLimit:    defaultBrightDataLimit,
 		SnapshotTimeout: 5 * time.Minute,
 		PollInterval:    5 * time.Second,
@@ -141,7 +153,10 @@ func BrightDataConfigFromEnv() (BrightDataConfig, error) {
 		return BrightDataConfig{}, errors.New("BRIGHTDATA_API_KEY is not configured")
 	}
 	if cfg.DatasetID == "" {
-		return BrightDataConfig{}, errors.New("BRIGHTDATA_JOBS_DATASET_ID is not configured")
+		if mode == brightDataModeMarketplaceFilter {
+			return BrightDataConfig{}, errors.New("BRIGHTDATA_JOBS_DATASET_ID is not configured for marketplace_filter mode")
+		}
+		return BrightDataConfig{}, errors.New("Bright Data LinkedIn keyword dataset id is not configured")
 	}
 	return cfg, nil
 }
@@ -153,10 +168,11 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// BrightDataSource uses Bright Data's asynchronous Marketplace Dataset filter
-// API. Each configured source row represents one shared role/technology shard;
-// ApplyForge still owns canonical US validation, role classification, dedupe,
-// sponsorship filtering, and strict posted_at freshness after download.
+// BrightDataSource supports Bright Data's live LinkedIn keyword-discovery
+// scraper for broad market acquisition and retains the Marketplace Dataset
+// filter API as a compatibility mode. ApplyForge still owns canonical U.S.
+// validation, role classification, dedupe, sponsorship filtering, and strict
+// posted_at freshness after download.
 type BrightDataSource struct {
 	Shard string
 	cfg   BrightDataConfig
@@ -176,6 +192,16 @@ func NewBrightDataSource(shard string, cfg BrightDataConfig) *BrightDataSource {
 func (s *BrightDataSource) Name() string { return "BRIGHTDATA:" + s.Shard }
 
 func (s *BrightDataSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor, error) {
+	switch normalizeBrightDataMode(s.cfg.Mode) {
+	case brightDataModeLinkedInKeyword:
+		return s.fetchLinkedInKeyword(ctx)
+	case brightDataModeMarketplaceFilter:
+		// Backward-compatible zero-value Mode continues to exercise the
+		// original Marketplace Dataset filter path in existing tests/installs.
+	default:
+		return nil, nil, fmt.Errorf("unsupported Bright Data mode %q", s.cfg.Mode)
+	}
+
 	snapshotID, err := s.triggerSnapshot(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -383,17 +409,17 @@ func brightDataRawJob(record map[string]any) (RawJob, bool) {
 		return RawJob{}, false
 	}
 
-	description := brightString(record, "job_description", "description", "job_summary", "description_text")
+	description := brightString(record, "job_description", "description", "job_summary", "description_text", "job_description_formatted")
 	location := brightString(record, "location", "job_location", "location_name")
 	country := brightString(record, "country", "country_name", "country_code")
 	state := brightString(record, "state", "region", "province")
 	city := brightString(record, "city")
-	applyURL := brightString(record, "apply_url", "application_url", "job_apply_url")
+	applyURL := brightString(record, "apply_url", "application_url", "job_apply_url", "apply_link")
 	sourceURL := brightString(record, "job_url", "url", "source_url", "link")
 	if applyURL == "" {
 		applyURL = sourceURL
 	}
-	postedAt := brightTime(record, "posted_date", "date_posted", "posted_at", "created_at", "publication_date")
+	postedAt := brightTime(record, "posted_date", "date_posted", "posted_at", "created_at", "publication_date", "job_posted_date")
 	externalID := brightString(record, "job_id", "id", "job_posting_id", "external_id")
 	if externalID == "" {
 		externalID = brightStableID(company, title, location, applyURL)
@@ -416,7 +442,7 @@ func brightDataRawJob(record map[string]any) (RawJob, bool) {
 		State:          state,
 		City:           city,
 		RemoteType:     remoteType,
-		EmploymentType: brightString(record, "employment_type", "job_type", "employment"),
+		EmploymentType: brightString(record, "employment_type", "job_type", "employment", "job_employment_type"),
 		ApplyURL:       applyURL,
 		SourceURL:      sourceURL,
 		PostedAt:       postedAt,
