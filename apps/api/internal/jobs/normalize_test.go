@@ -23,6 +23,48 @@ func TestNormalizeLocation_DoesNotTreatAustraliaAsUS(t *testing.T) {
 	}
 }
 
+func TestNormalizeLocation_ExplicitIndiaVetoesIndianaStateCode(t *testing.T) {
+	location := normalizeLocation(RawJob{
+		LocationText: "Bengaluru, IN, India",
+		Country:      "India",
+		State:        "IN",
+		City:         "Bengaluru",
+	})
+	if location.CountryCode != "IN" {
+		t.Fatalf("India must normalize to IN, got %+v", location)
+	}
+	if location.StateCode != "" {
+		t.Fatalf("foreign state code IN must not be treated as Indiana: %+v", location)
+	}
+	if len(location.EligibleCountryCodes) != 1 || location.EligibleCountryCodes[0] != "IN" {
+		t.Fatalf("expected India eligibility only, got %+v", location)
+	}
+}
+
+func TestNormalizeLocation_ExplicitForeignCountryVetoesUSStateInference(t *testing.T) {
+	location := normalizeLocation(RawJob{
+		LocationText: "Vancouver, BC, Canada",
+		Country:      "Canada",
+		State:        "CA",
+		City:         "Vancouver",
+	})
+	if location.CountryCode == "US" || location.StateCode != "" {
+		t.Fatalf("explicit foreign country must veto US state inference: %+v", location)
+	}
+}
+
+func TestNormalizeLocation_ExplicitUSStillAllowsIndiana(t *testing.T) {
+	location := normalizeLocation(RawJob{
+		LocationText: "Indianapolis, IN, United States",
+		Country:      "United States",
+		State:        "IN",
+		City:         "Indianapolis",
+	})
+	if location.CountryCode != "US" || location.StateCode != "IN" {
+		t.Fatalf("explicit US country should still allow Indiana: %+v", location)
+	}
+}
+
 func TestNormalizeLocation_LeavesUnscopedRemoteUnknown(t *testing.T) {
 	location := normalizeLocation(RawJob{LocationText: "Remote", RemoteType: "remote"})
 	if location.CountryCode != "" || location.RemoteScope != "UNKNOWN" || location.WorkplaceType != "REMOTE" {
