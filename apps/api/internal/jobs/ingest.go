@@ -340,11 +340,11 @@ func (s *IngestionService) SyncAll(ctx context.Context) error {
 	return nil
 }
 
-// EnqueueSyncTasks enqueues one sync_job_source background task per enabled
-// job source instead of polling them sequentially in-process. Multiple
-// worker processes/goroutines can then claim and fetch from providers
-// concurrently (see SyncSourceWorker), so a slow or rate-limited source
-// doesn't delay every other source's poll.
+// EnqueueSyncTasks enqueues at most one active sync_job_source background task
+// per due source. The queue-side debounce avoids amplification when the
+// scheduler fires again before a slow source has finished, while migration
+// 00064's partial unique index is the race-safe database backstop for
+// concurrent scheduler/admin triggers.
 func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 	if s.queue == nil {
 		return fmt.Errorf("ingestion service has no queue configured")
@@ -363,7 +363,7 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 
 	for _, cfg := range sources {
 		payload := SyncSourcePayload{JobSourceID: cfg.ID.String()}
-		if err := s.queue.Enqueue(ctx, JobTypeSyncSource, payload, 3); err != nil {
+		if err := s.queue.EnqueueDebounced(ctx, JobTypeSyncSource, payload, 3, 0); err != nil {
 			slog.Error("enqueue sync_job_source failed", "job_source_id", cfg.ID, "board_token", cfg.BoardToken, "error", err)
 		}
 	}

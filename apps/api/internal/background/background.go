@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
@@ -98,6 +99,20 @@ func (queue *Queue) EnqueueDebounced(
 		Payload:     body,
 		MaxAttempts: maxAttempts,
 	})
+	if err == nil {
+		return nil
+	}
+
+	// background_jobs_active_sync_source_idx is the race-safe backstop for
+	// concurrent scheduler/admin enqueue attempts. The optimistic lookup above
+	// keeps the normal path cheap; if another caller wins between lookup and
+	// insert, treat that exact uniqueness conflict as a successful debounce.
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == "background_jobs_active_sync_source_idx" {
+		return nil
+	}
 	return err
 }
 
@@ -156,7 +171,9 @@ func (w *Worker) Register(jobType string, handler Handler) {
 	w.handlers[jobType] = handler
 }
 
-// PollOnce claims and processes a single job, if one is available.
+// PollOnce claims and processes a single job, if one is available. ClaimNextJob
+// also reaps RUNNING leases older than two hours, so a crashed/restarted worker
+// cannot strand queue rows forever.
 func (w *Worker) PollOnce(ctx context.Context) error {
 	row, err := w.queue.q.ClaimNextJob(ctx, database.PGText(&w.workerName))
 	if err != nil {
