@@ -21,15 +21,7 @@ WITH grouped AS (
     SELECT
         csr.company_id,
         lower(trim(csr.board_token)) AS board_token,
-        bool_or(csr.monitorable)
-            OR EXISTS (
-                SELECT 1
-                FROM job_sources js
-                WHERE js.company_id = csr.company_id
-                  AND js.source_type = 'ICIMS'
-                  AND lower(trim(js.board_token)) = lower(trim(csr.board_token))
-                  AND js.enabled = true
-            ) AS monitorable,
+        bool_or(csr.monitorable) OR bool_or(js.id IS NOT NULL) AS monitorable,
         max(csr.confidence) AS confidence,
         min(csr.first_seen_at) AS first_seen_at,
         max(csr.last_seen_at) AS last_seen_at,
@@ -37,6 +29,11 @@ WITH grouped AS (
         max(csr.last_inspection_at) AS last_inspection_at,
         bool_or(csr.discovery_method = 'MANUAL') AS had_manual_discovery
     FROM company_source_registry csr
+    LEFT JOIN job_sources js
+      ON js.company_id = csr.company_id
+     AND js.source_type = 'ICIMS'
+     AND lower(trim(js.board_token)) = lower(trim(csr.board_token))
+     AND js.enabled = true
     WHERE csr.source_type = 'ICIMS'
       AND trim(csr.board_token) <> ''
     GROUP BY csr.company_id, lower(trim(csr.board_token))
