@@ -250,6 +250,12 @@ var usCountryTokens = map[string]bool{
 	"united states": true, "united states of america": true, "us": true, "usa": true, "u.s.": true, "u.s": true,
 }
 
+var explicitCountryCodes = map[string]string{
+	"india": "IN",
+	"in":    "IN",
+	"ind":   "IN",
+}
+
 // normalizeLocation retains source fields while assigning a canonical country
 // only when the source data or location text is unambiguous.
 func normalizeLocation(raw RawJob) NormalizedLocation {
@@ -271,7 +277,27 @@ func normalizeLocation(raw RawJob) NormalizedLocation {
 		result.WorkplaceType = "HYBRID"
 	}
 
-	if usCountryTokens[country] || containsUSCountry(location) {
+	explicitCountry := country != ""
+	explicitUSCountry := usCountryTokens[country]
+
+	switch {
+	case explicitUSCountry:
+		result.CountryCode = "US"
+		result.EligibleCountryCodes = []string{"US"}
+		result.LocationConfidence = "HIGH"
+		if result.WorkplaceType == "REMOTE" {
+			result.RemoteScope = "US"
+		}
+	case explicitCountry:
+		// An explicit foreign country is authoritative and must veto later
+		// U.S.-state inference. This avoids values such as Country="India",
+		// State="IN" being reinterpreted as Indiana / United States.
+		if code := explicitCountryCodes[country]; code != "" {
+			result.CountryCode = code
+			result.EligibleCountryCodes = []string{code}
+			result.LocationConfidence = "HIGH"
+		}
+	case containsUSCountry(location):
 		result.CountryCode = "US"
 		result.EligibleCountryCodes = []string{"US"}
 		result.LocationConfidence = "HIGH"
@@ -280,10 +306,15 @@ func normalizeLocation(raw RawJob) NormalizedLocation {
 		}
 	}
 
-	if stateCode := normalizeUSState(state); stateCode != "" {
-		result.StateCode = stateCode
-	} else if stateCode := stateCodeInLocation(location); stateCode != "" {
-		result.StateCode = stateCode
+	// Only infer a U.S. state when the source country is absent or explicitly
+	// U.S. A provider-supplied foreign country always wins over ambiguous
+	// two-letter region codes such as IN, OR, ME, or HI.
+	if !explicitCountry || explicitUSCountry {
+		if stateCode := normalizeUSState(state); stateCode != "" {
+			result.StateCode = stateCode
+		} else if stateCode := stateCodeInLocation(location); stateCode != "" {
+			result.StateCode = stateCode
+		}
 	}
 	if result.StateCode != "" {
 		result.CountryCode = "US"
