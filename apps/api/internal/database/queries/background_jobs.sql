@@ -10,10 +10,28 @@ ORDER BY created_at DESC
 LIMIT 1;
 
 -- name: ClaimNextJob :one
+-- Reclaim leases abandoned by a crashed/restarted worker before choosing the
+-- next PENDING job. A two-hour lease is intentionally conservative for direct
+-- ATS polls and AI work. Exhausted jobs become DEAD_LETTER; retryable jobs are
+-- returned to PENDING and can be claimed on the next poll iteration.
+--
 -- Interactive, user-triggered job types (parse_resume, build_candidate_profile,
 -- compute_recommendations, process_tailoring_run) are claimed ahead of bulk
 -- background ingestion (enrich_job, embed_job, sync_job_source), so a large
 -- ingestion backlog never stalls a user actively waiting on a result.
+WITH expired_leases AS (
+    UPDATE background_jobs
+    SET status = CASE
+            WHEN attempts >= max_attempts THEN 'DEAD_LETTER'
+            ELSE 'PENDING'
+        END,
+        available_at = now(),
+        locked_at = NULL,
+        locked_by = NULL,
+        last_error = 'background job lease expired after 2 hours'
+    WHERE status = 'RUNNING'
+      AND (locked_at IS NULL OR locked_at < now() - INTERVAL '2 hours')
+)
 UPDATE background_jobs
 SET status = 'RUNNING', attempts = attempts + 1, locked_at = now(), locked_by = $1
 WHERE id = (
