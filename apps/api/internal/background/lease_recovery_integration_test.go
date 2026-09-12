@@ -143,3 +143,40 @@ func TestWorkerPollOnce_DeadLettersExpiredExhaustedLease(t *testing.T) {
 		t.Fatalf("expected lease-expired diagnostic, got %v", lastError)
 	}
 }
+
+func TestActiveSyncSourceUniqueIndex_AllowsOnlyOneActiveJobPerSource(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
+	ctx := context.Background()
+	pool, err := database.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect to database: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("database not reachable: %v", err)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+
+	sourceID := uuid.New().String()
+	payload := []byte(`{"job_source_id":"` + sourceID + `"}`)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO background_jobs (job_type, payload, max_attempts)
+		VALUES ('sync_job_source', $1::jsonb, 3)
+	`, payload); err != nil {
+		t.Fatalf("insert first active sync job: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO background_jobs (job_type, payload, max_attempts)
+		VALUES ('sync_job_source', $1::jsonb, 3)
+	`, payload); err == nil {
+		t.Fatal("expected database invariant to reject duplicate active sync job")
+	}
+}
