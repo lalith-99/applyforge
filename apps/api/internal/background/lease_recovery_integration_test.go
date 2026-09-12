@@ -13,21 +13,6 @@ import (
 	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
 )
 
-func openBackgroundQueueTx(t *testing.T) (context.Context, *Queue, interface {
-	Exec(context.Context, string, ...any) (pgconnCommandTag, error)
-	QueryRow(context.Context, string, ...any) rowScanner
-}) {
-	t.Helper()
-	return nil, nil, nil
-}
-
-// These small local interfaces let the test use pgx.Tx without coupling the
-// production queue API to test-only raw SQL helpers.
-type pgconnCommandTag interface{}
-type rowScanner interface {
-	Scan(...any) error
-}
-
 func TestWorkerPollOnce_ReclaimsExpiredLease(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
