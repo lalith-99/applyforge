@@ -14,7 +14,7 @@ import (
 const createJobSource = `-- name: CreateJobSource :one
 INSERT INTO job_sources (source_type, company_id, board_token, enabled)
 VALUES ($1, $2, $3, $4)
-RETURNING id, source_type, company_id, board_token, enabled, last_polled_at, last_error, created_at
+RETURNING id, source_type, company_id, board_token, enabled, last_polled_at, last_error, created_at, poll_interval_minutes, poll_generation
 `
 
 type CreateJobSourceParams struct {
@@ -41,6 +41,8 @@ func (q *Queries) CreateJobSource(ctx context.Context, arg CreateJobSourceParams
 		&i.LastPolledAt,
 		&i.LastError,
 		&i.CreatedAt,
+		&i.PollIntervalMinutes,
+		&i.PollGeneration,
 	)
 	return i, err
 }
@@ -63,21 +65,23 @@ func (q *Queries) GetCompanyByNormalizedName(ctx context.Context, normalizedName
 }
 
 const getJobSourceByID = `-- name: GetJobSourceByID :one
-SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, companies.name AS company_name FROM job_sources
+SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, job_sources.poll_interval_minutes, job_sources.poll_generation, companies.name AS company_name FROM job_sources
 JOIN companies ON companies.id = job_sources.company_id
 WHERE job_sources.id = $1
 `
 
 type GetJobSourceByIDRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	SourceType   string             `json:"source_type"`
-	CompanyID    pgtype.UUID        `json:"company_id"`
-	BoardToken   string             `json:"board_token"`
-	Enabled      bool               `json:"enabled"`
-	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
-	LastError    pgtype.Text        `json:"last_error"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	CompanyName  string             `json:"company_name"`
+	ID                  pgtype.UUID        `json:"id"`
+	SourceType          string             `json:"source_type"`
+	CompanyID           pgtype.UUID        `json:"company_id"`
+	BoardToken          string             `json:"board_token"`
+	Enabled             bool               `json:"enabled"`
+	LastPolledAt        pgtype.Timestamptz `json:"last_polled_at"`
+	LastError           pgtype.Text        `json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	PollIntervalMinutes int32              `json:"poll_interval_minutes"`
+	PollGeneration      int64              `json:"poll_generation"`
+	CompanyName         string             `json:"company_name"`
 }
 
 func (q *Queries) GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobSourceByIDRow, error) {
@@ -92,28 +96,32 @@ func (q *Queries) GetJobSourceByID(ctx context.Context, id pgtype.UUID) (GetJobS
 		&i.LastPolledAt,
 		&i.LastError,
 		&i.CreatedAt,
+		&i.PollIntervalMinutes,
+		&i.PollGeneration,
 		&i.CompanyName,
 	)
 	return i, err
 }
 
 const listJobSources = `-- name: ListJobSources :many
-SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, companies.name AS company_name FROM job_sources
+SELECT job_sources.id, job_sources.source_type, job_sources.company_id, job_sources.board_token, job_sources.enabled, job_sources.last_polled_at, job_sources.last_error, job_sources.created_at, job_sources.poll_interval_minutes, job_sources.poll_generation, companies.name AS company_name FROM job_sources
 JOIN companies ON companies.id = job_sources.company_id
 WHERE enabled = true
 ORDER BY job_sources.created_at ASC
 `
 
 type ListJobSourcesRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	SourceType   string             `json:"source_type"`
-	CompanyID    pgtype.UUID        `json:"company_id"`
-	BoardToken   string             `json:"board_token"`
-	Enabled      bool               `json:"enabled"`
-	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
-	LastError    pgtype.Text        `json:"last_error"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	CompanyName  string             `json:"company_name"`
+	ID                  pgtype.UUID        `json:"id"`
+	SourceType          string             `json:"source_type"`
+	CompanyID           pgtype.UUID        `json:"company_id"`
+	BoardToken          string             `json:"board_token"`
+	Enabled             bool               `json:"enabled"`
+	LastPolledAt        pgtype.Timestamptz `json:"last_polled_at"`
+	LastError           pgtype.Text        `json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	PollIntervalMinutes int32              `json:"poll_interval_minutes"`
+	PollGeneration      int64              `json:"poll_generation"`
+	CompanyName         string             `json:"company_name"`
 }
 
 func (q *Queries) ListJobSources(ctx context.Context) ([]ListJobSourcesRow, error) {
@@ -134,6 +142,8 @@ func (q *Queries) ListJobSources(ctx context.Context) ([]ListJobSourcesRow, erro
 			&i.LastPolledAt,
 			&i.LastError,
 			&i.CreatedAt,
+			&i.PollIntervalMinutes,
+			&i.PollGeneration,
 			&i.CompanyName,
 		); err != nil {
 			return nil, err

@@ -458,3 +458,106 @@ func TestRepository_List_UsesExactCountryAndStrictPostedAt(t *testing.T) {
 		t.Fatalf("expected exactly the current US job, got total=%d jobs=%+v", total, jobs)
 	}
 }
+
+func TestRepository_List_StrictFullTimeAndExplicitH1BSupport(t *testing.T) {
+	q, tx := testdb.OpenTxWithTransaction(t)
+	repo := NewRepositoryFromTransaction(q, tx)
+	ctx := context.Background()
+
+	testID := uuid.NewString()
+	companyID, err := repo.UpsertCompany(ctx, "Eligibility Filter Co", "eligibility-filter-"+testID)
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+	now := time.Now().UTC()
+	us := "US"
+	fullTime := "FullTime"
+	title := "Eligibility Backend Engineer " + testID
+
+	insert := func(externalID string, employmentType *string, supported bool) uuid.UUID {
+		t.Helper()
+		created, createErr := repo.UpsertJob(ctx, Job{
+			Source:          "LEVER",
+			ExternalID:      externalID,
+			CompanyID:       companyID,
+			CompanyName:     "Eligibility Filter Co",
+			Title:           title,
+			NormalizedTitle: normalizeTitle(title),
+			Description:     "Build services",
+			CountryCode:     &us,
+			EmploymentType:  employmentType,
+			PostedAt:        &now,
+			ContentHash:     contentHash("Eligibility Filter Co", title, "", externalID),
+		})
+		if createErr != nil {
+			t.Fatalf("UpsertJob: %v", createErr)
+		}
+		if signalErr := repo.UpdateExplicitSponsorshipSignals(ctx, created.Job.ID, false, supported); signalErr != nil {
+			t.Fatalf("UpdateExplicitSponsorshipSignals: %v", signalErr)
+		}
+		return created.Job.ID
+	}
+
+	explicitSupportedID := insert("supported-"+testID, &fullTime, true)
+	insert("unknown-employment-"+testID, nil, true)
+	insert("no-sponsor-evidence-"+testID, &fullTime, false)
+
+	jobs, total, err := repo.List(ctx, ListFilter{
+		Search:                  testID,
+		CountryCode:             "US",
+		EmploymentType:          "FullTime",
+		PostedAfter:             func() *time.Time { cutoff := now.Add(-time.Hour); return &cutoff }(),
+		RequireRecentH1BHistory: true,
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 1 || len(jobs) != 1 || jobs[0].ID != explicitSupportedID {
+		t.Fatalf("expected only explicit-support full-time role, total=%d jobs=%+v", total, jobs)
+	}
+}
+
+func TestRepository_UpdateJobDateEvidenceSeparatesPublicationFromUpdate(t *testing.T) {
+	q, tx := testdb.OpenTxWithTransaction(t)
+	repo := NewRepositoryFromTransaction(q, tx)
+	ctx := context.Background()
+
+	testID := uuid.NewString()
+	companyID, err := repo.UpsertCompany(ctx, "Date Evidence Co", "date-evidence-"+testID)
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+	providerUpdatedAt := time.Now().UTC()
+	created, err := repo.UpsertJob(ctx, Job{
+		Source:          "GREENHOUSE",
+		ExternalID:      testID,
+		CompanyID:       companyID,
+		CompanyName:     "Date Evidence Co",
+		Title:           "Backend Engineer",
+		NormalizedTitle: normalizeTitle("Backend Engineer"),
+		Description:     "Build services",
+		PostedAt:        &providerUpdatedAt,
+		ContentHash:     testID,
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob: %v", err)
+	}
+	if err := repo.UpdateJobDateEvidence(ctx, created.Job.ID, nil, &providerUpdatedAt, "SECOND", "GREENHOUSE_UPDATED_AT"); err != nil {
+		t.Fatalf("UpdateJobDateEvidence: %v", err)
+	}
+
+	var postedAt, publishedAt, sourceUpdatedAt *time.Time
+	var kind, precision, source string
+	if err := tx.QueryRow(ctx, `
+		SELECT posted_at, published_at, source_updated_at, date_kind, date_precision, date_source
+		FROM jobs WHERE id = $1
+	`, created.Job.ID).Scan(&postedAt, &publishedAt, &sourceUpdatedAt, &kind, &precision, &source); err != nil {
+		t.Fatalf("query date evidence: %v", err)
+	}
+	if postedAt != nil || publishedAt != nil || sourceUpdatedAt == nil {
+		t.Fatalf("expected update-only evidence, posted=%v published=%v updated=%v", postedAt, publishedAt, sourceUpdatedAt)
+	}
+	if kind != "UPDATED" || precision != "SECOND" || source != "GREENHOUSE_UPDATED_AT" {
+		t.Fatalf("unexpected date evidence kind=%s precision=%s source=%s", kind, precision, source)
+	}
+}

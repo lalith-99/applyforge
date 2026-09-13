@@ -131,7 +131,7 @@ func suggestionEvidence(section, source string) (string, bool) {
 	return EvidenceCandidateAttestationRequired, true
 }
 
-func suggestionFromRow(row db.TailoringSuggestion) Suggestion {
+func suggestionFromRow(row db.CreateTailoringSuggestionRow) Suggestion {
 	evidenceStatus, requiresAttestation := suggestionEvidence(row.Section, row.Source)
 	return Suggestion{
 		ID:                    database.PGToUUID(row.ID),
@@ -321,7 +321,7 @@ func (r *Repository) GetSuggestion(ctx context.Context, suggestionID, runID uuid
 	if err != nil {
 		return Suggestion{}, err
 	}
-	return applySuggestionMetadata(suggestionFromRow(row), meta), nil
+	return applySuggestionMetadata(suggestionFromRow(db.CreateTailoringSuggestionRow(row)), meta), nil
 }
 
 // ListSuggestions returns all suggestions for a run, in creation order.
@@ -341,7 +341,7 @@ func (r *Repository) ListSuggestions(ctx context.Context, runID uuid.UUID) ([]Su
 
 	out := make([]Suggestion, 0, len(rows))
 	for _, row := range rows {
-		suggestion := suggestionFromRow(row)
+		suggestion := suggestionFromRow(db.CreateTailoringSuggestionRow(row))
 		if meta, ok := metadataByID[suggestion.ID]; ok {
 			suggestion = applySuggestionMetadata(suggestion, meta)
 		}
@@ -365,7 +365,7 @@ func (r *Repository) UpdateSuggestionStatus(ctx context.Context, suggestionID, r
 	if err != nil {
 		return Suggestion{}, err
 	}
-	return applySuggestionMetadata(suggestionFromRow(row), meta), nil
+	return applySuggestionMetadata(suggestionFromRow(db.CreateTailoringSuggestionRow(row)), meta), nil
 }
 
 // ApproveAllPending approves only verified suggestions. AI-suggested items

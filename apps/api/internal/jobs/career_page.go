@@ -328,9 +328,20 @@ func mapJSONLDJobPosting(base *url.URL, posting map[string]any) (RawJob, bool) {
 		applyURL = base.String()
 	}
 
+	datePostedText := jsonLDString(posting["datePosted"])
 	externalID := jsonLDIdentifier(posting["identifier"])
 	if externalID == "" {
-		externalID = brightStableID(title, locationText, applyURL, jsonLDString(posting["datePosted"]))
+		externalID = brightStableID(title, locationText, applyURL, datePostedText)
+	}
+	postedAt := parseJSONLDDate(datePostedText)
+	datePrecision := ""
+	dateSource := ""
+	if postedAt != nil {
+		datePrecision = "SECOND"
+		if len(strings.TrimSpace(datePostedText)) == len("2006-01-02") {
+			datePrecision = "DAY"
+		}
+		dateSource = "CAREER_PAGE_JSONLD_DATE_POSTED"
 	}
 
 	return RawJob{
@@ -345,7 +356,9 @@ func mapJSONLDJobPosting(base *url.URL, posting map[string]any) (RawJob, bool) {
 		EmploymentType: jsonLDStringList(posting["employmentType"]),
 		ApplyURL:       applyURL,
 		SourceURL:      applyURL,
-		PostedAt:       parseJSONLDDate(jsonLDString(posting["datePosted"])),
+		PostedAt:       postedAt,
+		DatePrecision:  datePrecision,
+		DateSource:     dateSource,
 	}, true
 }
 

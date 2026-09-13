@@ -199,6 +199,14 @@ func (s *SerpAPIGoogleJobsSource) mapJob(record struct {
 		remoteType = "hybrid"
 	}
 
+	postedAt := parseRelativeGoogleJobsTime(record.DetectedExtensions.PostedAt, s.now())
+	datePrecision := ""
+	dateSource := ""
+	if postedAt != nil {
+		datePrecision = "RELATIVE"
+		dateSource = "SERPAPI_GOOGLE_JOBS_RELATIVE_POSTED_AT"
+	}
+
 	return RawJob{
 		ExternalID:     externalID,
 		Title:          strings.TrimSpace(record.Title),
@@ -210,7 +218,9 @@ func (s *SerpAPIGoogleJobsSource) mapJob(record struct {
 		EmploymentType: record.DetectedExtensions.ScheduleType,
 		ApplyURL:       applyURL,
 		SourceURL:      sourceURL,
-		PostedAt:       parseRelativeGoogleJobsTime(record.DetectedExtensions.PostedAt, s.now()),
+		PostedAt:       postedAt,
+		DatePrecision:  datePrecision,
+		DateSource:     dateSource,
 	}, true
 }
 

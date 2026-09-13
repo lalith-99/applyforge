@@ -10,13 +10,19 @@ import (
 )
 
 type AiUsage struct {
-	ID           pgtype.UUID        `json:"id"`
-	Operation    string             `json:"operation"`
-	Status       string             `json:"status"`
-	LatencyMs    int32              `json:"latency_ms"`
-	CacheHit     bool               `json:"cache_hit"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID               pgtype.UUID        `json:"id"`
+	Operation        string             `json:"operation"`
+	Status           string             `json:"status"`
+	LatencyMs        int32              `json:"latency_ms"`
+	CacheHit         bool               `json:"cache_hit"`
+	ErrorMessage     pgtype.Text        `json:"error_message"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	Provider         pgtype.Text        `json:"provider"`
+	Model            pgtype.Text        `json:"model"`
+	PromptTokens     int32              `json:"prompt_tokens"`
+	CompletionTokens int32              `json:"completion_tokens"`
+	TotalTokens      int32              `json:"total_tokens"`
+	EstimatedCostUsd pgtype.Numeric     `json:"estimated_cost_usd"`
 }
 
 type Application struct {
@@ -60,6 +66,16 @@ type ApplicationEvent struct {
 	ToStatus      pgtype.Text        `json:"to_status"`
 	Notes         pgtype.Text        `json:"notes"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AuthActionToken struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Purpose   string             `json:"purpose"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type BackgroundJob struct {
@@ -120,6 +136,80 @@ type Company struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type CompanyImmigrationAlias struct {
+	CompanyID                      pgtype.UUID        `json:"company_id"`
+	EvidenceEmployerNormalizedName string             `json:"evidence_employer_normalized_name"`
+	MatchMethod                    string             `json:"match_method"`
+	Confidence                     float32            `json:"confidence"`
+	CreatedAt                      pgtype.Timestamptz `json:"created_at"`
+}
+
+type CompanyImmigrationEvidence struct {
+	ID                     pgtype.UUID        `json:"id"`
+	EmployerName           string             `json:"employer_name"`
+	EmployerNormalizedName string             `json:"employer_normalized_name"`
+	Program                string             `json:"program"`
+	FiscalYear             int32              `json:"fiscal_year"`
+	CertifiedCount         int32              `json:"certified_count"`
+	DeniedCount            int32              `json:"denied_count"`
+	WithdrawnCount         int32              `json:"withdrawn_count"`
+	OtherCount             int32              `json:"other_count"`
+	TotalCount             int32              `json:"total_count"`
+	LatestDecisionDate     pgtype.Date        `json:"latest_decision_date"`
+	SourceRelease          string             `json:"source_release"`
+	SourceUrl              string             `json:"source_url"`
+	ImportedAt             pgtype.Timestamptz `json:"imported_at"`
+}
+
+type CompanyRecentH1bStatus struct {
+	CompanyID           pgtype.UUID        `json:"company_id"`
+	HasRecentH1bHistory bool               `json:"has_recent_h1b_history"`
+	RefreshedAt         pgtype.Timestamptz `json:"refreshed_at"`
+}
+
+type CompanySourceRegistry struct {
+	ID                     pgtype.UUID        `json:"id"`
+	CompanyID              pgtype.UUID        `json:"company_id"`
+	SourceType             string             `json:"source_type"`
+	BoardToken             string             `json:"board_token"`
+	SourceUrl              string             `json:"source_url"`
+	DiscoveryMethod        string             `json:"discovery_method"`
+	Confidence             float32            `json:"confidence"`
+	Monitorable            bool               `json:"monitorable"`
+	FirstSeenAt            pgtype.Timestamptz `json:"first_seen_at"`
+	LastSeenAt             pgtype.Timestamptz `json:"last_seen_at"`
+	LastVerifiedAt         pgtype.Timestamptz `json:"last_verified_at"`
+	LastError              pgtype.Text        `json:"last_error"`
+	InspectionStatus       string             `json:"inspection_status"`
+	InspectionAttemptCount int32              `json:"inspection_attempt_count"`
+	NextInspectionAt       pgtype.Timestamptz `json:"next_inspection_at"`
+	LastInspectionAt       pgtype.Timestamptz `json:"last_inspection_at"`
+	InspectionLastError    pgtype.Text        `json:"inspection_last_error"`
+}
+
+type CompanySponsorWatchlist struct {
+	CompanyID                   pgtype.UUID        `json:"company_id"`
+	EmployerNormalizedName      string             `json:"employer_normalized_name"`
+	WatchlistRank               int32              `json:"watchlist_rank"`
+	Tier                        string             `json:"tier"`
+	PriorityScore               float64            `json:"priority_score"`
+	CurrentFiscalYear           int32              `json:"current_fiscal_year"`
+	CurrentFyCertified          int32              `json:"current_fy_certified"`
+	PreviousFyCertified         int32              `json:"previous_fy_certified"`
+	TwoYearsAgoCertified        int32              `json:"two_years_ago_certified"`
+	RecentH1bCertified          int32              `json:"recent_h1b_certified"`
+	ActiveH1bYears              int16              `json:"active_h1b_years"`
+	RecentPermCertified         int32              `json:"recent_perm_certified"`
+	PollIntervalMinutes         int32              `json:"poll_interval_minutes"`
+	SourceDiscoveryStatus       string             `json:"source_discovery_status"`
+	LastSourceDiscoveryAt       pgtype.Timestamptz `json:"last_source_discovery_at"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                   pgtype.Timestamptz `json:"updated_at"`
+	SourceDiscoveryAttemptCount int32              `json:"source_discovery_attempt_count"`
+	NextSourceDiscoveryAt       pgtype.Timestamptz `json:"next_source_discovery_at"`
+	SourceDiscoveryLastError    pgtype.Text        `json:"source_discovery_last_error"`
+}
+
 type Job struct {
 	ID                           pgtype.UUID        `json:"id"`
 	Source                       string             `json:"source"`
@@ -162,6 +252,13 @@ type Job struct {
 	JobFamily                    string             `json:"job_family"`
 	RoleClassification           string             `json:"role_classification"`
 	RoleClassificationConfidence float32            `json:"role_classification_confidence"`
+	ExplicitSponsorshipDenied    bool               `json:"explicit_sponsorship_denied"`
+	PublishedAt                  pgtype.Timestamptz `json:"published_at"`
+	SourceUpdatedAt              pgtype.Timestamptz `json:"source_updated_at"`
+	DateKind                     string             `json:"date_kind"`
+	DatePrecision                string             `json:"date_precision"`
+	DateSource                   pgtype.Text        `json:"date_source"`
+	ExplicitSponsorshipSupported bool               `json:"explicit_sponsorship_supported"`
 }
 
 type JobMatch struct {
@@ -216,16 +313,20 @@ type JobPreference struct {
 }
 
 type JobRecommendation struct {
-	ID                      pgtype.UUID        `json:"id"`
-	UserID                  pgtype.UUID        `json:"user_id"`
-	JobID                   pgtype.UUID        `json:"job_id"`
-	DeterministicScore      int32              `json:"deterministic_score"`
-	AiFitScore              pgtype.Int4        `json:"ai_fit_score"`
-	AiRecommendation        pgtype.Text        `json:"ai_recommendation"`
-	AiReason                string             `json:"ai_reason"`
-	FinalScore              int32              `json:"final_score"`
-	CandidateProfileVersion pgtype.Int4        `json:"candidate_profile_version"`
-	ComputedAt              pgtype.Timestamptz `json:"computed_at"`
+	ID                       pgtype.UUID        `json:"id"`
+	UserID                   pgtype.UUID        `json:"user_id"`
+	JobID                    pgtype.UUID        `json:"job_id"`
+	DeterministicScore       int32              `json:"deterministic_score"`
+	AiFitScore               pgtype.Int4        `json:"ai_fit_score"`
+	AiRecommendation         pgtype.Text        `json:"ai_recommendation"`
+	AiReason                 string             `json:"ai_reason"`
+	FinalScore               int32              `json:"final_score"`
+	CandidateProfileVersion  pgtype.Int4        `json:"candidate_profile_version"`
+	ComputedAt               pgtype.Timestamptz `json:"computed_at"`
+	ImmigrationStatus        string             `json:"immigration_status"`
+	ImmigrationConfidence    string             `json:"immigration_confidence"`
+	ImmigrationEvidence      string             `json:"immigration_evidence"`
+	ImmigrationPriorityScore int32              `json:"immigration_priority_score"`
 }
 
 type JobRequirement struct {
@@ -252,14 +353,45 @@ type JobRequirement struct {
 }
 
 type JobSource struct {
-	ID           pgtype.UUID        `json:"id"`
-	SourceType   string             `json:"source_type"`
-	CompanyID    pgtype.UUID        `json:"company_id"`
-	BoardToken   string             `json:"board_token"`
-	Enabled      bool               `json:"enabled"`
-	LastPolledAt pgtype.Timestamptz `json:"last_polled_at"`
-	LastError    pgtype.Text        `json:"last_error"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID                  pgtype.UUID        `json:"id"`
+	SourceType          string             `json:"source_type"`
+	CompanyID           pgtype.UUID        `json:"company_id"`
+	BoardToken          string             `json:"board_token"`
+	Enabled             bool               `json:"enabled"`
+	LastPolledAt        pgtype.Timestamptz `json:"last_polled_at"`
+	LastError           pgtype.Text        `json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	PollIntervalMinutes int32              `json:"poll_interval_minutes"`
+	PollGeneration      int64              `json:"poll_generation"`
+}
+
+type JobSourcePollRun struct {
+	ID               pgtype.UUID        `json:"id"`
+	JobSourceID      pgtype.UUID        `json:"job_source_id"`
+	SourceType       string             `json:"source_type"`
+	BoardToken       string             `json:"board_token"`
+	CompanyName      string             `json:"company_name"`
+	StartedAt        pgtype.Timestamptz `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	DurationMs       int32              `json:"duration_ms"`
+	Status           string             `json:"status"`
+	Fetched          int32              `json:"fetched"`
+	Inserted         int32              `json:"inserted"`
+	Updated          int32              `json:"updated"`
+	Deduped          int32              `json:"deduped"`
+	Closed           int32              `json:"closed"`
+	ErrorMessage     pgtype.Text        `json:"error_message"`
+	PollGeneration   int64              `json:"poll_generation"`
+	SnapshotComplete bool               `json:"snapshot_complete"`
+}
+
+type JobSourcePosting struct {
+	JobSourceID pgtype.UUID        `json:"job_source_id"`
+	ExternalID  string             `json:"external_id"`
+	JobID       pgtype.UUID        `json:"job_id"`
+	FirstSeenAt pgtype.Timestamptz `json:"first_seen_at"`
+	LastSeenAt  pgtype.Timestamptz `json:"last_seen_at"`
+	Active      bool               `json:"active"`
 }
 
 type LearningPlan struct {
@@ -277,6 +409,20 @@ type LearningPlan struct {
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 }
 
+type ProviderUsage struct {
+	ID                pgtype.UUID        `json:"id"`
+	Provider          string             `json:"provider"`
+	Operation         string             `json:"operation"`
+	Status            string             `json:"status"`
+	Units             int32              `json:"units"`
+	EstimatedCostUsd  pgtype.Numeric     `json:"estimated_cost_usd"`
+	ExternalRequestID pgtype.Text        `json:"external_request_id"`
+	Metadata          []byte             `json:"metadata"`
+	ErrorMessage      pgtype.Text        `json:"error_message"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+}
+
 type QuickPrepModule struct {
 	ID                    pgtype.UUID        `json:"id"`
 	NormalizedSkill       string             `json:"normalized_skill"`
@@ -291,6 +437,14 @@ type QuickPrepModule struct {
 	ExampleCode           pgtype.Text        `json:"example_code"`
 	GeneratedAt           pgtype.Timestamptz `json:"generated_at"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+}
+
+type RateLimitBucket struct {
+	Scope       string             `json:"scope"`
+	LimitKey    string             `json:"limit_key"`
+	BucketStart pgtype.Timestamptz `json:"bucket_start"`
+	Count       int32              `json:"count"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
 type Resume struct {
@@ -392,6 +546,23 @@ type TailoringSuggestion struct {
 	EditedText            pgtype.Text        `json:"edited_text"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	SkillCategories       []byte             `json:"skill_categories"`
+	Operation             string             `json:"operation"`
+	TargetCompany         pgtype.Text        `json:"target_company"`
+	TargetTitle           pgtype.Text        `json:"target_title"`
+}
+
+type TmpIcimsRegistryCanonical struct {
+	CompanyID        pgtype.UUID `json:"company_id"`
+	BoardToken       string      `json:"board_token"`
+	SourceUrl        interface{} `json:"source_url"`
+	DiscoveryMethod  string      `json:"discovery_method"`
+	Confidence       interface{} `json:"confidence"`
+	Monitorable      pgtype.Bool `json:"monitorable"`
+	FirstSeenAt      interface{} `json:"first_seen_at"`
+	LastSeenAt       interface{} `json:"last_seen_at"`
+	LastVerifiedAt   interface{} `json:"last_verified_at"`
+	LastInspectionAt interface{} `json:"last_inspection_at"`
 }
 
 type TransferableSkill struct {

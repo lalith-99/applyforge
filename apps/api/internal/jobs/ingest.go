@@ -186,13 +186,27 @@ func (s *IngestionService) Ingest(ctx context.Context, cfg JobSourceConfig, sour
 			continue
 		}
 
-		if err := s.repo.UpdateExplicitSponsorshipDenied(
-			ctx,
-			upserted.Job.ID,
-			explicitSponsorshipDenied(raw.Description),
-		); err != nil {
+		denied := explicitSponsorshipDenied(raw.Description)
+		supported := !denied && explicitSponsorshipSupported(raw.Description)
+		if err := s.repo.UpdateExplicitSponsorshipSignals(ctx, upserted.Job.ID, denied, supported); err != nil {
 			slog.Error("update sponsorship prefilter failed", "job_id", upserted.Job.ID, "error", err)
 			persistenceErrors = append(persistenceErrors, fmt.Errorf("update sponsorship prefilter for %s: %w", raw.ExternalID, err))
+		}
+
+		dateSource := raw.DateSource
+		if dateSource == "" && (raw.PostedAt != nil || raw.SourceUpdatedAt != nil) {
+			dateSource = sourceName + "_PROVIDER_DATE"
+		}
+		if err := s.repo.UpdateJobDateEvidence(
+			ctx,
+			upserted.Job.ID,
+			raw.PostedAt,
+			raw.SourceUpdatedAt,
+			raw.DatePrecision,
+			dateSource,
+		); err != nil {
+			slog.Error("update job date evidence failed", "job_id", upserted.Job.ID, "error", err)
+			persistenceErrors = append(persistenceErrors, fmt.Errorf("update date evidence for %s: %w", raw.ExternalID, err))
 		}
 
 		// Aggregated discovery sources frequently carry the employer's direct

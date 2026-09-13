@@ -93,6 +93,9 @@ func TestSerpAPIGoogleJobsSource_FetchesBoundedPagesAndMapsJobs(t *testing.T) {
 	if found[0].PostedAt == nil || now.Sub(*found[0].PostedAt) != 3*time.Hour {
 		t.Fatalf("expected 3-hour relative posted time: %+v", found[0].PostedAt)
 	}
+	if found[0].DatePrecision != "RELATIVE" || found[0].DateSource != "SERPAPI_GOOGLE_JOBS_RELATIVE_POSTED_AT" {
+		t.Fatalf("unexpected relative date evidence precision=%q source=%q", found[0].DatePrecision, found[0].DateSource)
+	}
 	if found[1].RemoteType != "remote" || found[1].Country != "United States" {
 		t.Fatalf("expected US remote mapping: %+v", found[1])
 	}

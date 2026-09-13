@@ -599,33 +599,7 @@ func (r *Repository) GetMarketCoverageHealth(ctx context.Context) (MarketCoverag
 				j.id,
 				j.company_id,
 				j.explicit_sponsorship_denied,
-				(
-					j.explicit_sponsorship_denied = false
-					AND lower(j.description) LIKE ANY (ARRAY[
-						'%h-1b sponsorship available%',
-						'%h1b sponsorship available%',
-						'%visa sponsorship available%',
-						'%visa sponsorship provided%',
-						'%sponsorship is available%',
-						'%sponsorship available%',
-						'%we sponsor h-1b%',
-						'%we sponsor h1b%',
-						'%sponsor h-1b%',
-						'%sponsor h1b%',
-						'%h-1b visa sponsorship%',
-						'%h1b visa sponsorship%',
-						'%h-1b transfer%',
-						'%h1b transfer%',
-						'%h-1b portability%',
-						'%h1b portability%',
-						'%support h-1b%',
-						'%support h1b%',
-						'%h-1b sponsorship support%',
-						'%h1b sponsorship support%',
-						'%provide visa sponsorship%',
-						'%provides visa sponsorship%'
-					])
-				) AS explicit_supported
+				j.explicit_sponsorship_supported AS explicit_supported
 			FROM jobs j
 			WHERE `+basePredicate+`
 		),

@@ -13,6 +13,11 @@ import (
 
 type Querier interface {
 	ApproveAllPendingSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) error
+	// Reclaim leases abandoned by a crashed/restarted worker before choosing the
+	// next PENDING job. A two-hour lease is intentionally conservative for direct
+	// ATS polls and AI work. Exhausted jobs become DEAD_LETTER; retryable jobs are
+	// returned to PENDING and can be claimed on the next poll iteration.
+	//
 	// Interactive, user-triggered job types (parse_resume, build_candidate_profile,
 	// compute_recommendations, process_tailoring_run) are claimed ahead of bulk
 	// background ingestion (enrich_job, embed_job, sync_job_source), so a large
@@ -41,7 +46,7 @@ type Querier interface {
 	CreateResumeVersion(ctx context.Context, arg CreateResumeVersionParams) (ResumeVersion, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTailoringRun(ctx context.Context, arg CreateTailoringRunParams) (TailoringRun, error)
-	CreateTailoringSuggestion(ctx context.Context, arg CreateTailoringSuggestionParams) (TailoringSuggestion, error)
+	CreateTailoringSuggestion(ctx context.Context, arg CreateTailoringSuggestionParams) (CreateTailoringSuggestionRow, error)
 	CreateUserWithGoogle(ctx context.Context, arg CreateUserWithGoogleParams) (User, error)
 	CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (User, error)
 	DeleteExpiredSessions(ctx context.Context) error
@@ -78,7 +83,7 @@ type Querier interface {
 	GetSkillAliasesAsMap(ctx context.Context) ([]GetSkillAliasesAsMapRow, error)
 	GetTailoringRun(ctx context.Context, id pgtype.UUID) (TailoringRun, error)
 	GetTailoringRunForUser(ctx context.Context, arg GetTailoringRunForUserParams) (TailoringRun, error)
-	GetTailoringSuggestion(ctx context.Context, arg GetTailoringSuggestionParams) (TailoringSuggestion, error)
+	GetTailoringSuggestion(ctx context.Context, arg GetTailoringSuggestionParams) (GetTailoringSuggestionRow, error)
 	GetTransferableSkill(ctx context.Context, arg GetTransferableSkillParams) (TransferableSkill, error)
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	GetUserByGoogleID(ctx context.Context, googleID pgtype.Text) (User, error)
@@ -105,7 +110,7 @@ type Querier interface {
 	ListResumeVersionsForResume(ctx context.Context, baseResumeID pgtype.UUID) ([]ResumeVersion, error)
 	ListResumesForUser(ctx context.Context, userID pgtype.UUID) ([]Resume, error)
 	ListTailoringRunsForJob(ctx context.Context, arg ListTailoringRunsForJobParams) ([]TailoringRun, error)
-	ListTailoringSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) ([]TailoringSuggestion, error)
+	ListTailoringSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) ([]ListTailoringSuggestionsRow, error)
 	ListTransferableSkillsFromSources(ctx context.Context, dollar_1 []string) ([]TransferableSkill, error)
 	MarkResumeFailed(ctx context.Context, arg MarkResumeFailedParams) error
 	MarkResumeParsed(ctx context.Context, arg MarkResumeParsedParams) error
@@ -138,7 +143,7 @@ type Querier interface {
 	// REVISING) for a polling UI - CompleteTailoringRun/FailTailoringRun handle
 	// the two terminal states.
 	UpdateTailoringRunStatus(ctx context.Context, arg UpdateTailoringRunStatusParams) error
-	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error)
+	UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (UpdateTailoringSuggestionStatusRow, error)
 	UpsertApplicationAnswers(ctx context.Context, arg UpsertApplicationAnswersParams) (ApplicationAnswer, error)
 	UpsertCandidateSkill(ctx context.Context, arg UpsertCandidateSkillParams) (CandidateSkill, error)
 	UpsertCompany(ctx context.Context, arg UpsertCompanyParams) (Company, error)

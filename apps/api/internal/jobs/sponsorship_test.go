@@ -25,3 +25,25 @@ func TestExplicitSponsorshipDenied(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitSponsorshipSupported(t *testing.T) {
+	positive := []string{
+		"H-1B transfer support is available for qualified candidates.",
+		"We provide visa sponsorship.",
+		"The company supports H1B portability.",
+	}
+	for _, text := range positive {
+		if !explicitSponsorshipSupported(text) {
+			t.Fatalf("expected explicit support for %q", text)
+		}
+	}
+
+	for _, text := range []string{
+		"Must be authorized to work in the United States.",
+		"Sponsorship requirements will be discussed.",
+	} {
+		if explicitSponsorshipSupported(text) {
+			t.Fatalf("ambiguous text must not be treated as explicit support: %q", text)
+		}
+	}
+}
