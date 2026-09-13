@@ -195,18 +195,30 @@ func (r *Repository) FinalizeSourceSnapshot(
 		}
 	}
 
+	if _, err := tx.Exec(ctx, `
+		UPDATE job_source_postings
+		SET active = false
+		WHERE job_source_id = $1
+		  AND active = true
+		  AND last_seen_at < $2
+	`, jobSourceID, pollStartedAt); err != nil {
+		return 0, fmt.Errorf("deactivate missing source postings: %w", err)
+	}
+
+	// Keep deactivation and canonical visibility as separate statements in the
+	// same transaction. PostgreSQL statements see prior statements' writes,
+	// whereas a data-modifying CTE's sibling query shares the pre-update
+	// snapshot and could still observe the old active=true value.
 	closed, err := tx.Exec(ctx, `
-		WITH deactivated AS (
-			UPDATE job_source_postings
-			SET active = false
-			WHERE job_source_id = $1
-			  AND active = true
-			  AND last_seen_at < $2
-			RETURNING job_id
-		)
 		UPDATE jobs job
 		SET status = 'CLOSED', updated_at = now()
-		WHERE job.id IN (SELECT job_id FROM deactivated)
+		WHERE job.id IN (
+			SELECT posting.job_id
+			FROM job_source_postings posting
+			WHERE posting.job_source_id = $1
+			  AND posting.active = false
+			  AND posting.last_seen_at < $2
+		)
 		  AND job.status = 'ACTIVE'
 		  AND NOT EXISTS (
 			SELECT 1
