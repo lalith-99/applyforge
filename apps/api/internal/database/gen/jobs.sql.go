@@ -41,14 +41,7 @@ SELECT count(*) FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
-  AND (
-    $3::text = ''
-    OR employment_type = $3
-    OR (
-        $3::text = 'FullTime'
-        AND (employment_type IS NULL OR employment_type = '')
-    )
-  )
+  AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
@@ -58,7 +51,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
   )
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $7::bool OR explicit_sponsorship_denied = false)
-  AND (NOT $8::bool OR company_has_recent_h1b_history(company_id))
+  AND (NOT $8::bool OR explicit_sponsorship_supported = true OR company_has_recent_h1b_history(company_id))
 `
 
 type CountJobsParams struct {
@@ -189,24 +182,6 @@ func (q *Queries) FindCanonicalByFingerprint(ctx context.Context, arg FindCanoni
 	return i, err
 }
 
-const getJobContentHashBySourceExternalID = `-- name: GetJobContentHashBySourceExternalID :one
-SELECT content_hash
-FROM jobs
-WHERE source = $1 AND external_id = $2
-`
-
-type GetJobContentHashBySourceExternalIDParams struct {
-	Source     string `json:"source"`
-	ExternalID string `json:"external_id"`
-}
-
-func (q *Queries) GetJobContentHashBySourceExternalID(ctx context.Context, arg GetJobContentHashBySourceExternalIDParams) (string, error) {
-	row := q.db.QueryRow(ctx, getJobContentHashBySourceExternalID, arg.Source, arg.ExternalID)
-	var contentHash string
-	err := row.Scan(&contentHash)
-	return contentHash, err
-}
-
 const getJobByID = `-- name: GetJobByID :one
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
   description, country, state, city, location_text, country_code, state_code, workplace_type,
@@ -297,6 +272,24 @@ func (q *Queries) GetJobByID(ctx context.Context, id pgtype.UUID) (GetJobByIDRow
 	return i, err
 }
 
+const getJobContentHashBySourceExternalID = `-- name: GetJobContentHashBySourceExternalID :one
+SELECT content_hash
+FROM jobs
+WHERE source = $1 AND external_id = $2
+`
+
+type GetJobContentHashBySourceExternalIDParams struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+}
+
+func (q *Queries) GetJobContentHashBySourceExternalID(ctx context.Context, arg GetJobContentHashBySourceExternalIDParams) (string, error) {
+	row := q.db.QueryRow(ctx, getJobContentHashBySourceExternalID, arg.Source, arg.ExternalID)
+	var content_hash string
+	err := row.Scan(&content_hash)
+	return content_hash, err
+}
+
 const listJobs = `-- name: ListJobs :many
 SELECT id, source, external_id, company_id, company_name, title, normalized_title, seniority,
   description, country, state, city, location_text, country_code, state_code, workplace_type,
@@ -307,14 +300,7 @@ FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = 'IC_SOFTWARE'
   AND ($1::text = '' OR title ILIKE '%' || $1 || '%' OR company_name ILIKE '%' || $1 || '%')
   AND ($2::text = '' OR remote_type = $2)
-  AND (
-    $3::text = ''
-    OR employment_type = $3
-    OR (
-        $3::text = 'FullTime'
-        AND (employment_type IS NULL OR employment_type = '')
-    )
-  )
+  AND ($3::text = '' OR employment_type = $3)
   AND ($4::timestamptz IS NULL OR posted_at >= $4)
   AND (
     $5::text = ''
@@ -324,7 +310,7 @@ WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND role_classification = '
   )
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $10::bool OR explicit_sponsorship_denied = false)
-  AND (NOT $11::bool OR company_has_recent_h1b_history(company_id))
+  AND (NOT $11::bool OR explicit_sponsorship_supported = true OR company_has_recent_h1b_history(company_id))
 ORDER BY
   CASE WHEN $7::text = 'newest' THEN coalesce(posted_at, first_seen_at) END DESC,
   CASE WHEN $7::text = 'salary' THEN coalesce(salary_max, salary_min, 0) END DESC,
@@ -463,18 +449,11 @@ FROM jobs
 WHERE status = 'ACTIVE' AND canonical_job_id IS NULL AND embedding IS NOT NULL
   AND role_classification = 'IC_SOFTWARE'
   AND ($3::text = '' OR remote_type = $3)
-  AND (
-    $4::text = ''
-    OR employment_type = $4
-    OR (
-        $4::text = 'FullTime'
-        AND (employment_type IS NULL OR employment_type = '')
-    )
-  )
+  AND ($4::text = '' OR employment_type = $4)
   AND ($5::timestamptz IS NULL OR posted_at >= $5)
   AND ($6::text = '' OR country_code = $6)
   AND (NOT $7::bool OR explicit_sponsorship_denied = false)
-  AND (NOT $8::bool OR company_has_recent_h1b_history(company_id))
+  AND (NOT $8::bool OR explicit_sponsorship_supported = true OR company_has_recent_h1b_history(company_id))
 ORDER BY embedding <=> $1
 LIMIT $2
 `
@@ -682,9 +661,21 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote_scope = EXCLUDED.remote_scope,
     eligible_country_codes = EXCLUDED.eligible_country_codes,
     location_confidence = EXCLUDED.location_confidence,
-    job_family = EXCLUDED.job_family,
-    role_classification = EXCLUDED.role_classification,
-    role_classification_confidence = EXCLUDED.role_classification_confidence,
+    job_family = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.job_family
+        ELSE EXCLUDED.job_family
+    END,
+    role_classification = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.role_classification
+        ELSE EXCLUDED.role_classification
+    END,
+    role_classification_confidence = CASE
+        WHEN EXCLUDED.role_classification = 'UNKNOWN' AND jobs.role_classification <> 'UNKNOWN'
+            THEN jobs.role_classification_confidence
+        ELSE EXCLUDED.role_classification_confidence
+    END,
     remote_type = EXCLUDED.remote_type,
     employment_type = EXCLUDED.employment_type,
     salary_min = EXCLUDED.salary_min,

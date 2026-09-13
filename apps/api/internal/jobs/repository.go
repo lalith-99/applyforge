@@ -109,7 +109,7 @@ type ListFilter struct {
 	Location                 string // matched against location_text/city/state
 	CountryCode              string // exact ISO 3166-1 alpha-2 match
 	ExcludeSponsorshipDenied bool   // true for candidates who require visa/transfer support
-	RequireRecentH1BHistory  bool   // require recent certified DOL LCA evidence for H-1B candidates
+	RequireRecentH1BHistory  bool   // require explicit role-level support or recent certified DOL LCA evidence
 	Sort                     string // "newest" | "salary" | "" (default: first_seen_at desc)
 	Limit                    int32
 	Offset                   int32
@@ -383,14 +383,58 @@ func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UU
 	})
 }
 
-func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID uuid.UUID, denied bool) error {
+func (r *Repository) UpdateExplicitSponsorshipSignals(ctx context.Context, jobID uuid.UUID, denied, supported bool) error {
 	if r.lifecycle == nil {
 		return errors.New("sponsorship prefilter update requires a repository backed by a database connection")
 	}
 	_, err := r.lifecycle.Exec(ctx,
-		"UPDATE jobs SET explicit_sponsorship_denied = $2, updated_at = now() WHERE id = $1",
-		jobID, denied,
+		"UPDATE jobs SET explicit_sponsorship_denied = $2, explicit_sponsorship_supported = $3, updated_at = now() WHERE id = $1",
+		jobID, denied, supported,
 	)
+	return err
+}
+
+func (r *Repository) UpdateJobDateEvidence(
+	ctx context.Context,
+	jobID uuid.UUID,
+	publishedAt, sourceUpdatedAt *time.Time,
+	precision, source string,
+) error {
+	if r.lifecycle == nil {
+		return errors.New("job date evidence update requires a repository backed by a database connection")
+	}
+	kind := "UNKNOWN"
+	if publishedAt != nil {
+		kind = "PUBLISHED"
+	} else if sourceUpdatedAt != nil {
+		kind = "UPDATED"
+	}
+	if precision == "" {
+		if publishedAt != nil || sourceUpdatedAt != nil {
+			precision = "SECOND"
+		} else {
+			precision = "UNKNOWN"
+		}
+	}
+	switch precision {
+	case "SECOND", "DAY", "RELATIVE", "UNKNOWN":
+	default:
+		precision = "UNKNOWN"
+	}
+	if kind == "UNKNOWN" {
+		source = ""
+	}
+	_, err := r.lifecycle.Exec(ctx, `
+		UPDATE jobs
+		SET published_at = $2,
+			source_updated_at = $3,
+			date_kind = $4,
+			date_precision = $5,
+			date_source = NULLIF($6, ''),
+			posted_at = $2,
+			updated_at = now()
+		WHERE id = $1
+	`, jobID, publishedAt, sourceUpdatedAt, kind, precision, source)
 	return err
 }
 
@@ -420,7 +464,7 @@ type EmbeddingSearchFilter struct {
 	PostedAfter              *time.Time
 	CountryCode              string
 	ExcludeSponsorshipDenied bool
-	RequireRecentH1BHistory  bool
+	RequireRecentH1BHistory  bool // explicit role-level support also satisfies this legacy-named gate
 }
 
 // SearchByEmbedding returns the limit ACTIVE, canonical, already-embedded

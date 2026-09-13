@@ -126,6 +126,11 @@ Identity order: verified employer + ATS tenant + native requisition ID; canonica
 
 ### 4.3 Freshness must retain meaning
 
+Implementation status: migration `00067_job_date_and_sponsorship_evidence.sql` adds publication/update
+timestamps and date provenance. Greenhouse `updated_at` is migrated and ingested as update-only evidence;
+it no longer populates the strict `posted_at` compatibility field. The same slice makes full-time filtering
+strict and lets explicit role-level H-1B support satisfy the retrieval gate without requiring DOL history.
+
 Add `published_at`, `source_updated_at`, `first_seen_at`, `date_kind`, `date_precision`, `date_source` and, for approximate timestamps, an uncertainty interval. Store date-only values as date precision, not falsely precise UTC midnight.
 
 - Confirmed recent: trustworthy publication evidence within the selected window.

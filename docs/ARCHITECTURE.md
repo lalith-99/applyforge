@@ -24,10 +24,18 @@ new/changed dated U.S. jobs. Concrete `job_source_postings` membership now scope
 poll generations fence superseded workers, partial persistence publishes no closure, and suspicious empty
 snapshots preserve the last known inventory. Source poll and coverage endpoints expose acquisition health.
 
+Publication freshness is evidence-based. `published_at` and `source_updated_at` are stored separately with
+kind, precision and provenance. The compatibility `posted_at` field now contains publication evidence only;
+Greenhouse `updated_at` is retained as update evidence and no longer makes an edited old job appear newly posted.
+
 Recommendations combine hard filters, semantic retrieval, an independent lexical pool, deterministic
 scoring, company diversity, and AI ranking in groups of 20. Up to 20 recommendations are materialized per
 user. Replacement now uses a transaction and per-user lock so a failed write preserves the old set.
 This does not yet prevent an older computation from publishing after a newer candidate revision.
+
+Full-time-only preference is strict: unknown employment type is not assumed to be full-time. H-1B retrieval
+admits explicit role-level transfer/sponsorship support even without historical DOL evidence, while explicit
+denial remains authoritative and employer history remains a useful fallback signal.
 
 Hourly refresh and catalog-change debouncing already exist. Persisted fit-judgment caches and an enforced
 AI spending gate do not yet exist. Review [AI_PIPELINE.md](AI_PIPELINE.md) before expanding volume.

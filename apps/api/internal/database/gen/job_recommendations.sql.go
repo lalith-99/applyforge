@@ -67,13 +67,25 @@ WHERE r.user_id = $1
   AND j.country_code = 'US' AND j.role_classification = 'IC_SOFTWARE'
   AND j.posted_at IS NOT NULL AND j.posted_at >= now() - INTERVAL '24 hours'
   AND (
-      j.explicit_sponsorship_denied = false
-      OR NOT (
+      p.user_id IS NULL
+      OR cardinality(p.employment_types) <> 1
+      OR regexp_replace(lower(p.employment_types[1]), '[- _]', '', 'g') <> 'fulltime'
+      OR j.employment_type = 'FullTime'
+  )
+  AND (
+      NOT (
           coalesce(p.requires_h1b_transfer, false)
           OR coalesce(p.requires_new_h1b_cap_sponsorship, false)
           OR coalesce(p.requires_future_employment_sponsorship, false)
           OR regexp_replace(lower(coalesce(p.immigration_status, '')), '[- _]', '', 'g') LIKE '%h1b%'
           OR regexp_replace(lower(coalesce(p.work_authorization, '')), '[- _]', '', 'g') LIKE '%h1b%'
+      )
+      OR (
+          j.explicit_sponsorship_denied = false
+          AND (
+              j.explicit_sponsorship_supported = true
+              OR company_has_recent_h1b_history(j.company_id)
+          )
       )
   )
 ORDER BY r.final_score DESC, j.posted_at DESC

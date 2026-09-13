@@ -66,19 +66,21 @@ func (s *GreenhouseSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cur
 
 	jobs := make([]RawJob, 0, len(parsed.Jobs))
 	for _, j := range parsed.Jobs {
-		var postedAt *time.Time
+		var sourceUpdatedAt *time.Time
 		if t, err := time.Parse(time.RFC3339, j.UpdatedAt); err == nil {
-			postedAt = &t
+			sourceUpdatedAt = &t
 		}
 		jobs = append(jobs, RawJob{
-			ExternalID:   fmt.Sprintf("%d", j.ID),
-			Title:        j.Title,
-			CompanyName:  s.BoardToken,
-			Description:  stripTags(j.Content),
-			LocationText: j.Location.Name,
-			ApplyURL:     j.AbsoluteURL,
-			SourceURL:    j.AbsoluteURL,
-			PostedAt:     postedAt,
+			ExternalID:      fmt.Sprintf("%d", j.ID),
+			Title:           j.Title,
+			CompanyName:     s.BoardToken,
+			Description:     stripTags(j.Content),
+			LocationText:    j.Location.Name,
+			ApplyURL:        j.AbsoluteURL,
+			SourceURL:       j.AbsoluteURL,
+			SourceUpdatedAt: sourceUpdatedAt,
+			DatePrecision:   "SECOND",
+			DateSource:      "GREENHOUSE_UPDATED_AT",
 		})
 	}
 	return jobs, nil, nil

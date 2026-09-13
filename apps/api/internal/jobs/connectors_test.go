@@ -35,8 +35,11 @@ func TestGreenhouseSource_Fetch(t *testing.T) {
 	if raw[0].ExternalID != "123" || raw[0].Title != "Backend Engineer" || raw[0].Description != "Build things" {
 		t.Fatalf("unexpected job: %+v", raw[0])
 	}
-	if raw[0].PostedAt == nil {
-		t.Fatalf("expected posted_at to be parsed")
+	if raw[0].PostedAt != nil || raw[0].SourceUpdatedAt == nil {
+		t.Fatalf("expected Greenhouse updated_at to remain update evidence, got posted=%v updated=%v", raw[0].PostedAt, raw[0].SourceUpdatedAt)
+	}
+	if raw[0].DateSource != "GREENHOUSE_UPDATED_AT" {
+		t.Fatalf("expected Greenhouse date provenance, got %q", raw[0].DateSource)
 	}
 }
 

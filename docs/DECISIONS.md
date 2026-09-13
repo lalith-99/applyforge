@@ -818,3 +818,17 @@ historical migrations are retained. Automatic submission and the larger migratio
 5. **This is an incremental canonicalization step.** Existing jobs remain source-shaped rows and cross-source
    canonical links remain in place. A later migration will move best-field selection and source promotion
    above the observation layer.
+
+## Publication evidence and strict candidate eligibility
+
+1. **Provider update timestamps are not publication timestamps.** Migration `00067` separates
+   `published_at` from `source_updated_at` and records date kind, precision and provenance. Greenhouse's
+   public `updated_at` is retained, but its compatibility `posted_at` value is cleared so edited older jobs
+   cannot enter a strict last-24-hour view.
+2. **Unknown employment type is not full-time.** When a candidate selects only full-time employment,
+   catalog, lexical and embedding queries require normalized `FullTime`; missing metadata no longer passes.
+3. **Current role evidence can override missing employer history, never an explicit denial.** A role that
+   explicitly offers H-1B transfer/sponsorship is eligible without DOL history. Explicit negative wording
+   is evaluated first, and recent certified LCA history remains the fallback for roles without a clear signal.
+4. **Recommendation reads revalidate these constraints.** A stale materialized recommendation cannot bypass
+   a newly strict full-time preference or the candidate's H-1B evidence requirement while recomputation waits.

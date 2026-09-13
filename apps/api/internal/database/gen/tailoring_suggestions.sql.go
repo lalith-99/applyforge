@@ -27,7 +27,9 @@ INSERT INTO tailoring_suggestions (
     tailoring_run_id, section, original_text, suggested_text, requirements_addressed,
     skills_added, keywords_added, source, reason, confidence, risk_level
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, tailoring_run_id, section, original_text, suggested_text, requirements_addressed, skills_added, keywords_added, source, reason, confidence, risk_level, user_status, edited_text, created_at, updated_at
+RETURNING id, tailoring_run_id, section, original_text, suggested_text,
+          requirements_addressed, skills_added, keywords_added, source, reason,
+          confidence, risk_level, user_status, edited_text, created_at, updated_at
 `
 
 type CreateTailoringSuggestionParams struct {
@@ -44,7 +46,26 @@ type CreateTailoringSuggestionParams struct {
 	RiskLevel             string      `json:"risk_level"`
 }
 
-func (q *Queries) CreateTailoringSuggestion(ctx context.Context, arg CreateTailoringSuggestionParams) (TailoringSuggestion, error) {
+type CreateTailoringSuggestionRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TailoringRunID        pgtype.UUID        `json:"tailoring_run_id"`
+	Section               string             `json:"section"`
+	OriginalText          pgtype.Text        `json:"original_text"`
+	SuggestedText         string             `json:"suggested_text"`
+	RequirementsAddressed []string           `json:"requirements_addressed"`
+	SkillsAdded           []string           `json:"skills_added"`
+	KeywordsAdded         []string           `json:"keywords_added"`
+	Source                string             `json:"source"`
+	Reason                string             `json:"reason"`
+	Confidence            float64            `json:"confidence"`
+	RiskLevel             string             `json:"risk_level"`
+	UserStatus            string             `json:"user_status"`
+	EditedText            pgtype.Text        `json:"edited_text"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateTailoringSuggestion(ctx context.Context, arg CreateTailoringSuggestionParams) (CreateTailoringSuggestionRow, error) {
 	row := q.db.QueryRow(ctx, createTailoringSuggestion,
 		arg.TailoringRunID,
 		arg.Section,
@@ -58,7 +79,7 @@ func (q *Queries) CreateTailoringSuggestion(ctx context.Context, arg CreateTailo
 		arg.Confidence,
 		arg.RiskLevel,
 	)
-	var i TailoringSuggestion
+	var i CreateTailoringSuggestionRow
 	err := row.Scan(
 		&i.ID,
 		&i.TailoringRunID,
@@ -81,7 +102,11 @@ func (q *Queries) CreateTailoringSuggestion(ctx context.Context, arg CreateTailo
 }
 
 const getTailoringSuggestion = `-- name: GetTailoringSuggestion :one
-SELECT id, tailoring_run_id, section, original_text, suggested_text, requirements_addressed, skills_added, keywords_added, source, reason, confidence, risk_level, user_status, edited_text, created_at, updated_at FROM tailoring_suggestions WHERE id = $1 AND tailoring_run_id = $2
+SELECT id, tailoring_run_id, section, original_text, suggested_text,
+       requirements_addressed, skills_added, keywords_added, source, reason,
+       confidence, risk_level, user_status, edited_text, created_at, updated_at
+FROM tailoring_suggestions
+WHERE id = $1 AND tailoring_run_id = $2
 `
 
 type GetTailoringSuggestionParams struct {
@@ -89,9 +114,28 @@ type GetTailoringSuggestionParams struct {
 	TailoringRunID pgtype.UUID `json:"tailoring_run_id"`
 }
 
-func (q *Queries) GetTailoringSuggestion(ctx context.Context, arg GetTailoringSuggestionParams) (TailoringSuggestion, error) {
+type GetTailoringSuggestionRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TailoringRunID        pgtype.UUID        `json:"tailoring_run_id"`
+	Section               string             `json:"section"`
+	OriginalText          pgtype.Text        `json:"original_text"`
+	SuggestedText         string             `json:"suggested_text"`
+	RequirementsAddressed []string           `json:"requirements_addressed"`
+	SkillsAdded           []string           `json:"skills_added"`
+	KeywordsAdded         []string           `json:"keywords_added"`
+	Source                string             `json:"source"`
+	Reason                string             `json:"reason"`
+	Confidence            float64            `json:"confidence"`
+	RiskLevel             string             `json:"risk_level"`
+	UserStatus            string             `json:"user_status"`
+	EditedText            pgtype.Text        `json:"edited_text"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetTailoringSuggestion(ctx context.Context, arg GetTailoringSuggestionParams) (GetTailoringSuggestionRow, error) {
 	row := q.db.QueryRow(ctx, getTailoringSuggestion, arg.ID, arg.TailoringRunID)
-	var i TailoringSuggestion
+	var i GetTailoringSuggestionRow
 	err := row.Scan(
 		&i.ID,
 		&i.TailoringRunID,
@@ -114,18 +158,42 @@ func (q *Queries) GetTailoringSuggestion(ctx context.Context, arg GetTailoringSu
 }
 
 const listTailoringSuggestions = `-- name: ListTailoringSuggestions :many
-SELECT id, tailoring_run_id, section, original_text, suggested_text, requirements_addressed, skills_added, keywords_added, source, reason, confidence, risk_level, user_status, edited_text, created_at, updated_at FROM tailoring_suggestions WHERE tailoring_run_id = $1 ORDER BY created_at ASC
+SELECT id, tailoring_run_id, section, original_text, suggested_text,
+       requirements_addressed, skills_added, keywords_added, source, reason,
+       confidence, risk_level, user_status, edited_text, created_at, updated_at
+FROM tailoring_suggestions
+WHERE tailoring_run_id = $1
+ORDER BY created_at ASC
 `
 
-func (q *Queries) ListTailoringSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) ([]TailoringSuggestion, error) {
+type ListTailoringSuggestionsRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TailoringRunID        pgtype.UUID        `json:"tailoring_run_id"`
+	Section               string             `json:"section"`
+	OriginalText          pgtype.Text        `json:"original_text"`
+	SuggestedText         string             `json:"suggested_text"`
+	RequirementsAddressed []string           `json:"requirements_addressed"`
+	SkillsAdded           []string           `json:"skills_added"`
+	KeywordsAdded         []string           `json:"keywords_added"`
+	Source                string             `json:"source"`
+	Reason                string             `json:"reason"`
+	Confidence            float64            `json:"confidence"`
+	RiskLevel             string             `json:"risk_level"`
+	UserStatus            string             `json:"user_status"`
+	EditedText            pgtype.Text        `json:"edited_text"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListTailoringSuggestions(ctx context.Context, tailoringRunID pgtype.UUID) ([]ListTailoringSuggestionsRow, error) {
 	rows, err := q.db.Query(ctx, listTailoringSuggestions, tailoringRunID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []TailoringSuggestion{}
+	items := []ListTailoringSuggestionsRow{}
 	for rows.Next() {
-		var i TailoringSuggestion
+		var i ListTailoringSuggestionsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TailoringRunID,
@@ -158,7 +226,9 @@ const updateTailoringSuggestionStatus = `-- name: UpdateTailoringSuggestionStatu
 UPDATE tailoring_suggestions
 SET user_status = $3, edited_text = $4, updated_at = now()
 WHERE id = $1 AND tailoring_run_id = $2
-RETURNING id, tailoring_run_id, section, original_text, suggested_text, requirements_addressed, skills_added, keywords_added, source, reason, confidence, risk_level, user_status, edited_text, created_at, updated_at
+RETURNING id, tailoring_run_id, section, original_text, suggested_text,
+          requirements_addressed, skills_added, keywords_added, source, reason,
+          confidence, risk_level, user_status, edited_text, created_at, updated_at
 `
 
 type UpdateTailoringSuggestionStatusParams struct {
@@ -168,14 +238,33 @@ type UpdateTailoringSuggestionStatusParams struct {
 	EditedText     pgtype.Text `json:"edited_text"`
 }
 
-func (q *Queries) UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (TailoringSuggestion, error) {
+type UpdateTailoringSuggestionStatusRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TailoringRunID        pgtype.UUID        `json:"tailoring_run_id"`
+	Section               string             `json:"section"`
+	OriginalText          pgtype.Text        `json:"original_text"`
+	SuggestedText         string             `json:"suggested_text"`
+	RequirementsAddressed []string           `json:"requirements_addressed"`
+	SkillsAdded           []string           `json:"skills_added"`
+	KeywordsAdded         []string           `json:"keywords_added"`
+	Source                string             `json:"source"`
+	Reason                string             `json:"reason"`
+	Confidence            float64            `json:"confidence"`
+	RiskLevel             string             `json:"risk_level"`
+	UserStatus            string             `json:"user_status"`
+	EditedText            pgtype.Text        `json:"edited_text"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) UpdateTailoringSuggestionStatus(ctx context.Context, arg UpdateTailoringSuggestionStatusParams) (UpdateTailoringSuggestionStatusRow, error) {
 	row := q.db.QueryRow(ctx, updateTailoringSuggestionStatus,
 		arg.ID,
 		arg.TailoringRunID,
 		arg.UserStatus,
 		arg.EditedText,
 	)
-	var i TailoringSuggestion
+	var i UpdateTailoringSuggestionStatusRow
 	err := row.Scan(
 		&i.ID,
 		&i.TailoringRunID,

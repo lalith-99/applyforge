@@ -17,19 +17,22 @@ type Cursor struct {
 // RawJob is the source-specific representation of a job posting before
 // normalization.
 type RawJob struct {
-	ExternalID     string
-	Title          string
-	CompanyName    string
-	Description    string
-	LocationText   string
-	Country        string
-	State          string
-	City           string
-	RemoteType     string
-	EmploymentType string
-	ApplyURL       string
-	SourceURL      string
-	PostedAt       *time.Time
+	ExternalID      string
+	Title           string
+	CompanyName     string
+	Description     string
+	LocationText    string
+	Country         string
+	State           string
+	City            string
+	RemoteType      string
+	EmploymentType  string
+	ApplyURL        string
+	SourceURL       string
+	PostedAt        *time.Time
+	SourceUpdatedAt *time.Time
+	DatePrecision   string
+	DateSource      string
 }
 
 // JobSource fetches raw postings from a single external board.

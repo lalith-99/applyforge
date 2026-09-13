@@ -85,6 +85,9 @@ func TestParseCareerPageDocumentExtractsJobsAndATSLinks(t *testing.T) {
 	if first.PostedAt == nil || first.PostedAt.Format("2006-01-02") != "2026-09-08" {
 		t.Fatalf("unexpected date posted %v", first.PostedAt)
 	}
+	if first.DatePrecision != "DAY" || first.DateSource != "CAREER_PAGE_JSONLD_DATE_POSTED" {
+		t.Fatalf("unexpected date evidence precision=%q source=%q", first.DatePrecision, first.DateSource)
+	}
 
 	second := inspection.Jobs[1]
 	if second.RemoteType != "remote" || second.LocationText != "Remote" {
