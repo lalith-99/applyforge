@@ -1,57 +1,51 @@
-# ApplyForge — AI Pipeline
+# ApplyForge AI pipeline
 
-## Scope
+The Python FastAPI service is the provider boundary. The Go API/workers own business decisions,
+PostgreSQL persistence, orchestration and usage recording. The implementation uses OpenAI structured
+outputs and embeddings when configured, with deterministic fallbacks for many text operations.
 
-The Python AI worker (`apps/ai-worker`) is the only service that talks to an AI provider. It centralizes all
-vendor SDK usage behind an `AIProvider` interface (Phase 4+) so the provider can be swapped without touching
-business logic:
+## Implemented behavior
 
-```
-ParseResume
-ParseJobDescription
-AnalyzeTransferableSkills
-SuggestResumeTailoring
-GenerateQuickPrep
-DefendBullet
-GenerateLearningPlan
-ExplainMatch
-GenerateApplicationAnswer
-```
+- Configurable general, resume, tailoring, ranking and embedding model settings. Docker defaults are
+  declared in `.env.example` and `docker-compose.yml`; bare Python provider defaults can differ.
+- Pydantic response schemas and heuristic fallback paths for resume/JD parsing, candidate synthesis,
+  ranking and tailoring-related operations.
+- Job requirements cached per job ID and a parser-versioned content hash.
+- Eager enrichment/embedding on selected new or changed dated U.S. postings; embeddings can be disabled.
+- AI ranking in synchronous groups of 20, after deterministic matching; recommendation results are
+  materialized in PostgreSQL.
+- Tailoring and learning operations triggered by user requests.
+- Usage metadata returned in HTTP headers and recorded in `ai_usage`, including model, tokens and
+  optional estimated cost. Missing price settings yield NULL cost, not free usage.
 
-## Principles
+## Remaining limitations
 
-* Structured output only (Pydantic-validated). Never parse free-form prose when a schema will do.
-* Never persist a malformed AI response.
-* Every AI call is logged with provider, model, operation, input/output tokens, latency, estimated cost,
-  status — this becomes the `ai_usage` table (Phase 4+).
-* Aggressive caching/dedup: resume parsing once per resume version, JD parsing once per unique job content
-  hash, tailoring/Quick Prep/Defend Bullet only on explicit user request. Job matching itself is always
-  deterministic and never delegated to an LLM (see [MATCHING_ENGINE.md](MATCHING_ENGINE.md)).
+Materialized recommendations are not a durable cache of candidate/job AI judgments: refreshes rerank
+unchanged pairs. Embedding storage does not record its input hash for compare-and-set writes. Concurrent
+parsing misses can call the provider more than once. Heuristic fallback provenance is not consistently
+represented in downstream results. One input/output pricing pair cannot accurately price all configured
+model overrides; per-call metadata can be overwritten in a multi-call request. There is no enforced
+monthly AI budget or atomic budget reservation before sending requests.
 
-## Status (post-Phase-12 — real OpenAI integration live)
+Structured output validates shape, not factual evidence. The generated interview probability score is
+not an empirically calibrated chance of obtaining an interview. Resume suggestions still need evidence
+review and scoped approval before they can be used in an application package.
 
-Implemented endpoints: `POST /v1/resumes/extract`, `POST /v1/resumes/parse`, `POST /v1/jobs/parse-requirements`,
-`POST /v1/tailoring/suggest`.
+## Upgrade contract
 
-`parse_resume_text`, `parse_job_requirements`, and `generate_tailoring` (`app/resume/parsing.py`,
-`app/jobs/parsing.py`, `app/tailoring/heuristics.py`) remain deterministic regex/keyword heuristics with
-zero external calls, zero cost, and full test coverage — these still run whenever AI is unconfigured or
-fails.
+See [sections 5–7 of the architecture review](ARCHITECTURE_REVIEW_2026-09-13.md) for the full design and
+current sourced pricing. In implementation order:
 
-As of this pass, each of those three modules also has an `_ai`-suffixed sibling
-(`parse_resume_text_ai`, `parse_job_requirements_ai`, `generate_tailoring_ai`) that calls real OpenAI
-(`gpt-4o-mini` by default) via `app/providers/openai_provider.py`, using structured outputs
-(`client.chat.completions.parse(response_format=<PydanticModel>)`) so the response is guaranteed to
-validate against the exact same Pydantic schema the heuristic path already produced. The three route
-handlers try the AI path first when `OPENAI_API_KEY` is set, and transparently fall back to the heuristic
-on any `AIProviderError` (missing key, network/API error, or an empty/unparseable response) — logged as a
-`logger.warning`, never a 500.
+1. Record per-attempt/model usage and fallback provenance, including billed failures and cache charges.
+2. Add versioned JD, embedding, profile, judgment and tailoring caches with cross-worker single-flight.
+3. Enforce a budget using atomic worst-case reservations, reconciliation and deterministic degradation.
+4. Gate high-volume work using canonical identity, eligibility and uncertainty before invoking AI.
+5. Rerank changed/new candidate-job pairs; update freshness/diversity without another model call.
+6. Evaluate cheaper tailoring on a held-out evidence set; escalate only on defined quality failures.
+7. Bind approved resume bytes and answer hashes to a submission intent. AI must not mutate an approved
+   package or perform uncontrolled external side effects.
 
-Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) in the shell environment or an untracked `.env` file
-before `docker compose up` to enable the real AI path; see `.env.example`. Never commit a real key value.
-
-`POST /v1/resumes/extract` (raw text extraction from uploaded PDF/DOCX) has no AI involved either way — it's
-pure PyMuPDF/python-docx text extraction, not a candidate for an `_ai` sibling.
-
-No `ai_usage` cost/latency/token logging table exists yet — now a real gap worth closing since real
-OpenAI calls have a real dollar cost, unlike the heuristic path.
+Use offline provider Batch processing only for work that tolerates its completion window. The existing
+20-job synchronous ranking request does not receive the provider Batch discount automatically. Keep
+provider pricing and output/reasoning limits as explicit, versioned configuration rather than assuming
+an inexpensive model makes an unbounded workflow inexpensive.

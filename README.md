@@ -9,18 +9,16 @@ This repository is being built incrementally, phase by phase. See
 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for phase status, and
 [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been built and why.
 
-**Status: Phases 0-12 complete (MVP feature-complete).** A user can sign up, upload a master resume (parsed
-into structured experience + candidate skills), browse real jobs ingested hourly from Greenhouse/Lever/Ashby,
-see a deterministic Job Match Score with matched/missing/transferable skills, tailor their resume
-(STRICT/GROWTH/MAX_MATCH) and approve/reject AI-suggested changes, see a Resume Alignment Score, get Quick
-Prep/Defend This Bullet/Make Me Qualified/Interview Readiness/learning-plan guidance for a job, generate and
-download a tailored PDF/DOCX resume version, track applications through a Kanban/table board with a full
-status-change history, view conversion-funnel/response-rate/match-score analytics, and delete a single
-resume or their entire account (which cascades everywhere in the database and cleans up object storage).
-Resume/JD parsing, tailoring suggestions, and Quick Prep/learning-plan content currently use deterministic
-heuristics rather than a real LLM (no `AI_API_KEY` configured — see docs/AI_PIPELINE.md). See
-[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) and [docs/DECISIONS.md](docs/DECISIONS.md) for
-the full per-phase breakdown and known scope limitations.
+**Current implementation:** account/onboarding, resume parsing and review, dynamic job-source discovery,
+U.S. software job browsing, deterministic matching, hybrid retrieval, AI reranking, tailored PDF/DOCX
+resumes, application tracking and interview preparation. OpenAI integrations are available when configured;
+several operations fall back to deterministic heuristics. PostgreSQL stores the catalog, queue, sponsor
+evidence and recommendation read model.
+
+**Architecture upgrade:** see [the September 13 code review and design](docs/ARCHITECTURE_REVIEW_2026-09-13.md)
+for confirmed flaws, source coverage improvements, an explicit monthly AI cost model, and the design for
+user-approved application submission. Applications are currently tracked manually; automatic submission,
+immutable submission approval packages and enforced AI budgets remain implementation work.
 
 ## Repository layout
 
@@ -130,8 +128,8 @@ pnpm install && pnpm dev
 
 ## Current scope limitations
 
-See [docs/DECISIONS.md](docs/DECISIONS.md) for the full, phase-by-phase list. In summary: no real AI
-provider is wired in (heuristic stand-ins throughout, documented not hidden); the Immigration-Aware Job
-Matching sub-system (DOL data ingestion) is not built; rate limiting is a simple in-memory per-IP limiter
-(not distributed — would need a shared store like Redis behind multiple API replicas); and there's no
-admin/ops dashboard beyond the per-user `/analytics` page.
+The latest [architecture review](docs/ARCHITECTURE_REVIEW_2026-09-13.md) distinguishes shipped behavior from
+remaining work. Critical follow-ups include publication-time provenance, tenant-scoped job closure,
+strict eligibility semantics, durable AI result caches and spend limits, and receipt-backed application
+execution. Real OpenAI integration, DOL sponsor evidence, source discovery and AI usage recording exist;
+older entries in DECISIONS.md describe historical milestones rather than the complete current state.

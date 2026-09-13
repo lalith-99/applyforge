@@ -325,7 +325,9 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 			Sort:                     "newest",
 			Limit:                    40,
 		}
-		const maxHybridCandidates = 700
+		// Each of at most 12 terms contributes at most 40 rows. This lexical
+		// budget is independent of the semantic pool (up to 1,000 rows): a
+		// full semantic result must not starve later exact-title/stack terms.
 		for _, term := range recommendationLexicalTerms(candidateProfile) {
 			lexicalFilter.Search = term
 			found, _, listErr := s.jobsRepo.List(ctx, lexicalFilter)
@@ -335,12 +337,6 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 			}
 			for _, job := range found {
 				addCandidate(job)
-				if len(candidateOrder) >= maxHybridCandidates {
-					break
-				}
-			}
-			if len(candidateOrder) >= maxHybridCandidates {
-				break
 			}
 		}
 	}

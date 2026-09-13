@@ -79,7 +79,7 @@ func (w *SyncSourceWorker) Handle(ctx context.Context, job background.Job) error
 		return fmt.Errorf("build source: %w", err)
 	}
 
-	result, ingestErr := w.ingestion.Ingest(ctx, sourceName, source, cfg.CompanyID, cfg.CompanyName)
+	result, ingestErr := w.ingestion.Ingest(ctx, cfg, sourceName, source)
 	if ingestErr != nil && isPermanentSourcePollFailure(cfg.SourceType, ingestErr) {
 		w.recordPoll(ctx, cfg, startedAt, result, ingestErr)
 		if quarantineErr := w.repo.QuarantineJobSource(ctx, cfg, ingestErr); quarantineErr != nil {

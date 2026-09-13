@@ -117,13 +117,14 @@ type ListFilter struct {
 
 // Repository provides access to company/job-source/job records.
 type Repository struct {
-	q    *db.Queries
-	pool *database.Pool
+	q         *db.Queries
+	pool      *database.Pool
+	lifecycle sourceLifecycleDB
 }
 
 // NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries(), pool: pool}
+	return &Repository{q: pool.Queries(), pool: pool, lifecycle: pool}
 }
 
 // NewRepositoryFromQueries builds a Repository from an existing sqlc Queries
@@ -131,6 +132,12 @@ func NewRepository(pool *database.Pool) *Repository {
 // integration tests that need fixture jobs/companies.
 func NewRepositoryFromQueries(q *db.Queries) *Repository {
 	return &Repository{q: q}
+}
+
+// NewRepositoryFromTransaction binds source-lifecycle operations to a
+// rollback-only transaction for integration tests.
+func NewRepositoryFromTransaction(q *db.Queries, tx pgx.Tx) *Repository {
+	return &Repository{q: q, lifecycle: tx}
 }
 
 // UpsertCompany creates or reuses a company row by normalized name.
@@ -377,44 +384,14 @@ func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UU
 }
 
 func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID uuid.UUID, denied bool) error {
-	if r.pool == nil {
-		return errors.New("sponsorship prefilter update requires a repository backed by a database pool")
+	if r.lifecycle == nil {
+		return errors.New("sponsorship prefilter update requires a repository backed by a database connection")
 	}
-	_, err := r.pool.Exec(ctx,
+	_, err := r.lifecycle.Exec(ctx,
 		"UPDATE jobs SET explicit_sponsorship_denied = $2, updated_at = now() WHERE id = $1",
 		jobID, denied,
 	)
 	return err
-}
-
-// TouchSeenJobs advances last_seen_at for already-known jobs that appeared in
-// a complete source snapshot even when the connector skipped expensive detail
-// hydration for older postings.
-func (r *Repository) TouchSeenJobs(ctx context.Context, source string, companyID uuid.UUID, externalIDs []string, seenAt time.Time) error {
-	if r.pool == nil || len(externalIDs) == 0 {
-		return nil
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE jobs
-		SET last_seen_at = $4
-		WHERE source = $1
-		  AND company_id = $2
-		  AND external_id = ANY($3::text[])
-	`, source, companyID, externalIDs, seenAt)
-	return err
-}
-
-// CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
-// weren't touched (last_seen_at) since cutoff, and returns how many were
-// closed. Intended to be called once per poll of a source that returns its
-// full current listing every time (see CloseStaleJobs SQL doc comment for
-// why aggregator sources with a page cap must not use this).
-func (r *Repository) CloseStaleJobs(ctx context.Context, source string, companyID uuid.UUID, cutoff time.Time) (int64, error) {
-	return r.q.CloseStaleJobs(ctx, db.CloseStaleJobsParams{
-		Source:     source,
-		CompanyID:  database.UUIDToPG(companyID),
-		LastSeenAt: database.PGTimestamptz(&cutoff),
-	})
 }
 
 // UpdateEmbedding stores a semantic embedding for a job (Phase E).
@@ -623,160 +600,6 @@ func (r *Repository) SetSourceTypeEnabled(ctx context.Context, sourceType string
 		sourceType, enabled,
 	)
 	return err
-}
-
-// EnableDevelopmentBootstrapSources recreates the historically live-verified
-// public direct-ATS seeds in local/dev. Migration 00050 deliberately removed
-// these rows from production, but a local install otherwise has no U.S. feed
-// unless a paid provider/source resolver has already populated job_sources.
-//
-// If H-1B sponsor evidence exists, only seed companies present on the sponsor
-// watchlist are enabled. With an empty watchlist, all verified seeds are
-// enabled so a fresh checkout can still demonstrate ingestion.
-func (r *Repository) EnableDevelopmentBootstrapSources(ctx context.Context) (int64, error) {
-	if r.pool == nil {
-		return 0, errors.New("development source bootstrap requires a repository backed by a database pool")
-	}
-
-	var watchlistCount int64
-	if err := r.pool.QueryRow(ctx, "SELECT count(*)::bigint FROM company_sponsor_watchlist").Scan(&watchlistCount); err != nil {
-		return 0, err
-	}
-
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	if _, err := tx.Exec(ctx, `
-		WITH seeds(name, normalized_name) AS (
-			VALUES
-				('Robinhood', 'robinhood'),
-				('Ramp', 'ramp'),
-				('Stripe', 'stripe'),
-				('Airbnb', 'airbnb'),
-				('Coinbase', 'coinbase'),
-				('Affirm', 'affirm'),
-				('GitLab', 'gitlab'),
-				('Figma', 'figma'),
-				('Tala', 'tala'),
-				('Wealthfront', 'wealthfront'),
-				('Linear', 'linear'),
-				('Watershed', 'watershed'),
-				('Vanta', 'vanta'),
-				('Datadog', 'datadog'),
-				('Cloudflare', 'cloudflare'),
-				('Twilio', 'twilio'),
-				('Okta', 'okta'),
-				('Asana', 'asana'),
-				('Dropbox', 'dropbox'),
-				('Squarespace', 'squarespace'),
-				('Elastic', 'elastic'),
-				('MongoDB', 'mongodb'),
-				('PagerDuty', 'pagerduty'),
-				('New Relic', 'newrelic'),
-				('Pinterest', 'pinterest'),
-				('Lyft', 'lyft'),
-				('Instacart', 'instacart'),
-				('Databricks', 'databricks'),
-				('Intercom', 'intercom'),
-				('Amplitude', 'amplitude'),
-				('Braze', 'braze'),
-				('Ro', 'ro'),
-				('Vevo', 'vevo'),
-				('Imprint', 'imprint'),
-				('Speak', 'speak'),
-				('Multiverse', 'multiverse')
-		)
-		INSERT INTO companies (name, normalized_name)
-		SELECT name, normalized_name
-		FROM seeds
-		ON CONFLICT (normalized_name) DO UPDATE SET name = EXCLUDED.name
-	`); err != nil {
-		return 0, err
-	}
-
-	tag, err := tx.Exec(ctx, `
-		WITH seeds(normalized_name, source_type, board_token) AS (
-			VALUES
-				('robinhood', 'GREENHOUSE', 'robinhood'),
-				('ramp', 'ASHBY', 'ramp'),
-				('stripe', 'GREENHOUSE', 'stripe'),
-				('airbnb', 'GREENHOUSE', 'airbnb'),
-				('coinbase', 'GREENHOUSE', 'coinbase'),
-				('affirm', 'GREENHOUSE', 'affirm'),
-				('gitlab', 'GREENHOUSE', 'gitlab'),
-				('figma', 'GREENHOUSE', 'figma'),
-				('tala', 'LEVER', 'tala'),
-				('wealthfront', 'LEVER', 'wealthfront'),
-				('linear', 'ASHBY', 'linear'),
-				('watershed', 'ASHBY', 'watershed'),
-				('vanta', 'ASHBY', 'vanta'),
-				('datadog', 'GREENHOUSE', 'datadog'),
-				('cloudflare', 'GREENHOUSE', 'cloudflare'),
-				('twilio', 'GREENHOUSE', 'twilio'),
-				('okta', 'GREENHOUSE', 'okta'),
-				('asana', 'GREENHOUSE', 'asana'),
-				('dropbox', 'GREENHOUSE', 'dropbox'),
-				('squarespace', 'GREENHOUSE', 'squarespace'),
-				('elastic', 'GREENHOUSE', 'elastic'),
-				('mongodb', 'GREENHOUSE', 'mongodb'),
-				('pagerduty', 'GREENHOUSE', 'pagerduty'),
-				('newrelic', 'GREENHOUSE', 'newrelic'),
-				('pinterest', 'GREENHOUSE', 'pinterest'),
-				('lyft', 'GREENHOUSE', 'lyft'),
-				('instacart', 'GREENHOUSE', 'instacart'),
-				('databricks', 'GREENHOUSE', 'databricks'),
-				('intercom', 'GREENHOUSE', 'intercom'),
-				('amplitude', 'GREENHOUSE', 'amplitude'),
-				('braze', 'GREENHOUSE', 'braze'),
-				('ro', 'LEVER', 'ro'),
-				('vevo', 'LEVER', 'vevo'),
-				('imprint', 'ASHBY', 'imprint'),
-				('speak', 'ASHBY', 'speak'),
-				('multiverse', 'ASHBY', 'multiverse')
-		),
-		desired AS (
-			SELECT
-				s.source_type,
-				c.id AS company_id,
-				s.board_token,
-				CASE
-					WHEN $1::bigint = 0 THEN true
-					ELSE EXISTS (
-						SELECT 1
-						FROM company_sponsor_watchlist w
-						WHERE w.company_id = c.id
-					)
-				END AS enabled,
-				COALESCE(
-					(SELECT w.poll_interval_minutes
-					 FROM company_sponsor_watchlist w
-					 WHERE w.company_id = c.id),
-					60
-				) AS poll_interval_minutes
-			FROM seeds s
-			JOIN companies c ON c.normalized_name = s.normalized_name
-		)
-		INSERT INTO job_sources (
-			source_type, company_id, board_token, enabled, poll_interval_minutes
-		)
-		SELECT source_type, company_id, board_token, enabled, poll_interval_minutes
-		FROM desired
-		ON CONFLICT (source_type, board_token) DO UPDATE SET
-			company_id = EXCLUDED.company_id,
-			enabled = EXCLUDED.enabled,
-			poll_interval_minutes = EXCLUDED.poll_interval_minutes
-	`, watchlistCount)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
 }
 
 // ConfigureSourceShards disables every shard for sourceType, then enables only

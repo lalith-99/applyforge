@@ -44,23 +44,36 @@ type RecommendationWithJob struct {
 
 // Repository provides access to job_recommendations.
 type Repository struct {
-	q *db.Queries
+	q    *db.Queries
+	pool *database.Pool
 }
 
 // NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries()}
+	return &Repository{q: pool.Queries(), pool: pool}
 }
 
 // ReplaceForUser atomically replaces a user's whole recommendation set.
 // Delete-then-insert is simple and cheap here: the set is small (N<=~50)
 // and always fully recomputed together, never updated piecemeal.
 func (r *Repository) ReplaceForUser(ctx context.Context, userID uuid.UUID, recs []Recommendation) error {
-	if err := r.q.ReplaceJobRecommendations(ctx, database.UUIDToPG(userID)); err != nil {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	// Serialize replacements even when the existing recommendation set is
+	// empty. Readers retain the previous committed set until the new set commits.
+	var lockedUser uuid.UUID
+	if err := tx.QueryRow(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&lockedUser); err != nil {
+		return err
+	}
+	q := db.New(tx)
+	if err := q.ReplaceJobRecommendations(ctx, database.UUIDToPG(userID)); err != nil {
 		return err
 	}
 	for _, rec := range recs {
-		if err := r.q.InsertJobRecommendation(ctx, db.InsertJobRecommendationParams{
+		if err := q.InsertJobRecommendation(ctx, db.InsertJobRecommendationParams{
 			UserID:                   database.UUIDToPG(userID),
 			JobID:                    database.UUIDToPG(rec.JobID),
 			DeterministicScore:       rec.DeterministicScore,
@@ -77,7 +90,7 @@ func (r *Repository) ReplaceForUser(ctx context.Context, userID uuid.UUID, recs 
 			return err
 		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 // ListForUser returns a user's precomputed recommendations, highest

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -53,57 +54,188 @@ func TestRepository_UpsertJob_IsIdempotent(t *testing.T) {
 	}
 }
 
-func TestRepository_CloseStaleJobs_ClosesUnseenAndRevivesOnReappear(t *testing.T) {
-	q := testdb.OpenTx(t)
-	repo := &Repository{q: q}
+func TestRepository_SourceScopedSnapshotsDoNotCloseSiblingBoards(t *testing.T) {
+	q, tx := testdb.OpenTxWithTransaction(t)
+	repo := NewRepositoryFromTransaction(q, tx)
 	ctx := context.Background()
 
-	companyID, err := repo.UpsertCompany(ctx, "Acme Closure Co", fmt.Sprintf("acme-closure-%s", t.Name()))
+	companyID, err := repo.UpsertCompany(ctx, "Acme Multi Board", fmt.Sprintf("acme-multi-%s", uuid.NewString()))
 	if err != nil {
 		t.Fatalf("UpsertCompany: %v", err)
 	}
-
-	job := Job{
-		Source:          "GREENHOUSE",
-		ExternalID:      uuid.NewString(),
-		CompanyID:       companyID,
-		CompanyName:     "Acme Closure Co",
-		Title:           "Backend Engineer",
-		NormalizedTitle: normalizeTitle("Backend Engineer"),
-		Description:     "Build things",
-		ContentHash:     contentHash("Acme Closure Co", "Backend Engineer", "", "Build things"),
-	}
-	upserted, err := repo.UpsertJob(ctx, job)
+	sourceA, err := repo.CreateJobSource(ctx, "GREENHOUSE", companyID, "acme-engineering-"+uuid.NewString(), true)
 	if err != nil {
-		t.Fatalf("UpsertJob: %v", err)
+		t.Fatalf("CreateJobSource A: %v", err)
+	}
+	sourceB, err := repo.CreateJobSource(ctx, "GREENHOUSE", companyID, "acme-product-"+uuid.NewString(), true)
+	if err != nil {
+		t.Fatalf("CreateJobSource B: %v", err)
 	}
 
-	// Simulate a poll that completed after this job's last_seen_at, i.e. the
-	// board no longer listed it.
-	cutoff := time.Now().Add(1 * time.Second)
-	closed, err := repo.CloseStaleJobs(ctx, "GREENHOUSE", companyID, cutoff)
+	newJob := func(externalID, title string) Job {
+		return Job{
+			Source:          "GREENHOUSE",
+			ExternalID:      externalID,
+			CompanyID:       companyID,
+			CompanyName:     "Acme Multi Board",
+			Title:           title,
+			NormalizedTitle: normalizeTitle(title),
+			Description:     "Build reliable systems",
+			ContentHash:     contentHash("Acme Multi Board", title, "", "Build reliable systems"),
+		}
+	}
+
+	a1, err := repo.UpsertJob(ctx, newJob("a1-"+uuid.NewString(), "Backend Engineer"))
 	if err != nil {
-		t.Fatalf("CloseStaleJobs: %v", err)
+		t.Fatalf("UpsertJob A1: %v", err)
+	}
+	a2, err := repo.UpsertJob(ctx, newJob("a2-"+uuid.NewString(), "Platform Engineer"))
+	if err != nil {
+		t.Fatalf("UpsertJob A2: %v", err)
+	}
+	b1, err := repo.UpsertJob(ctx, newJob("b1-"+uuid.NewString(), "Java Engineer"))
+	if err != nil {
+		t.Fatalf("UpsertJob B1: %v", err)
+	}
+
+	observeSnapshot := func(sourceID uuid.UUID, postings map[string]uuid.UUID) {
+		t.Helper()
+		generation, beginErr := repo.BeginSourcePoll(ctx, sourceID)
+		if beginErr != nil {
+			t.Fatalf("BeginSourcePoll: %v", beginErr)
+		}
+		startedAt := time.Now().UTC()
+		ids := make([]string, 0, len(postings))
+		for externalID, jobID := range postings {
+			ids = append(ids, externalID)
+			if observeErr := repo.ObserveSourcePosting(ctx, sourceID, generation, externalID, jobID, startedAt); observeErr != nil {
+				t.Fatalf("ObserveSourcePosting: %v", observeErr)
+			}
+		}
+		if _, finalizeErr := repo.FinalizeSourceSnapshot(ctx, sourceID, generation, ids, startedAt); finalizeErr != nil {
+			t.Fatalf("FinalizeSourceSnapshot: %v", finalizeErr)
+		}
+	}
+
+	observeSnapshot(sourceA, map[string]uuid.UUID{a1.Job.ExternalID: a1.Job.ID, a2.Job.ExternalID: a2.Job.ID})
+	observeSnapshot(sourceB, map[string]uuid.UUID{b1.Job.ExternalID: b1.Job.ID})
+
+	// Board A drops A2. Only A2 may close; board B's B1 membership is outside
+	// the finalized source boundary even though provider and company match.
+	generationA, err := repo.BeginSourcePoll(ctx, sourceA)
+	if err != nil {
+		t.Fatalf("BeginSourcePoll A2: %v", err)
+	}
+	pollStart := time.Now().UTC()
+	if err := repo.ObserveSourcePosting(ctx, sourceA, generationA, a1.Job.ExternalID, a1.Job.ID, pollStart); err != nil {
+		t.Fatalf("ObserveSourcePosting A1: %v", err)
+	}
+	closed, err := repo.FinalizeSourceSnapshot(ctx, sourceA, generationA, []string{a1.Job.ExternalID}, pollStart)
+	if err != nil {
+		t.Fatalf("FinalizeSourceSnapshot A: %v", err)
 	}
 	if closed != 1 {
-		t.Fatalf("expected 1 job closed, got %d", closed)
+		t.Fatalf("expected exactly A2 to close, got %d closures", closed)
 	}
 
-	fetched, err := repo.GetByID(ctx, upserted.Job.ID)
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if fetched.Status != "CLOSED" {
-		t.Fatalf("expected status CLOSED, got %s", fetched.Status)
+	for _, expectation := range []struct {
+		id     uuid.UUID
+		status string
+	}{
+		{a1.Job.ID, "ACTIVE"},
+		{a2.Job.ID, "CLOSED"},
+		{b1.Job.ID, "ACTIVE"},
+	} {
+		job, getErr := repo.GetByID(ctx, expectation.id)
+		if getErr != nil {
+			t.Fatalf("GetByID: %v", getErr)
+		}
+		if job.Status != expectation.status {
+			t.Fatalf("job %s: expected %s, got %s", expectation.id, expectation.status, job.Status)
+		}
 	}
 
-	// The job reappears in a later poll - upserting it again should revive it.
-	revived, err := repo.UpsertJob(ctx, job)
+	// A later generation fences an older worker, and an anomalous empty board
+	// cannot erase source B's previously active inventory.
+	staleGeneration, err := repo.BeginSourcePoll(ctx, sourceA)
 	if err != nil {
-		t.Fatalf("UpsertJob (revive): %v", err)
+		t.Fatalf("BeginSourcePoll stale: %v", err)
 	}
-	if revived.Job.Status != "ACTIVE" {
-		t.Fatalf("expected status ACTIVE after re-appearing in a poll, got %s", revived.Job.Status)
+	if _, err := repo.BeginSourcePoll(ctx, sourceA); err != nil {
+		t.Fatalf("BeginSourcePoll current: %v", err)
+	}
+	if _, err := repo.FinalizeSourceSnapshot(ctx, sourceA, staleGeneration, []string{a1.Job.ExternalID}, time.Now().UTC()); !errors.Is(err, ErrStaleSourcePoll) {
+		t.Fatalf("expected ErrStaleSourcePoll, got %v", err)
+	}
+
+	emptyGeneration, err := repo.BeginSourcePoll(ctx, sourceB)
+	if err != nil {
+		t.Fatalf("BeginSourcePoll empty: %v", err)
+	}
+	if _, err := repo.FinalizeSourceSnapshot(ctx, sourceB, emptyGeneration, nil, time.Now().UTC()); !errors.Is(err, ErrSuspiciousEmptySnapshot) {
+		t.Fatalf("expected ErrSuspiciousEmptySnapshot, got %v", err)
+	}
+	stillActive, err := repo.GetByID(ctx, b1.Job.ID)
+	if err != nil {
+		t.Fatalf("GetByID B1: %v", err)
+	}
+	if stillActive.Status != "ACTIVE" {
+		t.Fatalf("expected B1 to remain ACTIVE after empty snapshot, got %s", stillActive.Status)
+	}
+}
+
+type staticJobSource struct {
+	jobs []RawJob
+}
+
+func (s staticJobSource) Name() string { return "GREENHOUSE" }
+func (s staticJobSource) Fetch(context.Context, *Cursor) ([]RawJob, *Cursor, error) {
+	return s.jobs, nil, nil
+}
+
+func TestIngestionService_PartialPersistenceDoesNotPublishClosure(t *testing.T) {
+	q, tx := testdb.OpenTxWithTransaction(t)
+	repo := NewRepositoryFromTransaction(q, tx)
+	service := NewIngestionService(repo, nil)
+	ctx := context.Background()
+
+	companyID, err := repo.UpsertCompany(ctx, "Acme Partial Poll", fmt.Sprintf("acme-partial-%s", uuid.NewString()))
+	if err != nil {
+		t.Fatalf("UpsertCompany: %v", err)
+	}
+	sourceID, err := repo.CreateJobSource(ctx, "GREENHOUSE", companyID, "acme-partial-"+uuid.NewString(), true)
+	if err != nil {
+		t.Fatalf("CreateJobSource: %v", err)
+	}
+	cfg := JobSourceConfig{ID: sourceID, SourceType: "GREENHOUSE", CompanyID: companyID, CompanyName: "Acme Partial Poll"}
+	firstID := "first-" + uuid.NewString()
+	secondID := "second-" + uuid.NewString()
+
+	initial := staticJobSource{jobs: []RawJob{
+		{ExternalID: firstID, Title: "Backend Engineer", Description: "Build APIs"},
+		{ExternalID: secondID, Title: "Platform Engineer", Description: "Build platforms"},
+	}}
+	if _, err := service.Ingest(ctx, cfg, "GREENHOUSE", initial); err != nil {
+		t.Fatalf("initial Ingest: %v", err)
+	}
+
+	// The empty external ID makes source-membership persistence fail after the
+	// first posting succeeds. The previous second posting must remain active
+	// because this incomplete poll is never finalized.
+	partial := staticJobSource{jobs: []RawJob{
+		{ExternalID: firstID, Title: "Backend Engineer", Description: "Build APIs"},
+		{ExternalID: "", Title: "Invalid Posting", Description: "Missing provider identity"},
+	}}
+	if _, err := service.Ingest(ctx, cfg, "GREENHOUSE", partial); err == nil {
+		t.Fatal("expected partial persistence error")
+	}
+
+	var secondStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM jobs WHERE source = 'GREENHOUSE' AND external_id = $1`, secondID).Scan(&secondStatus); err != nil {
+		t.Fatalf("query second job: %v", err)
+	}
+	if secondStatus != "ACTIVE" {
+		t.Fatalf("expected previously seen job to remain ACTIVE after partial poll, got %s", secondStatus)
 	}
 }
 

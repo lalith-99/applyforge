@@ -154,17 +154,6 @@ func run() error {
 	})
 
 	jobsRepo := jobs.NewRepository(db)
-	if !strings.EqualFold(environment, "production") {
-		enabled, err := jobsRepo.EnableDevelopmentBootstrapSources(ctx)
-		if err != nil {
-			return fmt.Errorf("enable development bootstrap job sources: %w", err)
-		}
-		if enabled > 0 {
-			slog.Info("ensured development bootstrap job sources",
-				"sources", enabled,
-			)
-		}
-	}
 	if discovered, err := jobsRepo.BackfillDiscoveredCompanySources(ctx); err != nil {
 		return fmt.Errorf("backfill discovered company job sources: %w", err)
 	} else if discovered > 0 {

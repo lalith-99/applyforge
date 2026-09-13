@@ -33,16 +33,18 @@ type SourceHealth struct {
 	LastPolledAt *time.Time `json:"last_polled_at,omitempty"`
 	LastError    *string    `json:"last_error,omitempty"`
 
-	LastStatus      *string    `json:"last_status,omitempty"`
-	LastStartedAt   *time.Time `json:"last_started_at,omitempty"`
-	LastCompletedAt *time.Time `json:"last_completed_at,omitempty"`
-	LastDurationMS  *int32     `json:"last_duration_ms,omitempty"`
-	LastFetched     *int32     `json:"last_fetched,omitempty"`
-	LastInserted    *int32     `json:"last_inserted,omitempty"`
-	LastUpdated     *int32     `json:"last_updated,omitempty"`
-	LastDeduped     *int32     `json:"last_deduped,omitempty"`
-	LastClosed      *int32     `json:"last_closed,omitempty"`
-	LastRunError    *string    `json:"last_run_error,omitempty"`
+	LastStatus       *string    `json:"last_status,omitempty"`
+	LastStartedAt    *time.Time `json:"last_started_at,omitempty"`
+	LastCompletedAt  *time.Time `json:"last_completed_at,omitempty"`
+	LastDurationMS   *int32     `json:"last_duration_ms,omitempty"`
+	LastFetched      *int32     `json:"last_fetched,omitempty"`
+	LastInserted     *int32     `json:"last_inserted,omitempty"`
+	LastUpdated      *int32     `json:"last_updated,omitempty"`
+	LastDeduped      *int32     `json:"last_deduped,omitempty"`
+	LastClosed       *int32     `json:"last_closed,omitempty"`
+	LastRunError     *string    `json:"last_run_error,omitempty"`
+	LastGeneration   *int64     `json:"last_poll_generation,omitempty"`
+	SnapshotComplete *bool      `json:"last_snapshot_complete,omitempty"`
 }
 
 type CatalogHealth struct {
@@ -78,11 +80,13 @@ func (r *Repository) RecordSourcePoll(ctx context.Context, outcome SourcePollOut
 		INSERT INTO job_source_poll_runs (
 			job_source_id, source_type, board_token, company_name,
 			started_at, completed_at, duration_ms, status,
-			fetched, inserted, updated, deduped, closed, error_message
+			fetched, inserted, updated, deduped, closed, error_message,
+			poll_generation, snapshot_complete
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8,
-			$9, $10, $11, $12, $13, $14
+			$9, $10, $11, $12, $13, $14,
+			$15, $16
 		)
 	`,
 		outcome.JobSourceID,
@@ -99,6 +103,8 @@ func (r *Repository) RecordSourcePoll(ctx context.Context, outcome SourcePollOut
 		outcome.Result.Deduped,
 		outcome.Result.Closed,
 		errText,
+		outcome.Result.PollGeneration,
+		outcome.Result.SnapshotComplete,
 	)
 	return err
 }
@@ -129,12 +135,15 @@ func (r *Repository) ListSourceHealth(ctx context.Context, limit int) ([]SourceH
 			run.updated,
 			run.deduped,
 			run.closed,
-			run.error_message
+			run.error_message,
+			run.poll_generation,
+			run.snapshot_complete
 		FROM job_sources js
 		JOIN companies c ON c.id = js.company_id
 		LEFT JOIN LATERAL (
 			SELECT status, started_at, completed_at, duration_ms,
-				fetched, inserted, updated, deduped, closed, error_message
+				fetched, inserted, updated, deduped, closed, error_message,
+				poll_generation, snapshot_complete
 			FROM job_source_poll_runs
 			WHERE job_source_id = js.id
 			ORDER BY started_at DESC
@@ -151,20 +160,22 @@ func (r *Repository) ListSourceHealth(ctx context.Context, limit int) ([]SourceH
 	out := make([]SourceHealth, 0)
 	for rows.Next() {
 		var (
-			id            pgtype.UUID
-			lastPolled    pgtype.Timestamptz
-			lastError     pgtype.Text
-			lastStatus    pgtype.Text
-			lastStarted   pgtype.Timestamptz
-			lastCompleted pgtype.Timestamptz
-			lastDuration  pgtype.Int4
-			lastFetched   pgtype.Int4
-			lastInserted  pgtype.Int4
-			lastUpdated   pgtype.Int4
-			lastDeduped   pgtype.Int4
-			lastClosed    pgtype.Int4
-			lastRunError  pgtype.Text
-			item          SourceHealth
+			id               pgtype.UUID
+			lastPolled       pgtype.Timestamptz
+			lastError        pgtype.Text
+			lastStatus       pgtype.Text
+			lastStarted      pgtype.Timestamptz
+			lastCompleted    pgtype.Timestamptz
+			lastDuration     pgtype.Int4
+			lastFetched      pgtype.Int4
+			lastInserted     pgtype.Int4
+			lastUpdated      pgtype.Int4
+			lastDeduped      pgtype.Int4
+			lastClosed       pgtype.Int4
+			lastRunError     pgtype.Text
+			lastGeneration   pgtype.Int8
+			snapshotComplete pgtype.Bool
+			item             SourceHealth
 		)
 		if err := rows.Scan(
 			&id,
@@ -184,6 +195,8 @@ func (r *Repository) ListSourceHealth(ctx context.Context, limit int) ([]SourceH
 			&lastDeduped,
 			&lastClosed,
 			&lastRunError,
+			&lastGeneration,
+			&snapshotComplete,
 		); err != nil {
 			return nil, err
 		}
@@ -200,6 +213,12 @@ func (r *Repository) ListSourceHealth(ctx context.Context, limit int) ([]SourceH
 		item.LastDeduped = database.Int4OrNil(lastDeduped)
 		item.LastClosed = database.Int4OrNil(lastClosed)
 		item.LastRunError = database.TextOrNil(lastRunError)
+		if lastGeneration.Valid {
+			item.LastGeneration = &lastGeneration.Int64
+		}
+		if snapshotComplete.Valid {
+			item.SnapshotComplete = &snapshotComplete.Bool
+		}
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
