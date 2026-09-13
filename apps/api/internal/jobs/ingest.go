@@ -36,11 +36,13 @@ func (s *IngestionService) WithEmbeddingsEnabled(enabled bool) *IngestionService
 
 // IngestResult summarizes the outcome of a single source poll.
 type IngestResult struct {
-	Fetched  int
-	Inserted int
-	Updated  int
-	Deduped  int   // new rows linked to an existing canonical job from a different source (see FindCanonicalByFingerprint)
-	Closed   int64 // jobs marked CLOSED for no longer appearing in this poll (0 for aggregator sources, see CloseStaleJobs)
+	Fetched          int
+	Inserted         int
+	Updated          int
+	Deduped          int   // new rows linked to an existing canonical job from a different source (see FindCanonicalByFingerprint)
+	Closed           int64 // jobs marked CLOSED only after atomically publishing a complete source-scoped snapshot
+	PollGeneration   int64
+	SnapshotComplete bool
 }
 
 // Ingest fetches all postings from source and upserts them, attributing them
@@ -50,20 +52,32 @@ type IngestResult struct {
 // company name via raw.CompanyName have that company dynamically
 // resolved/reused instead, so a single job_sources row can ingest postings
 // from many different companies.
-func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source JobSource, companyID uuid.UUID, companyName string) (IngestResult, error) {
+func (s *IngestionService) Ingest(ctx context.Context, cfg JobSourceConfig, sourceName string, source JobSource) (IngestResult, error) {
 	pollStart := time.Now()
+	generation, err := s.repo.BeginSourcePoll(ctx, cfg.ID)
+	if err != nil {
+		return IngestResult{}, err
+	}
+	result := IngestResult{PollGeneration: generation}
+
 	rawJobs, _, err := source.Fetch(ctx, nil)
 	if err != nil {
-		return IngestResult{}, fmt.Errorf("fetch from %s: %w", sourceName, err)
+		return result, fmt.Errorf("fetch from %s: %w", sourceName, err)
 	}
 
+	seenExternalIDs := snapshotExternalIDs(rawJobs, source)
+	var persistenceErrors []error
 	if completeSnapshot, ok := source.(CompleteSnapshotSource); ok {
-		if err := s.repo.TouchSeenJobs(ctx, sourceName, companyID, completeSnapshot.SeenExternalIDs(), pollStart); err != nil {
-			slog.Error("touch complete source snapshot failed",
-				"source", sourceName,
-				"company_id", companyID,
-				"error", err,
-			)
+		if err := s.repo.ObserveKnownSourcePostings(
+			ctx,
+			cfg.ID,
+			generation,
+			sourceName,
+			cfg.CompanyID,
+			completeSnapshot.SeenExternalIDs(),
+			pollStart,
+		); err != nil {
+			persistenceErrors = append(persistenceErrors, err)
 		}
 	}
 
@@ -76,9 +90,13 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 	}
 	resolvedCompanies := map[string]resolvedCompany{}
 
-	result := IngestResult{Fetched: len(rawJobs)}
+	result.Fetched = len(rawJobs)
 	for _, raw := range rawJobs {
-		jobCompanyID, jobCompanyName := companyID, companyName
+		if strings.TrimSpace(raw.ExternalID) == "" {
+			persistenceErrors = append(persistenceErrors, errors.New("source returned a job without an external id"))
+			continue
+		}
+		jobCompanyID, jobCompanyName := cfg.CompanyID, cfg.CompanyName
 		discoveries := DetectCompanySources(raw.ApplyURL, raw.SourceURL)
 
 		if raw.CompanyName != "" {
@@ -151,6 +169,20 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 		upserted, err := s.repo.UpsertJob(ctx, job)
 		if err != nil {
 			slog.Error("upsert job failed", "source", sourceName, "external_id", raw.ExternalID, "error", err)
+			persistenceErrors = append(persistenceErrors, fmt.Errorf("upsert job %s: %w", raw.ExternalID, err))
+			continue
+		}
+
+		if err := s.repo.ObserveSourcePosting(
+			ctx,
+			cfg.ID,
+			generation,
+			raw.ExternalID,
+			upserted.Job.ID,
+			pollStart,
+		); err != nil {
+			slog.Error("observe source posting failed", "source", sourceName, "external_id", raw.ExternalID, "error", err)
+			persistenceErrors = append(persistenceErrors, fmt.Errorf("observe source posting %s: %w", raw.ExternalID, err))
 			continue
 		}
 
@@ -160,6 +192,7 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			explicitSponsorshipDenied(raw.Description),
 		); err != nil {
 			slog.Error("update sponsorship prefilter failed", "job_id", upserted.Job.ID, "error", err)
+			persistenceErrors = append(persistenceErrors, fmt.Errorf("update sponsorship prefilter for %s: %w", raw.ExternalID, err))
 		}
 
 		// Aggregated discovery sources frequently carry the employer's direct
@@ -233,24 +266,54 @@ func (s *IngestionService) Ingest(ctx context.Context, sourceName string, source
 			}
 		}
 	}
+	if err := errors.Join(persistenceErrors...); err != nil {
+		return result, fmt.Errorf("source snapshot was not published because persistence was incomplete: %w", err)
+	}
 
 	// Closure detection: only valid for sources that return their FULL
 	// current listing every poll. Arbeitnow's page cap means "not seen this
 	// poll" doesn't reliably mean "closed" - see CloseStaleJobs's doc
 	// comment - so it's deliberately excluded here.
-	if sourceName != "ARBEITNOW" &&
-		sourceName != "BRIGHTDATA" &&
-		sourceName != "SERPAPI_GOOGLE_JOBS" &&
-		sourceName != "CAREER_PAGE" {
-		closed, closeErr := s.repo.CloseStaleJobs(ctx, sourceName, companyID, pollStart)
+	if sourceSupportsClosure(sourceName) {
+		closed, closeErr := s.repo.FinalizeSourceSnapshot(ctx, cfg.ID, generation, seenExternalIDs, pollStart)
 		if closeErr != nil {
-			slog.Error("close stale jobs failed", "source", sourceName, "company_id", companyID, "error", closeErr)
-		} else {
-			result.Closed = closed
+			return result, fmt.Errorf("publish complete %s snapshot: %w", sourceName, closeErr)
 		}
+		result.Closed = closed
+		result.SnapshotComplete = true
 	}
 
 	return result, nil
+}
+
+func snapshotExternalIDs(rawJobs []RawJob, source JobSource) []string {
+	unique := make(map[string]struct{}, len(rawJobs))
+	for _, raw := range rawJobs {
+		if id := strings.TrimSpace(raw.ExternalID); id != "" {
+			unique[id] = struct{}{}
+		}
+	}
+	if complete, ok := source.(CompleteSnapshotSource); ok {
+		for _, externalID := range complete.SeenExternalIDs() {
+			if id := strings.TrimSpace(externalID); id != "" {
+				unique[id] = struct{}{}
+			}
+		}
+	}
+	ids := make([]string, 0, len(unique))
+	for id := range unique {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func sourceSupportsClosure(sourceName string) bool {
+	switch sourceName {
+	case "ARBEITNOW", "BRIGHTDATA", "SERPAPI_GOOGLE_JOBS", "CAREER_PAGE":
+		return false
+	default:
+		return true
+	}
 }
 
 // BuildSource constructs a JobSource for a stored job_sources configuration row.
@@ -326,7 +389,7 @@ func (s *IngestionService) SyncAll(ctx context.Context) error {
 			continue
 		}
 
-		result, ingestErr := s.Ingest(ctx, sourceName, source, cfg.CompanyID, cfg.CompanyName)
+		result, ingestErr := s.Ingest(ctx, cfg, sourceName, source)
 		if touchErr := s.repo.TouchJobSource(ctx, cfg.ID, ingestErr); touchErr != nil {
 			slog.Error("touch job source failed", "job_source_id", cfg.ID, "error", touchErr)
 		}

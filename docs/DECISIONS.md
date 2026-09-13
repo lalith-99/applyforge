@@ -801,3 +801,20 @@ This change preserves Lever's structured requirements and closing disclosures, k
 capacity independent of semantic results, makes recommendation replacement transactional and serialized
 per user, and removes the active hardcoded development-company bootstrap. Existing database records and
 historical migrations are retained. Automatic submission and the larger migrations remain proposed work.
+
+## Source-scoped job lifecycle and poll fencing
+
+1. **Closure is owned by a concrete `job_sources.id`.** Migration `00066` introduces
+   `job_source_postings(job_source_id, external_id)` membership. A completed poll deactivates only
+   missing membership from its own tenant, so two Greenhouse/Lever/etc. boards for the same company
+   cannot close each other's inventory.
+2. **Partial persistence is a failed snapshot.** Job or membership write failures are accumulated and
+   returned; closure is skipped. Successful writes remain idempotent for retry, while the prior active
+   inventory remains visible.
+3. **Poll generations are fencing tokens.** Starting a poll increments the source generation. Observation
+   and finalization reject superseded workers, and finalization locks the source before publishing.
+4. **Empty-board changes are fail-safe.** A complete empty response cannot close a source that previously
+   had active postings. It is recorded as an error for investigation/retry instead of mass deletion.
+5. **This is an incremental canonicalization step.** Existing jobs remain source-shaped rows and cross-source
+   canonical links remain in place. A later migration will move best-field selection and source promotion
+   above the observation layer.

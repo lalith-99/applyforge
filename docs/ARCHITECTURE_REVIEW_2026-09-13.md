@@ -101,7 +101,13 @@ Do not build coverage around automated LinkedIn account scraping or auto-applyin
 
 ### 4.2 Separate job identity from source observations
 
-Proposed schema, not a shipped migration:
+Implementation status: migration `00066_source_scoped_job_lifecycle.sql` ships the first safe transition.
+It adds concrete `job_source_postings` membership, monotonically increasing poll generations, atomic
+source-scoped closure, partial-persistence failure semantics and an anomalous-empty-snapshot guard. It
+conservatively backfills only unambiguous legacy rows. Stable canonical jobs, staged poll-seen IDs and
+field-level evidence remain follow-up work.
+
+Target schema:
 
 | Entity | Key and minimum fields | Purpose |
 |---|---|---|

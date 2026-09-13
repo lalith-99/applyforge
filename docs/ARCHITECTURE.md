@@ -20,7 +20,9 @@ coverage, AI-cost and application-execution gaps. Proposed components in that do
 Verified source discovery feeds `company_source_registry` and `job_sources`. Direct ATS connectors and
 optional broad providers produce raw postings. Go normalizes location/role/employment metadata, upserts
 jobs, links cross-source duplicates, records sponsorship exclusions and queues enrichment for selected
-new/changed dated U.S. jobs. Source poll and coverage endpoints expose acquisition health.
+new/changed dated U.S. jobs. Concrete `job_source_postings` membership now scopes closure to one board/tenant;
+poll generations fence superseded workers, partial persistence publishes no closure, and suspicious empty
+snapshots preserve the last known inventory. Source poll and coverage endpoints expose acquisition health.
 
 Recommendations combine hard filters, semantic retrieval, an independent lexical pool, deterministic
 scoring, company diversity, and AI ranking in groups of 20. Up to 20 recommendations are materialized per
@@ -40,8 +42,9 @@ scoped approval, ownership checks, idempotent intent creation and confirmation r
 ## Design decisions
 
 Retain the modular Go backend and PostgreSQL queue. Separate listing/detail/AI worker capacity before
-adding infrastructure. Keep catalog acquisition independent of user-specific AI work. Use source
-observations for tenant identity and lifecycle, with a stable canonical job above them. Add a local
+adding infrastructure. Keep catalog acquisition independent of user-specific AI work. The first
+source-observation migration now tracks tenant membership safely; separating the stable canonical job from
+all source-provided fields remains follow-up work. Add a local
 browser companion only for supported, permitted application flows; public ATS listing access is not
 submission authorization.
 

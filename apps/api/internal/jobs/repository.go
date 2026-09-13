@@ -117,13 +117,14 @@ type ListFilter struct {
 
 // Repository provides access to company/job-source/job records.
 type Repository struct {
-	q    *db.Queries
-	pool *database.Pool
+	q         *db.Queries
+	pool      *database.Pool
+	lifecycle sourceLifecycleDB
 }
 
 // NewRepository builds a Repository from a database pool.
 func NewRepository(pool *database.Pool) *Repository {
-	return &Repository{q: pool.Queries(), pool: pool}
+	return &Repository{q: pool.Queries(), pool: pool, lifecycle: pool}
 }
 
 // NewRepositoryFromQueries builds a Repository from an existing sqlc Queries
@@ -131,6 +132,12 @@ func NewRepository(pool *database.Pool) *Repository {
 // integration tests that need fixture jobs/companies.
 func NewRepositoryFromQueries(q *db.Queries) *Repository {
 	return &Repository{q: q}
+}
+
+// NewRepositoryFromTransaction binds source-lifecycle operations to a
+// rollback-only transaction for integration tests.
+func NewRepositoryFromTransaction(q *db.Queries, tx pgx.Tx) *Repository {
+	return &Repository{q: q, lifecycle: tx}
 }
 
 // UpsertCompany creates or reuses a company row by normalized name.
@@ -377,44 +384,14 @@ func (r *Repository) UpdateRoleClassification(ctx context.Context, jobID uuid.UU
 }
 
 func (r *Repository) UpdateExplicitSponsorshipDenied(ctx context.Context, jobID uuid.UUID, denied bool) error {
-	if r.pool == nil {
-		return errors.New("sponsorship prefilter update requires a repository backed by a database pool")
+	if r.lifecycle == nil {
+		return errors.New("sponsorship prefilter update requires a repository backed by a database connection")
 	}
-	_, err := r.pool.Exec(ctx,
+	_, err := r.lifecycle.Exec(ctx,
 		"UPDATE jobs SET explicit_sponsorship_denied = $2, updated_at = now() WHERE id = $1",
 		jobID, denied,
 	)
 	return err
-}
-
-// TouchSeenJobs advances last_seen_at for already-known jobs that appeared in
-// a complete source snapshot even when the connector skipped expensive detail
-// hydration for older postings.
-func (r *Repository) TouchSeenJobs(ctx context.Context, source string, companyID uuid.UUID, externalIDs []string, seenAt time.Time) error {
-	if r.pool == nil || len(externalIDs) == 0 {
-		return nil
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE jobs
-		SET last_seen_at = $4
-		WHERE source = $1
-		  AND company_id = $2
-		  AND external_id = ANY($3::text[])
-	`, source, companyID, externalIDs, seenAt)
-	return err
-}
-
-// CloseStaleJobs marks ACTIVE jobs for (source, companyID) CLOSED if they
-// weren't touched (last_seen_at) since cutoff, and returns how many were
-// closed. Intended to be called once per poll of a source that returns its
-// full current listing every time (see CloseStaleJobs SQL doc comment for
-// why aggregator sources with a page cap must not use this).
-func (r *Repository) CloseStaleJobs(ctx context.Context, source string, companyID uuid.UUID, cutoff time.Time) (int64, error) {
-	return r.q.CloseStaleJobs(ctx, db.CloseStaleJobsParams{
-		Source:     source,
-		CompanyID:  database.UUIDToPG(companyID),
-		LastSeenAt: database.PGTimestamptz(&cutoff),
-	})
 }
 
 // UpdateEmbedding stores a semantic embedding for a job (Phase E).

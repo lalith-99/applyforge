@@ -10,6 +10,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/lalithlochan/applyforge/apps/api/internal/database"
 	db "github.com/lalithlochan/applyforge/apps/api/internal/database/gen"
 )
@@ -17,6 +19,14 @@ import (
 // OpenTx returns sqlc Queries bound to a transaction that is rolled back
 // when the test finishes.
 func OpenTx(t *testing.T) *db.Queries {
+	t.Helper()
+	q, _ := OpenTxWithTransaction(t)
+	return q
+}
+
+// OpenTxWithTransaction returns both sqlc Queries and the underlying pgx
+// transaction for repositories that also contain carefully scoped raw SQL.
+func OpenTxWithTransaction(t *testing.T) (*db.Queries, pgx.Tx) {
 	t.Helper()
 
 	dsn := os.Getenv("DATABASE_URL")
@@ -41,5 +51,5 @@ func OpenTx(t *testing.T) *db.Queries {
 	}
 	t.Cleanup(func() { _ = tx.Rollback(ctx) })
 
-	return db.New(tx)
+	return db.New(tx), tx
 }
