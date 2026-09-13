@@ -209,7 +209,7 @@ Assume one user, 30 days, 30,000 **new/changed deduplicated** eligible-to-proces
 | Tailored resumes | 150 | 5,000 / 1,500 | Terra | 4.20 |
 | Critic checks | 150 | 6,500 / 400 | Luna | 0.27 |
 | Resume/profile maintenance | 4 | 6,000 / 1,200 | Terra | 0.11 |
-| **Total** | | | | **8.70** |
+| **Total** | | | | **8.69** |
 
 Formula for each chat row: `requests × (input_tokens × input_rate + output_tokens × output_rate) / 1,000,000`. The total uses unrounded row values. This excludes prompt-cache discounts and write charges, retries, escalations, infrastructure, paid discovery, taxes and browser execution services; it assumes the explicit token quantities are actually enforced and observed. A $15 AI ceiling leaves headroom but can still throttle workloads that exceed these assumptions.
 
@@ -330,6 +330,6 @@ This query cannot reveal provider attempts that were never logged. Reconcile aga
 
 ## 9. Validation record
 
-See the accompanying pull request for final check results. The baseline Python suite passed **108 tests** in an isolated environment without a real AI key. The initial Go suite passed with database-dependent integration tests skipped because no local `DATABASE_URL` was configured. A regression test was added that uses real commits and a deliberately invalid second insert to verify failed shortlist replacement preserves the previously committed set. It must run against PostgreSQL/pgvector in CI or the deployment test environment; a skipped test is not evidence of transactional correctness.
+Local verification: `go test ./...`, `go vet ./...`, and `git diff --check` passed after the fixes. The Python suite passed **108 tests** in an isolated environment without a real AI key. Database-dependent integration tests were skipped because no local PostgreSQL/pgvector database was available; installing PostgreSQL was blocked by the execution environment. Web code was not changed and the web build was not run. A regression test was added that uses real commits and a deliberately invalid second insert to verify failed shortlist replacement preserves the previously committed set. It must run against PostgreSQL/pgvector in CI or the deployment test environment; a skipped test is not evidence of transactional correctness.
 
-No model quality benchmark, nationwide coverage test, paid provider experiment, or real application submission was performed. The cost table and effort estimates are explicitly modeled. This review should be used as the next implementation contract, with the four shipped fixes clearly separated from the remaining design.
+No model quality benchmark, nationwide coverage test, paid provider experiment, or real application submission was performed. The cost table and effort estimates are explicitly modeled. This review should be used as the next implementation contract, with the four accompanying fixes clearly separated from the remaining design.
