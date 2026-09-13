@@ -1,89 +1,60 @@
-# ApplyForge — Architecture
+# ApplyForge architecture
 
-## System Overview
+Current baseline and upgrade direction, reviewed September 13, 2026. The detailed
+[code review and implementation design](ARCHITECTURE_REVIEW_2026-09-13.md) identifies remaining correctness,
+coverage, AI-cost and application-execution gaps. Proposed components in that document are not all implemented.
 
-```
-Next.js (apps/web)
-      │  HTTPS/JSON
-      ▼
-Go API (apps/api)  ──────────────►  PostgreSQL (primary DB, job queue, scheduler state)
-      │  HTTPS/JSON
-      ▼
-Python AI Worker (apps/ai-worker) ──► AI Provider (structured output only; currently a heuristic stand-in)
-      │
-      ▼
-Object Storage (S3-compatible: Cloudflare R2 / AWS S3; MinIO locally)
-```
+## Runtime boundaries
 
-Both the Go API and the Python AI worker read/write Object Storage directly (Go stores/serves resume source
-files and generated documents; Python reads resume source files for extraction and writes generated PDFs/DOCX).
+| Component | Current responsibilities |
+|---|---|
+| Next.js web | Account/onboarding, jobs, recommendations, resume review/preview, application tracking, learning and analytics. |
+| Go API | Authentication, business rules, source discovery/ingestion, matching, approval checks, database access and worker orchestration. |
+| Go background workers | PostgreSQL queue consumers for ingestion, resume/profile processing, enrichment, embeddings, recommendation computation and tailoring. Run in the API process today. |
+| Python FastAPI service | OpenAI structured requests and embeddings; heuristic fallbacks; PDF/DOCX text extraction and document generation. Called over HTTP by Go. |
+| PostgreSQL / pgvector | Users, source graph, jobs, sponsor evidence, deterministic results, embeddings, recommendation read model, task queue and usage events. |
+| S3-compatible storage | Resume uploads and generated documents; MinIO locally. |
 
-## Why this shape
+## Job and recommendation flow
 
-* **Next.js** — modern DX, App Router, server components where useful, deployed to Cloudflare.
-* **Go API** — owns all business/domain logic that must be reliable, transactional, and cheap to run:
-  auth integration, users/profiles, job ingestion/normalization/dedup, deterministic matching, application
-  tracking, scheduling, background job orchestration, analytics, rate limiting, authorization.
-* **Python AI worker** — owns everything that benefits from the Python AI/document ecosystem: resume/JD
-  parsing, transferable-skill reasoning, resume tailoring suggestions, Quick Prep, Defend This Bullet,
-  learning plans, PDF/DOCX generation. Stateless from the Go API's point of view — it is called
-  synchronously over HTTP for on-demand operations and is itself a consumer of the Postgres-backed job
-  queue for expensive/batch work.
-* **PostgreSQL** — single source of truth. Also used as the background job queue (`background_jobs` table,
-  `SELECT ... FOR UPDATE SKIP LOCKED`) and scheduler persistence. No Redis/Kafka/RabbitMQ/Temporal in the MVP.
-* **Object storage** — S3-compatible so Cloudflare R2 (initial) and AWS S3 (fallback) are interchangeable.
+Verified source discovery feeds `company_source_registry` and `job_sources`. Direct ATS connectors and
+optional broad providers produce raw postings. Go normalizes location/role/employment metadata, upserts
+jobs, links cross-source duplicates, records sponsorship exclusions and queues enrichment for selected
+new/changed dated U.S. jobs. Source poll and coverage endpoints expose acquisition health.
 
-## Explicitly excluded from MVP
+Recommendations combine hard filters, semantic retrieval, an independent lexical pool, deterministic
+scoring, company diversity, and AI ranking in groups of 20. Up to 20 recommendations are materialized per
+user. Replacement now uses a transaction and per-user lock so a failed write preserves the old set.
+This does not yet prevent an older computation from publishing after a newer candidate revision.
 
-Kubernetes, Kafka, RabbitMQ, Elasticsearch, Temporal, Redis (unless a concrete need appears), vector database,
-service mesh, event sourcing, dozens of microservices. See [MASTER_REQUIREMENTS.md](MASTER_REQUIREMENTS.md) §5, §62.
+Hourly refresh and catalog-change debouncing already exist. Persisted fit-judgment caches and an enforced
+AI spending gate do not yet exist. Review [AI_PIPELINE.md](AI_PIPELINE.md) before expanding volume.
 
-## Monorepo layout
+## Resume and application flow
 
-```
-apps/
-  web/         Next.js + TypeScript frontend
-  api/         Go backend (chi, pgx, sqlc, goose)
-  ai-worker/   Python FastAPI AI/document service
-packages/
-  contracts/   Shared API contract artifacts (OpenAPI schema, generated types)
-docs/          Architecture & product documentation (this folder)
-infra/
-  docker/      Local/shared Dockerfiles
-  railway/     Railway deployment config/notes
-  cloudflare/  Cloudflare Pages/Workers deployment notes
-.github/workflows/  CI
-docker-compose.yml  Local dev: Postgres + API + AI worker
-Makefile            Common dev commands
-```
+The user can review tailoring suggestions, attest to claims that require confirmation, generate a
+version and download PDF/DOCX. The application API stores reusable answers and tracks statuses/events.
+It does not submit to ATS systems. The proposed executor requires an immutable document/answers package,
+scoped approval, ownership checks, idempotent intent creation and confirmation receipts; see the review.
 
-## Cross-service contracts
+## Design decisions
 
-The Go API is the only backend surface the frontend talks to. The Go API calls the Python AI worker
-server-to-server over HTTP using a small internal client; the AI worker is never called directly from the
-browser. This keeps authorization, rate limiting, and caching centralized in Go.
+Retain the modular Go backend and PostgreSQL queue. Separate listing/detail/AI worker capacity before
+adding infrastructure. Keep catalog acquisition independent of user-specific AI work. Use source
+observations for tenant identity and lifecycle, with a stable canonical job above them. Add a local
+browser companion only for supported, permitted application flows; public ATS listing access is not
+submission authorization.
 
-`packages/contracts` will hold the OpenAPI spec generated from the Go API and any shared TypeScript types
-consumed by the frontend, once Phase 1+ introduces real endpoints.
+Local startup learns sources from the catalog and a sponsor-prioritized public ATS inventory. It no
+longer recreates the former fixed company list. This change does not delete existing sources or user data.
+An empty installation still needs discovered/imported sources and sponsor evidence for the relevant views.
 
-## Environments
+## Deployment and verification
 
-Local dev: Docker Compose (Postgres + api + ai-worker), web run via `pnpm dev` outside Docker for fast HMR.
-Deployed: web → Cloudflare, api & ai-worker → Railway, Postgres → Neon, storage → Cloudflare R2.
+Local development uses Docker Compose for PostgreSQL, MinIO, Go and Python; the web app runs separately.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for repository deployment configuration. This review did not inspect
+an active production deployment.
 
-## Status (through Phase 7)
-
-The full core loop is now live end-to-end: sign up → upload resume (parsed via the ai-worker into
-candidate skills + structured experience) → jobs are ingested hourly from real Greenhouse/Lever/Ashby boards
-→ deterministic Job Match Score computed per job/user → Tailor Resume produces STRICT/GROWTH/MAX_MATCH
-suggestions with a Resume Alignment Score → user approves/rejects suggestions. Object storage (MinIO
-locally, S3-compatible in production) was added in Phase 2 for resume files; a Postgres-backed background
-job queue (`internal/background`) processes resume parsing asynchronously.
-
-**Not yet real AI**: resume/JD parsing and tailoring suggestions all use deterministic heuristic
-implementations (no `AI_API_KEY` configured) — see AI_PIPELINE.md for why this is a documented scope
-decision, not a shortcut taken silently.
-
-Not yet built: Quick Prep / Defend This Bullet / Make Me Qualified (Phase 8), resume PDF/DOCX generation
-(Phase 9), application tracking (Phase 10), analytics (Phase 11), and the Immigration-Aware Job Matching
-sub-system described in MASTER_REQUIREMENTS.md (out of scope for "Phases 2-7" as enumerated).
+CI defines Go tests with PostgreSQL/pgvector, Python tests, web lint/build and Compose validation.
+Coverage and quality require additional corpus-based and source-lifecycle tests described in the review;
+a green unit suite alone does not establish complete job coverage or reliable automated applications.

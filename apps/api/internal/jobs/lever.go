@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,15 @@ type leverPosting struct {
 		Commitment string `json:"commitment"`
 	} `json:"categories"`
 	DescriptionPlain string `json:"descriptionPlain"`
+	Description      string `json:"description"`
+	Lists            []struct {
+		Text    string `json:"text"`
+		Content string `json:"content"`
+	} `json:"lists"`
+	AdditionalPlain string `json:"additionalPlain"`
+	Additional      string `json:"additional"`
+	Country         string `json:"country"`
+	WorkplaceType   string `json:"workplaceType"`
 }
 
 // Fetch retrieves all current postings for the board. Lever's public
@@ -75,8 +85,10 @@ func (s *LeverSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor, 
 			ExternalID:     p.ID,
 			Title:          p.Text,
 			CompanyName:    s.BoardToken,
-			Description:    p.DescriptionPlain,
+			Description:    leverDescription(p),
 			LocationText:   p.Categories.Location,
+			Country:        p.Country,
+			RemoteType:     leverRemoteType(p.WorkplaceType),
 			EmploymentType: p.Categories.Commitment,
 			ApplyURL:       firstNonEmpty(p.ApplyURL, p.HostedURL),
 			SourceURL:      p.HostedURL,
@@ -84,6 +96,42 @@ func (s *LeverSource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor, 
 		})
 	}
 	return jobs, nil, nil
+}
+
+// Lever keeps qualifications/responsibilities and closing disclosures outside
+// descriptionPlain. Preserve them before matching and sponsorship filtering.
+func leverDescription(p leverPosting) string {
+	parts := make([]string, 0, len(p.Lists)+2)
+	if body := strings.TrimSpace(firstNonEmpty(p.DescriptionPlain, stripTags(p.Description))); body != "" {
+		parts = append(parts, body)
+	}
+	for _, list := range p.Lists {
+		content := strings.TrimSpace(stripTags(list.Content))
+		if content == "" {
+			continue
+		}
+		if title := strings.TrimSpace(stripTags(list.Text)); title != "" {
+			content = title + "\n" + content
+		}
+		parts = append(parts, content)
+	}
+	if closing := strings.TrimSpace(firstNonEmpty(p.AdditionalPlain, stripTags(p.Additional))); closing != "" {
+		parts = append(parts, closing)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func leverRemoteType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "remote":
+		return "remote"
+	case "hybrid":
+		return "hybrid"
+	case "on-site", "onsite":
+		return "onsite"
+	default:
+		return ""
+	}
 }
 
 func firstNonEmpty(values ...string) string {

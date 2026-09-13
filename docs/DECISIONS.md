@@ -790,3 +790,14 @@ and `ai-worker` containers rebuilt together per the Phase I lesson.
    employer immigration evidence, deterministic scoring, and match-result persistence still happen for each
    candidate job. A later bulk-scoring pass can optimize those independently without changing score semantics.
 
+
+## September 13, 2026 — architecture review and job quality fixes
+
+See [the full review](ARCHITECTURE_REVIEW_2026-09-13.md) for 20 findings, the target source-observation
+model, an AI budget/cache design and a scoped approval-to-submission contract. The review separates
+confirmed code behavior from modeled costs and future integrations.
+
+This change preserves Lever's structured requirements and closing disclosures, keeps lexical retrieval
+capacity independent of semantic results, makes recommendation replacement transactional and serialized
+per user, and removes the active hardcoded development-company bootstrap. Existing database records and
+historical migrations are retained. Automatic submission and the larger migrations remain proposed work.

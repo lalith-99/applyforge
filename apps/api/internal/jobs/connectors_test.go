@@ -81,6 +81,44 @@ func TestLeverSource_Fetch_EmptyBoard(t *testing.T) {
 	}
 }
 
+func TestLeverSource_PreservesRequirementsAndSponsorshipDisclosure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"full-jd","text":"Java Developer","country":"US","workplaceType":"hybrid","categories":{"location":"New York","commitment":"Full-time"},"descriptionPlain":"Build services.","description":"<p>Build services.</p>","lists":[{"text":"Qualifications","content":"<li>Java and Spring Boot</li><li>Kafka experience</li>"}],"additionalPlain":"We do not sponsor visas.","additional":"<p>We do not sponsor visas.</p>"}]`))
+	}))
+	defer server.Close()
+	source := NewLeverSource("acme")
+	source.BaseURL = server.URL
+	raw, _, err := source.Fetch(context.Background(), nil)
+	if err != nil || len(raw) != 1 {
+		t.Fatalf("Fetch: count=%d error=%v", len(raw), err)
+	}
+	for _, want := range []string{"Build services.", "Qualifications", "Java and Spring Boot", "Kafka experience", "We do not sponsor visas."} {
+		if !strings.Contains(raw[0].Description, want) {
+			t.Fatalf("missing %q in full description: %q", want, raw[0].Description)
+		}
+	}
+	if strings.Count(raw[0].Description, "Build services.") != 1 || strings.Count(raw[0].Description, "We do not sponsor visas.") != 1 {
+		t.Fatalf("HTML and plain-text variants must not duplicate content: %q", raw[0].Description)
+	}
+	if raw[0].Country != "US" || raw[0].RemoteType != "hybrid" {
+		t.Fatalf("lost provider location metadata: %+v", raw[0])
+	}
+	if !explicitSponsorshipDenied(raw[0].Description) {
+		t.Fatal("closing sponsorship disclosure must reach the exclusion filter")
+	}
+}
+
+func TestLeverDescription_HTMLFallback(t *testing.T) {
+	p := leverPosting{Description: "<p>Build services.</p>", Additional: "<p>Closing disclosure.</p>"}
+	if got := leverDescription(p); got != "Build services.\n\nClosing disclosure." {
+		t.Fatalf("unexpected HTML fallback: %q", got)
+	}
+	if got := leverRemoteType("unspecified"); got != "" {
+		t.Fatalf("unknown work arrangement must remain unknown: %q", got)
+	}
+}
+
 func TestAshbySource_Fetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
