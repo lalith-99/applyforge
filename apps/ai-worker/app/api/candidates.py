@@ -42,6 +42,7 @@ def build_profile(request: CandidateProfileRequest, response: Response) -> Candi
 @router.post("/rank-jobs", response_model=RankJobsResponse)
 def rank_jobs(request: RankJobsRequest, response: Response) -> RankJobsResponse:
     if not request.jobs:
+        response.headers["X-ApplyForge-AI-Mode"] = "heuristic"
         return RankJobsResponse(result=rank_jobs_heuristic(request))
 
     if is_configured():
@@ -49,8 +50,10 @@ def rank_jobs(request: RankJobsRequest, response: Response) -> RankJobsResponse:
         try:
             result = rank_jobs_ai(request)
             apply_usage_headers(response)
+            response.headers["X-ApplyForge-AI-Mode"] = "provider"
             return RankJobsResponse(result=result)
         except AIProviderError:
             logger.warning("AI job ranking failed, falling back to heuristic", exc_info=True)
 
+    response.headers["X-ApplyForge-AI-Mode"] = "heuristic"
     return RankJobsResponse(result=rank_jobs_heuristic(request))

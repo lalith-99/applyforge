@@ -13,6 +13,7 @@ def test_rank_jobs_returns_empty_for_no_jobs(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     response = client.post("/v1/candidates/rank-jobs", json={"jobs": []})
     assert response.status_code == 200
+    assert response.headers["X-ApplyForge-AI-Mode"] == "heuristic"
     assert response.json()["result"]["rankings"] == []
 
 
@@ -34,6 +35,7 @@ def test_rank_jobs_falls_back_to_heuristic_when_not_configured(monkeypatch) -> N
         },
     )
     assert response.status_code == 200
+    assert response.headers["X-ApplyForge-AI-Mode"] == "heuristic"
     rankings = response.json()["result"]["rankings"]
     assert len(rankings) == 1
     assert rankings[0]["job_id"] == "job-1"
@@ -52,6 +54,7 @@ def test_rank_jobs_uses_ai_when_configured(monkeypatch) -> None:
         json={"jobs": [{"job_id": "job-1", "title": "Backend Engineer", "company_name": "Acme"}]},
     )
     assert response.status_code == 200
+    assert response.headers["X-ApplyForge-AI-Mode"] == "provider"
     assert response.json()["result"]["rankings"][0]["fit_score"] == 95
 
 
@@ -79,4 +82,5 @@ def test_rank_jobs_falls_back_on_ai_error(monkeypatch) -> None:
         },
     )
     assert response.status_code == 200
+    assert response.headers["X-ApplyForge-AI-Mode"] == "heuristic"
     assert response.json()["result"]["rankings"][0]["recommendation"] == "SKIP"

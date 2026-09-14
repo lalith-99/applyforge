@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateProductionConfig_RejectsMissingDependencies(t *testing.T) {
@@ -19,6 +20,34 @@ func TestValidateProductionConfig_RejectsMissingDependencies(t *testing.T) {
 	err := validateProductionConfig("production")
 	if err == nil || !strings.Contains(err.Error(), "DATABASE_URL") {
 		t.Fatalf("expected missing production config error, got %v", err)
+	}
+}
+
+func TestRankingPolicyFromEnv_DefaultsReserveTailoringBudget(t *testing.T) {
+	for _, key := range []string{
+		"AI_RANKING_DAILY_BUDGET_USD", "AI_RANKING_MONTHLY_BUDGET_USD",
+		"AI_RANKING_ESTIMATED_USD_PER_BATCH", "AI_RANKING_CACHE_TTL_DAYS",
+		"AI_RANKING_CACHE_VERSION", "OPENAI_RANKING_MODEL",
+	} {
+		t.Setenv(key, "")
+	}
+	cfg, version, ttl, err := rankingPolicyFromEnv()
+	if err != nil {
+		t.Fatalf("rankingPolicyFromEnv: %v", err)
+	}
+	if cfg.DailyUSD != 1 || cfg.MonthlyUSD != 10 || cfg.EstimatedBatchUSD != 0.01 {
+		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+	if version != "rank-v1:gpt-5.6-luna" || ttl != 30*24*time.Hour {
+		t.Fatalf("unexpected cache policy: version=%q ttl=%s", version, ttl)
+	}
+}
+
+func TestRankingPolicyFromEnv_RejectsDailyAboveMonthly(t *testing.T) {
+	t.Setenv("AI_RANKING_DAILY_BUDGET_USD", "11")
+	t.Setenv("AI_RANKING_MONTHLY_BUDGET_USD", "10")
+	if _, _, _, err := rankingPolicyFromEnv(); err == nil {
+		t.Fatal("expected invalid budget configuration to fail startup")
 	}
 }
 

@@ -832,3 +832,21 @@ historical migrations are retained. Automatic submission and the larger migratio
    is evaluated first, and recent certified LCA history remains the fallback for roles without a clear signal.
 4. **Recommendation reads revalidate these constraints.** A stale materialized recommendation cannot bypass
    a newly strict full-time preference or the candidate's H-1B evidence requirement while recomputation waits.
+
+## Durable AI ranking cache and conservative budget fence
+
+1. **Cache the judgment input, not merely the user/job pair.** The SHA-256 key covers the candidate summary,
+   normalized target roles, the complete deterministic ranking input, policy version, and model. Profile,
+   job-requirement, prompt, or model changes therefore miss safely; unchanged hourly refreshes reuse the
+   provider-backed judgment.
+2. **Only provider output is cached or charged.** The AI worker labels ranking responses as `provider` or
+   `heuristic`. Missing keys, provider failures, and heuristic fallback release the reservation and leave
+   `HasJudgment=false`, allowing the existing deterministic scorer to remain the honest fallback.
+3. **Budget decisions are serialized in PostgreSQL.** Each cache-miss batch reserves a conservative debit
+   under an advisory transaction lock before the network call. Active reservations and consumed debits count
+   toward UTC daily/monthly caps, so concurrent recommendation workers cannot double-spend the same allowance.
+   Abandoned reservations expire after ten minutes.
+4. **Ranking does not consume the full interactive AI envelope.** Defaults are `$1/day`, `$10/month`, and
+   `$0.01` reserved per 20-job batch. This leaves room inside the proposed `$15/month` operating target for
+   user-triggered resume parsing and tailoring. Operators must keep the per-batch estimate conservative using
+   observed `ai_usage` data; setting a budget to zero disables provider ranking without disabling recommendations.

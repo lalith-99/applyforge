@@ -13,19 +13,19 @@ outputs and embeddings when configured, with deterministic fallbacks for many te
 - Job requirements cached per job ID and a parser-versioned content hash.
 - Eager enrichment/embedding on selected new or changed dated U.S. postings; embeddings can be disabled.
 - AI ranking in synchronous groups of 20, after deterministic matching; recommendation results are
-  materialized in PostgreSQL.
+  materialized in PostgreSQL. Provider-backed judgments are cached by complete semantic input and only
+  misses are reranked. Daily/monthly PostgreSQL reservations fence ranking spend before each call.
 - Tailoring and learning operations triggered by user requests.
 - Usage metadata returned in HTTP headers and recorded in `ai_usage`, including model, tokens and
   optional estimated cost. Missing price settings yield NULL cost, not free usage.
 
 ## Remaining limitations
 
-Materialized recommendations are not a durable cache of candidate/job AI judgments: refreshes rerank
-unchanged pairs. Embedding storage does not record its input hash for compare-and-set writes. Concurrent
-parsing misses can call the provider more than once. Heuristic fallback provenance is not consistently
-represented in downstream results. One input/output pricing pair cannot accurately price all configured
-model overrides; per-call metadata can be overwritten in a multi-call request. There is no enforced
-monthly AI budget or atomic budget reservation before sending requests.
+Embedding storage does not record its input hash for compare-and-set writes. Concurrent parsing misses can
+call the provider more than once. Heuristic fallback provenance is now explicit for ranking, but not yet
+consistent across every AI operation. One input/output pricing pair cannot accurately price all configured
+model overrides, and per-call metadata can be overwritten in a multi-call request. Ranking has an enforced
+conservative budget fence; non-ranking operations still need per-model accounting and shared budget policy.
 
 Structured output validates shape, not factual evidence. The generated interview probability score is
 not an empirically calibrated chance of obtaining an interview. Resume suggestions still need evidence
@@ -36,9 +36,11 @@ review and scoped approval before they can be used in an application package.
 See [sections 5–7 of the architecture review](ARCHITECTURE_REVIEW_2026-09-13.md) for the full design and
 current sourced pricing. In implementation order:
 
-1. Record per-attempt/model usage and fallback provenance, including billed failures and cache charges.
-2. Add versioned JD, embedding, profile, judgment and tailoring caches with cross-worker single-flight.
-3. Enforce a budget using atomic worst-case reservations, reconciliation and deterministic degradation.
+1. Extend per-attempt/model usage and fallback provenance beyond ranking, including billed failures.
+2. Add versioned embedding, profile and tailoring caches with cross-worker single-flight; ranking judgments
+   are already versioned and durable.
+3. Extend ranking's atomic conservative reservations with actual-cost reconciliation and shared protected
+   allocations for interactive operations.
 4. Gate high-volume work using canonical identity, eligibility and uncertainty before invoking AI.
 5. Rerank changed/new candidate-job pairs; update freshness/diversity without another model call.
 6. Evaluate cheaper tailoring on a held-out evidence set; escalate only on defined quality failures.

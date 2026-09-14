@@ -42,13 +42,21 @@ type JobRankingResult struct {
 	Reason                    string   `json:"reason"`
 }
 
+type RankJobsResponse struct {
+	Rankings []JobRankingResult
+	Mode     string
+}
+
 // RankJobs requests AI job-fit judgments for a batch of jobs (Phase H).
-func (c *Client) RankJobs(ctx context.Context, req RankJobsRequest) ([]JobRankingResult, error) {
+func (c *Client) RankJobs(ctx context.Context, req RankJobsRequest) (RankJobsResponse, error) {
 	var out struct {
 		Result struct {
 			Rankings []JobRankingResult `json:"rankings"`
 		} `json:"result"`
 	}
-	err := c.postJSON(ctx, "rank_jobs", "/v1/candidates/rank-jobs", req, &out)
-	return out.Result.Rankings, err
+	headers, err := c.postJSONWithResponseHeaders(ctx, "rank_jobs", "/v1/candidates/rank-jobs", req, &out)
+	return RankJobsResponse{
+		Rankings: out.Result.Rankings,
+		Mode:     headers.Get("X-ApplyForge-AI-Mode"),
+	}, err
 }
