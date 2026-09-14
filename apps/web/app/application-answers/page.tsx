@@ -61,7 +61,7 @@ const FIELDS: { key: keyof FormState; label: string; hint?: string; type?: strin
   { key: "location", label: "Current location" },
   { key: "desired_location", label: "Desired / preferred location" },
   { key: "work_authorization", label: "Work authorization", hint: "Use the wording you want submitted on application forms." },
-  { key: "sponsorship", label: "Sponsorship answer", hint: "For example, the exact answer you want used when an employer asks whether sponsorship is required." },
+  { key: "sponsorship", label: "Sponsorship answer", hint: "Use the exact answer you want submitted when an employer asks whether sponsorship is required." },
   { key: "salary_expectation", label: "Salary expectation", hint: "Leave blank if you prefer to answer job-by-job." },
   { key: "notice_period", label: "Notice period / availability" },
   { key: "linkedin_url", label: "LinkedIn URL", type: "url" },
@@ -103,7 +103,7 @@ export default function ApplicationAnswersPage() {
       ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
       common_answers: answersQuery.data?.CommonAnswers ?? {},
     }),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       queryClient.setQueryData(["application-answers"], data);
       setSavedMessage("Application answers saved. New application packages will snapshot these exact values.");
       window.setTimeout(() => setSavedMessage(null), 5000);
@@ -147,7 +147,7 @@ export default function ApplicationAnswersPage() {
               </label>
             ))}
 
-            <div className="md:col-span-2 flex items-center gap-3 border-t border-black/10 pt-5 dark:border-white/15">
+            <div className="flex items-center gap-3 border-t border-black/10 pt-5 md:col-span-2 dark:border-white/15">
               <button type="submit" disabled={save.isPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
                 {save.isPending ? "Saving…" : "Save application answers"}
               </button>
