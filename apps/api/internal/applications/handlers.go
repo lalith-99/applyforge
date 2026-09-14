@@ -65,6 +65,10 @@ func (h *Handlers) handleSave(w http.ResponseWriter, r *http.Request) {
 
 	app, err := h.svc.Save(r.Context(), u.ID, jobID, resumeVersionID, req.MatchScore)
 	if err != nil {
+		if errors.Is(err, ErrResumeVersionMismatch) {
+			httpx.WriteError(w, http.StatusBadRequest, "resume version must belong to the user and job")
+			return
+		}
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save application")
 		return
 	}
