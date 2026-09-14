@@ -17,6 +17,22 @@ type SubmissionCompanionToken struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type RevokeSubmissionCompanionTokensForIntentParams struct {
+	UserID   pgtype.UUID
+	IntentID pgtype.UUID
+}
+
+const revokeSubmissionCompanionTokensForIntent = `
+UPDATE submission_companion_tokens
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1 AND intent_id = $2 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeSubmissionCompanionTokensForIntent(ctx context.Context, arg RevokeSubmissionCompanionTokensForIntentParams) error {
+	_, err := q.db.Exec(ctx, revokeSubmissionCompanionTokensForIntent, arg.UserID, arg.IntentID)
+	return err
+}
+
 type CreateSubmissionCompanionTokenParams struct {
 	UserID    pgtype.UUID
 	IntentID  pgtype.UUID
