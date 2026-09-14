@@ -72,9 +72,9 @@ func TestRecommendationRoleDirectionEligible_GenericTargetDoesNotOverFilter(t *t
 
 func TestRecommendationHighConfidenceSpecialty_NormalizesATSTitlePunctuation(t *testing.T) {
 	for title, expected := range map[string]string{
-		"Security/Engineer":       "security",
+		"Security/Engineer":         "security",
 		"Machine-Learning Engineer": "ml",
-		"Data_Platform Engineer": "data",
+		"Data_Platform Engineer":    "data",
 		"Site Reliability|Engineer": "sre",
 	} {
 		got, ok := recommendationHighConfidenceSpecialty(title)
