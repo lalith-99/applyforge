@@ -5,10 +5,12 @@ import { useMemo, useState } from "react";
 
 import { API_BASE_URL, api } from "@/lib/api";
 import type { ApplicationWithJob, ResumeVersion } from "@/types/api";
-import type { ApplicationApproval, ApplicationPackage, SubmissionIntent } from "@/types/apply";
+import type { ApplicationApproval, ApplicationPackage, CompanionHandoff, SubmissionIntent } from "@/types/apply";
 
 const CONFIRMATION_VERSION = "submit-once-v1";
 const CONFIRMATION_TEXT = "I approve submitting this exact application package once.";
+const HANDOFF_MESSAGE = "APPLYFORGE_COMPANION_HANDOFF";
+const HANDOFF_ACK = "APPLYFORGE_COMPANION_ACK";
 
 type Step = "review" | "approved" | "ready";
 
@@ -25,6 +27,8 @@ export function ApplyReviewModal({
   const [intent, setIntent] = useState<SubmissionIntent | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [companionStarting, setCompanionStarting] = useState(false);
+  const [companionNotice, setCompanionNotice] = useState<string | null>(null);
 
   const buildReview = useMutation({
     mutationFn: async () => {
@@ -39,6 +43,7 @@ export function ApplyReviewModal({
       setApproval(null);
       setIntent(null);
       setAcknowledged(false);
+      setCompanionNotice(null);
     },
     onError: (e) => setError(e instanceof Error ? e.message : "Could not build application package."),
   });
@@ -73,9 +78,56 @@ export function ApplyReviewModal({
   const step: Step = intent ? "ready" : approval ? "approved" : "review";
   const answers = useMemo(() => pkg?.answers_json ?? {}, [pkg]);
 
-  const launch = () => {
-    if (!pkg || !intent) return;
-    window.open(pkg.destination_url, "_blank", "noopener,noreferrer");
+  const launchCompanion = async () => {
+    if (!pkg || !resume || !intent || companionStarting) return;
+    setCompanionStarting(true);
+    setError(null);
+    setCompanionNotice(null);
+
+    // Open synchronously from the user's click so popup blockers do not prevent
+    // the ATS navigation after the secure handoff is prepared.
+    const target = window.open("about:blank", "_blank");
+    if (!target) {
+      setCompanionStarting(false);
+      setError("Your browser blocked the ATS tab. Allow popups for ApplyForge and try again.");
+      return;
+    }
+    target.document.title = "Preparing ApplyForge application…";
+
+    try {
+      const [handoff, pdfBase64] = await Promise.all([
+        api.post<CompanionHandoff>(`/submission-intents/${intent.id}/companion-handoff`),
+        downloadResumeBase64(resume.ID),
+      ]);
+
+      const detected = await sendCompanionHandoff({
+        source: "applyforge-web-v1",
+        type: HANDOFF_MESSAGE,
+        payload: {
+          apiBaseUrl: API_BASE_URL,
+          intentId: handoff.intent_id,
+          packageId: handoff.package_id,
+          token: handoff.token,
+          expiresAt: handoff.expires_at,
+          destinationUrl: pkg.destination_url,
+          destinationOrigin: pkg.destination_origin,
+          resumeFilename: "applyforge-resume.pdf",
+          resumePdfBase64: pdfBase64,
+        },
+      });
+
+      if (detected) {
+        setCompanionNotice("Browser companion received the approved package. It will offer to fill and submit on the ATS page.");
+      } else {
+        setCompanionNotice("Browser companion was not detected. The ATS page is opening for manual completion; ApplyForge will not mark it applied automatically.");
+      }
+      target.location.href = pkg.destination_url;
+    } catch (e) {
+      target.close();
+      setError(e instanceof Error ? e.message : "Could not prepare the browser companion handoff.");
+    } finally {
+      setCompanionStarting(false);
+    }
   };
 
   return (
@@ -87,20 +139,14 @@ export function ApplyReviewModal({
             <h2 className="text-xl font-semibold">{app.Title}</h2>
             <p className="text-sm text-black/60 dark:text-white/60">{app.CompanyName}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md border px-3 py-1.5 text-sm dark:border-white/15">
-            Close
-          </button>
+          <button type="button" onClick={onClose} className="rounded-md border px-3 py-1.5 text-sm dark:border-white/15">Close</button>
         </div>
 
         {!pkg && (
           <div className="rounded-lg border border-black/10 p-5 dark:border-white/15">
             <h3 className="font-medium">Build exact application package</h3>
-            <p className="mt-2 text-sm text-black/60 dark:text-white/60">
-              ApplyForge will snapshot the job-scoped tailored resume, saved application answers, and the stored ATS destination. Any later change creates a different package and requires another approval.
-            </p>
-            <button type="button" onClick={() => buildReview.mutate()} disabled={buildReview.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-60">
-              {buildReview.isPending ? "Building review…" : "Build review package"}
-            </button>
+            <p className="mt-2 text-sm text-black/60 dark:text-white/60">ApplyForge will snapshot the job-scoped tailored resume, saved application answers, and the stored ATS destination. Any later change creates a different package and requires another approval.</p>
+            <button type="button" onClick={() => buildReview.mutate()} disabled={buildReview.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-60">{buildReview.isPending ? "Building review…" : "Build review package"}</button>
           </div>
         )}
 
@@ -160,17 +206,56 @@ export function ApplyReviewModal({
 
             {step === "ready" && intent && (
               <section className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950 dark:bg-blue-950/20 dark:text-blue-100">
-                <p className="font-medium">Submission intent ready.</p><p className="mt-1">Intent {intent.id.slice(0, 8)}… is bound to this package with idempotency key {intent.idempotency_key.slice(0, 12)}…</p>
-                <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={launch} className="rounded-md bg-foreground px-4 py-2 text-background">Open ATS application →</button><a href={pkg.destination_url} target="_blank" rel="noreferrer" className="rounded-md border border-blue-300 px-4 py-2">Open in new tab</a></div>
-                <p className="mt-3 text-xs opacity-80">The server will not mark this application as applied merely because the ATS page was opened. A confirmed executor receipt is required.</p>
+                <p className="font-medium">Submission intent ready.</p>
+                <p className="mt-1">Intent {intent.id.slice(0, 8)}… is bound to this package with idempotency key {intent.idempotency_key.slice(0, 12)}…</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void launchCompanion()} disabled={companionStarting} className="rounded-md bg-foreground px-4 py-2 text-background disabled:opacity-50">{companionStarting ? "Preparing companion…" : "Continue with browser companion →"}</button>
+                  <a href={pkg.destination_url} target="_blank" rel="noreferrer" className="rounded-md border border-blue-300 px-4 py-2">Open manually</a>
+                </div>
+                <p className="mt-3 text-xs opacity-80">The companion can submit only this exact approved package. ApplyForge changes the application to Applied only after a fenced executor receipt is confirmed.</p>
               </section>
             )}
           </div>
         )}
 
         {approval && <p className="mt-4 text-xs text-black/50 dark:text-white/50">Approval expires {new Date(approval.expires_at).toLocaleString()}.</p>}
+        {companionNotice && <p className="mt-4 rounded-md bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/20 dark:text-blue-100">{companionNotice}</p>}
         {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>
     </div>
   );
+}
+
+async function downloadResumeBase64(resumeVersionID: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/resume-versions/${resumeVersionID}/download?format=pdf`, {
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error("Could not load the approved resume PDF for the browser companion.");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function sendCompanionHandoff(message: unknown): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("message", onMessage);
+      resolve(value);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const data = event.data as { source?: string; type?: string } | undefined;
+      if (data?.source === "applyforge-companion-v1" && data.type === HANDOFF_ACK) finish(true);
+    };
+    window.addEventListener("message", onMessage);
+    window.postMessage(message, window.location.origin);
+    window.setTimeout(() => finish(false), 700);
+  });
 }
