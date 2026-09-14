@@ -40,6 +40,7 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/submission-intents/{id}/begin", h.handleBeginSubmission)
 	r.Post("/submission-intents/{id}/confirm", h.handleConfirmSubmission)
 	r.Post("/submission-intents/{id}/uncertain", h.handleUncertainSubmission)
+	r.Post("/submission-intents/{id}/companion-handoff", h.handleCreateCompanionHandoff)
 	r.Get("/application-answers", h.handleGetAnswers)
 	r.Patch("/application-answers", h.handleUpdateAnswers)
 }
