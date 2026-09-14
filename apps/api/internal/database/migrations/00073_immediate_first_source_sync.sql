@@ -3,6 +3,7 @@
 -- instead of waiting for the next periodic source scheduler tick. Keep the
 -- invariant at the database boundary because job_sources can be promoted by
 -- several paths (inspection, broad-source ingestion, bootstrap/backfill).
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION enqueue_initial_job_source_sync()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -21,6 +22,7 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+-- +goose StatementEnd
 
 CREATE TRIGGER job_sources_enqueue_initial_sync
 AFTER INSERT OR UPDATE OF enabled, company_id, board_token
