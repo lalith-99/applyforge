@@ -433,7 +433,7 @@ func (s *IngestionService) EnqueueSyncTasks(ctx context.Context) error {
 		slog.Info("closed stale jobs from retired manual sources", "count", closed)
 	}
 
-	sources, err := s.repo.ListDueJobSources(ctx)
+	sources, err := s.repo.ListPrioritizedDueJobSources(ctx)
 	if err != nil {
 		return err
 	}
