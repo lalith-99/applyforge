@@ -37,6 +37,8 @@ const (
 	DailyRecommendationMaxPerCompany  = 2
 	MinStrongDailyRecommendationScore = 65
 	MinBackfillDailyScore             = 60
+	dailyRecommendationMaxAge         = 24 * time.Hour
+	dailyRecommendationFutureSkew     = 5 * time.Minute
 )
 
 // ComputeWorker runs the full funnel (Phase G's Recommend + Phase H's
@@ -83,7 +85,23 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 		return fmt.Errorf("load candidate profile: %w", err)
 	}
 
-	ranked, err := w.airankSvc.Rank(ctx, prof.Summary, prof.TargetRoles, candidates)
+	// Recommend already pushes the 24-hour cutoff into SQL. Re-check it here
+	// immediately before paid AI reranking so an undated, stale, or malformed
+	// future-dated row can never consume reranking tokens if upstream source
+	// metadata or retrieval behavior regresses. first_seen_at is deliberately
+	// not a fallback: "discovered recently" is not evidence that a job was
+	// actually posted in the last 24 hours.
+	freshCandidates := strictFreshRecommendationCandidates(candidates, time.Now().UTC())
+	if len(freshCandidates) == 0 {
+		slog.Info("daily recommendation candidates rejected before AI reranking",
+			"user_id", userID,
+			"candidate_count", len(candidates),
+			"fresh_candidate_count", 0,
+		)
+		return w.repo.ReplaceForUser(ctx, userID, nil)
+	}
+
+	ranked, err := w.airankSvc.Rank(ctx, prof.Summary, prof.TargetRoles, freshCandidates)
 	if err != nil {
 		return fmt.Errorf("rank: %w", err)
 	}
@@ -93,11 +111,30 @@ func (w *ComputeWorker) Handle(ctx context.Context, job background.Job) error {
 	slog.Info("daily recommendation shortlist computed",
 		"user_id", userID,
 		"candidate_count", len(candidates),
+		"fresh_candidate_count", len(freshCandidates),
 		"ranked_count", len(ranked),
 		"recommendation_count", len(recs),
 		"candidate_profile_version", version,
 	)
 	return w.repo.ReplaceForUser(ctx, userID, recs)
+}
+
+func strictFreshRecommendationCandidates(candidates []matching.RankedJob, now time.Time) []matching.RankedJob {
+	fresh := make([]matching.RankedJob, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Job.PostedAt == nil {
+			continue
+		}
+		postedAt := candidate.Job.PostedAt.UTC()
+		if postedAt.After(now.Add(dailyRecommendationFutureSkew)) {
+			continue
+		}
+		if postedAt.Before(now.Add(-dailyRecommendationMaxAge)) {
+			continue
+		}
+		fresh = append(fresh, candidate)
+	}
+	return fresh
 }
 
 // dailyRecommendationCandidate carries company identity until the final
