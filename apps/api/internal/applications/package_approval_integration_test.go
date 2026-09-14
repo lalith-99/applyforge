@@ -46,7 +46,7 @@ func TestApplicationPackage_BuildApproveAndRevoke(t *testing.T) {
 		NormalizedTitle: "backend engineer",
 		Description:     "Build APIs",
 		ContentHash:     "package-test-" + externalID,
-		ApplyURL:         &applyURL,
+		ApplyURL:        &applyURL,
 	})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
@@ -69,7 +69,7 @@ func TestApplicationPackage_BuildApproveAndRevoke(t *testing.T) {
 
 	fullName := "Ada Example"
 	if _, err := appRepo.UpsertAnswers(ctx, user.ID, applications.UpsertAnswersInput{
-		FullName: &fullName,
+		FullName:      &fullName,
 		CommonAnswers: []byte(`{"authorized":true,"sponsorship":"required"}`),
 	}); err != nil {
 		t.Fatalf("save answers: %v", err)
