@@ -47,6 +47,8 @@ type CompanionBundle struct {
 
 // CreateHandoff mints a high-entropy capability for one PENDING intent. Only
 // the SHA-256 digest is stored, so a database read cannot recover the bearer.
+// Any older live capability for the same intent is revoked first, ensuring a
+// user-triggered handoff rotation invalidates a previously leaked/stale token.
 func (s *CompanionService) CreateHandoff(ctx context.Context, userID, intentID uuid.UUID) (CompanionHandoff, error) {
 	intent, err := s.applications.GetSubmissionIntent(ctx, userID, intentID)
 	if err != nil {
@@ -54,6 +56,13 @@ func (s *CompanionService) CreateHandoff(ctx context.Context, userID, intentID u
 	}
 	if intent.Status != SubmissionPending {
 		return CompanionHandoff{}, ErrStaleSubmissionLease
+	}
+
+	if err := s.repo.q.RevokeSubmissionCompanionTokensForIntent(ctx, db.RevokeSubmissionCompanionTokensForIntentParams{
+		UserID:   database.UUIDToPG(userID),
+		IntentID: database.UUIDToPG(intentID),
+	}); err != nil {
+		return CompanionHandoff{}, err
 	}
 
 	raw := make([]byte, 32)
