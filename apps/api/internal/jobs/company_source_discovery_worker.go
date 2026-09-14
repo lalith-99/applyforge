@@ -175,7 +175,7 @@ func NewCompanySourceDiscoveryWorker(
 func (w *CompanySourceDiscoveryWorker) Handle(ctx context.Context, job background.Job) error {
 	var payload ResolveCompanySourcePayload
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
-		return fmt.Errorf("decode company source inspection payload: %w", err)
+		return fmt.Errorf("decode company source discovery payload: %w", err)
 	}
 	companyID, err := uuid.Parse(payload.CompanyID)
 	if err != nil {
