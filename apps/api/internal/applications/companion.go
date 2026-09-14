@@ -18,17 +18,7 @@ import (
 
 const companionTokenLifetime = 20 * time.Minute
 
-var (
-	ErrCompanionUnauthorized     = errors.New("invalid or expired companion token")
-	ErrCompanionResumeUnavailable = errors.New("approved resume PDF is unavailable")
-)
-
-// StorageGetter is the only object-storage capability the browser companion
-// requires. The raw token never grants arbitrary storage access; only the PDF
-// referenced by the already-approved package can be read.
-type StorageGetter interface {
-	Get(ctx context.Context, key string) ([]byte, error)
-}
+var ErrCompanionUnauthorized = errors.New("invalid or expired companion token")
 
 // CompanionService coordinates the short-lived capability handed from the web
 // UI to the browser extension. Normal user sessions mint the capability; ATS
@@ -36,11 +26,10 @@ type StorageGetter interface {
 type CompanionService struct {
 	applications *Service
 	repo         *Repository
-	storage      StorageGetter
 }
 
-func NewCompanionService(applications *Service, repo *Repository, storage StorageGetter) *CompanionService {
-	return &CompanionService{applications: applications, repo: repo, storage: storage}
+func NewCompanionService(applications *Service, repo *Repository) *CompanionService {
+	return &CompanionService{applications: applications, repo: repo}
 }
 
 type CompanionHandoff struct {
@@ -51,11 +40,9 @@ type CompanionHandoff struct {
 }
 
 type CompanionBundle struct {
-	Intent            SubmissionIntent   `json:"intent"`
-	Package           ApplicationPackage `json:"package"`
-	ResumeContent     json.RawMessage     `json:"resume_content"`
-	ResumePDFAvailable bool               `json:"resume_pdf_available"`
-	ResumeFilename    string              `json:"resume_filename"`
+	Intent        SubmissionIntent   `json:"intent"`
+	Package       ApplicationPackage `json:"package"`
+	ResumeContent json.RawMessage    `json:"resume_content"`
 }
 
 // CreateHandoff mints a high-entropy capability for one PENDING intent. Only
@@ -78,8 +65,8 @@ func (s *CompanionService) CreateHandoff(ctx context.Context, userID, intentID u
 	expiresAt := time.Now().UTC().Add(companionTokenLifetime)
 
 	_, err = s.repo.q.CreateSubmissionCompanionToken(ctx, db.CreateSubmissionCompanionTokenParams{
-		UserID: database.UUIDToPG(userID),
-		IntentID: database.UUIDToPG(intentID),
+		UserID:    database.UUIDToPG(userID),
+		IntentID:  database.UUIDToPG(intentID),
 		TokenHash: tokenHash,
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
@@ -124,47 +111,17 @@ func (s *CompanionService) Bundle(ctx context.Context, intentID uuid.UUID, token
 		return CompanionBundle{}, err
 	}
 	version, err := s.repo.q.GetResumeVersionForUser(ctx, db.GetResumeVersionForUserParams{
-		ID: database.UUIDToPG(pkg.ResumeVersionID), UserID: database.UUIDToPG(userID),
+		ID:     database.UUIDToPG(pkg.ResumeVersionID),
+		UserID: database.UUIDToPG(userID),
 	})
 	if err != nil {
 		return CompanionBundle{}, err
 	}
 	return CompanionBundle{
-		Intent: intent,
-		Package: pkg,
+		Intent:        intent,
+		Package:       pkg,
 		ResumeContent: append(json.RawMessage(nil), version.ContentJson...),
-		ResumePDFAvailable: version.PdfStorageKey.Valid && version.PdfStorageKey.String != "",
-		ResumeFilename: "applyforge-resume.pdf",
 	}, nil
-}
-
-func (s *CompanionService) ResumePDF(ctx context.Context, intentID uuid.UUID, token string) ([]byte, string, error) {
-	userID, _, err := s.authorize(ctx, intentID, token)
-	if err != nil {
-		return nil, "", err
-	}
-	intent, err := s.applications.GetSubmissionIntent(ctx, userID, intentID)
-	if err != nil {
-		return nil, "", err
-	}
-	pkg, err := s.applications.GetApplicationPackage(ctx, userID, intent.PackageID)
-	if err != nil {
-		return nil, "", err
-	}
-	version, err := s.repo.q.GetResumeVersionForUser(ctx, db.GetResumeVersionForUserParams{
-		ID: database.UUIDToPG(pkg.ResumeVersionID), UserID: database.UUIDToPG(userID),
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	if !version.PdfStorageKey.Valid || version.PdfStorageKey.String == "" {
-		return nil, "", ErrCompanionResumeUnavailable
-	}
-	data, err := s.storage.Get(ctx, version.PdfStorageKey.String)
-	if err != nil {
-		return nil, "", err
-	}
-	return data, "applyforge-resume.pdf", nil
 }
 
 func (s *CompanionService) Claim(ctx context.Context, intentID uuid.UUID, token, workerID string) (SubmissionIntent, error) {
