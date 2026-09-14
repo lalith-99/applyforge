@@ -51,7 +51,30 @@ func (r *Repository) ReserveCompanySourceDiscoveryTargets(
 			      w.next_source_discovery_at IS NULL
 			      OR w.next_source_discovery_at <= now()
 			  )
-			ORDER BY w.watchlist_rank
+			  AND NOT EXISTS (
+			      SELECT 1
+			      FROM company_source_registry csr
+			      WHERE csr.company_id = w.company_id
+			        AND csr.monitorable = true
+			  )
+			ORDER BY
+			  (
+			      CASE w.tier
+			          WHEN 'HOT' THEN 0.0
+			          WHEN 'WARM' THEN 1.0
+			          WHEN 'COOL' THEN 2.0
+			          ELSE 3.0
+			      END
+			      + LEAST(w.source_discovery_attempt_count, 4) * 0.35
+			      - LEAST(
+			          GREATEST(
+			              EXTRACT(EPOCH FROM (now() - COALESCE(w.next_source_discovery_at, now()))) / 604800.0,
+			              0.0
+			          ),
+			          2.0
+			      ) * 0.25
+			  ),
+			  w.watchlist_rank
 			LIMIT $1
 			FOR UPDATE SKIP LOCKED
 		),
@@ -152,7 +175,7 @@ func NewCompanySourceDiscoveryWorker(
 func (w *CompanySourceDiscoveryWorker) Handle(ctx context.Context, job background.Job) error {
 	var payload ResolveCompanySourcePayload
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
-		return fmt.Errorf("decode company source discovery payload: %w", err)
+		return fmt.Errorf("decode company source inspection payload: %w", err)
 	}
 	companyID, err := uuid.Parse(payload.CompanyID)
 	if err != nil {
@@ -232,7 +255,6 @@ func (w *CompanySourceDiscoveryWorker) Handle(ctx context.Context, job backgroun
 			"FAILED",
 			24*time.Hour,
 			err,
-			true,
 		); markErr != nil {
 			return markErr
 		}
