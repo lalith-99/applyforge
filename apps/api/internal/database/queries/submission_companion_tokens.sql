@@ -1,3 +1,10 @@
+-- name: RevokeSubmissionCompanionTokensForIntent :exec
+UPDATE submission_companion_tokens
+SET revoked_at = COALESCE(revoked_at, now())
+WHERE user_id = $1
+  AND intent_id = $2
+  AND revoked_at IS NULL;
+
 -- name: CreateSubmissionCompanionToken :one
 INSERT INTO submission_companion_tokens (user_id, intent_id, token_hash, expires_at)
 SELECT $1, i.id, $3, $4
