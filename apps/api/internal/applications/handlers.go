@@ -36,6 +36,10 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/application-packages/{id}/revoke", h.handleRevokePackageApproval)
 	r.Post("/application-packages/{id}/submission-intent", h.handleCreateSubmissionIntent)
 	r.Get("/submission-intents/{id}", h.handleGetSubmissionIntent)
+	r.Post("/submission-intents/{id}/claim", h.handleClaimSubmissionIntent)
+	r.Post("/submission-intents/{id}/begin", h.handleBeginSubmission)
+	r.Post("/submission-intents/{id}/confirm", h.handleConfirmSubmission)
+	r.Post("/submission-intents/{id}/uncertain", h.handleUncertainSubmission)
 	r.Get("/application-answers", h.handleGetAnswers)
 	r.Patch("/application-answers", h.handleUpdateAnswers)
 }
