@@ -23,6 +23,8 @@ const STATUS_COLUMNS: { status: ApplicationStatus; label: string }[] = [
   { status: "WITHDRAWN", label: "Withdrawn" },
 ];
 
+type ReconciliationOutcome = "APPLIED" | "NOT_SUBMITTED";
+
 export default function ApplicationsPage() {
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [recentlyMoved, setRecentlyMoved] = useState<string | null>(null);
@@ -60,6 +62,27 @@ export default function ApplicationsPage() {
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["applications"] }),
   });
+
+  const reconcile = useMutation({
+    mutationFn: ({ intentID, outcome }: { intentID: string; outcome: ReconciliationOutcome }) =>
+      api.post<SubmissionIntent>(`/submission-intents/${intentID}/reconcile`, { outcome }),
+    onError: (error) => setMoveError(error instanceof Error ? error.message : "Could not reconcile submission."),
+    onSuccess: async () => {
+      setMoveError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["submission-intents"] }),
+      ]);
+    },
+  });
+
+  const reconcileWithConfirmation = (submission: SubmissionIntent, outcome: ReconciliationOutcome) => {
+    const message = outcome === "APPLIED"
+      ? "Confirm only if you verified in the employer ATS or a confirmation email that this application was received. Mark it Applied?"
+      : "Confirm only if you verified the employer did NOT receive this application. This will make the approved package eligible for another attempt. Continue?";
+    if (!window.confirm(message)) return;
+    reconcile.mutate({ intentID: submission.id, outcome });
+  };
 
   const applications = applicationsQuery.data ?? [];
   const submissionByApplication = useMemo(() => {
@@ -99,7 +122,7 @@ export default function ApplicationsPage() {
         {uncertain.length > 0 && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
             <p className="font-semibold">{uncertain.length} submission{uncertain.length === 1 ? "" : "s"} need reconciliation.</p>
-            <p className="mt-1">ApplyForge crossed the final submit boundary but could not prove whether the ATS accepted the application. These are never retried automatically. Check the employer portal or confirmation email before changing status.</p>
+            <p className="mt-1">ApplyForge crossed the final submit boundary but could not prove whether the ATS accepted the application. These are never retried automatically. Verify the employer portal or confirmation email, then use the reconciliation buttons on that application.</p>
           </div>
         )}
 
@@ -121,8 +144,10 @@ export default function ApplicationsPage() {
                         submission={submissionByApplication.get(app.ID)}
                         highlighted={recentlyMoved === app.ID}
                         updating={updateStatus.isPending && updateStatus.variables?.id === app.ID}
+                        reconciling={reconcile.isPending}
                         onAdvance={(status) => updateStatus.mutate({ id: app.ID, status })}
                         onReview={() => setReviewing(app)}
+                        onReconcile={reconcileWithConfirmation}
                       />
                     ))}
                   </div>
@@ -146,14 +171,20 @@ export default function ApplicationsPage() {
                       <td className="py-2">{app.CompanyName}</td>
                       <td className="py-2"><Link href={`/jobs/${app.JobID}`} className="hover:underline">{app.Title}</Link></td>
                       <td className="py-2">
-                        <select value={app.Status} onChange={(e) => updateStatus.mutate({ id: app.ID, status: e.target.value as ApplicationStatus })} className="rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs dark:border-white/15">
+                        <select value={app.Status} onChange={(e) => updateStatus.mutate({ id: app.ID, status: e.target.value as ApplicationStatus })} disabled={submission?.status === "UNCERTAIN"} className="rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs disabled:opacity-50 dark:border-white/15">
                           {STATUS_COLUMNS.map((col) => <option key={col.status} value={col.status}>{col.label}</option>)}
                         </select>
                       </td>
                       <td className="py-2"><SubmissionBadge submission={submission} /></td>
                       <td className="py-2">{app.MatchScore != null ? `${app.MatchScore}%` : "—"}</td>
                       <td className="py-2 text-black/60 dark:text-white/60">{new Date(app.UpdatedAt).toLocaleDateString()}</td>
-                      <td className="py-2">{app.Status === "READY_TO_APPLY" && submission?.status !== "UNCERTAIN" ? <button type="button" onClick={() => setReviewing(app)} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">Review & apply</button> : "—"}</td>
+                      <td className="py-2">
+                        {submission?.status === "UNCERTAIN" ? (
+                          <ReconciliationButtons submission={submission} disabled={reconcile.isPending} onReconcile={reconcileWithConfirmation} />
+                        ) : app.Status === "READY_TO_APPLY" ? (
+                          <button type="button" onClick={() => setReviewing(app)} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">Review & apply</button>
+                        ) : "—"}
+                      </td>
                     </tr>
                   );
                 })}
@@ -170,13 +201,15 @@ export default function ApplicationsPage() {
   );
 }
 
-function ApplicationCard({ app, submission, onAdvance, onReview, highlighted, updating }: {
+function ApplicationCard({ app, submission, onAdvance, onReview, onReconcile, highlighted, updating, reconciling }: {
   app: ApplicationWithJob;
   submission?: SubmissionIntent;
   onAdvance: (status: ApplicationStatus) => void;
   onReview: () => void;
+  onReconcile: (submission: SubmissionIntent, outcome: ReconciliationOutcome) => void;
   highlighted: boolean;
   updating: boolean;
+  reconciling: boolean;
 }) {
   const currentIndex = STATUS_COLUMNS.findIndex((c) => c.status === app.Status);
   const next = STATUS_COLUMNS[currentIndex + 1];
@@ -187,12 +220,29 @@ function ApplicationCard({ app, submission, onAdvance, onReview, highlighted, up
       <p className="text-xs text-black/60 dark:text-white/60">{app.CompanyName}</p>
       {app.MatchScore != null && <p className="text-xs text-black/60 dark:text-white/60">Match: {app.MatchScore}%</p>}
       <SubmissionBadge submission={submission} />
-      {submission?.status === "UNCERTAIN" && <p className="text-xs text-amber-800 dark:text-amber-200">Check the ATS or confirmation email before retrying. ApplyForge will not auto-submit this again.</p>}
-      {app.Status === "READY_TO_APPLY" && submission?.status !== "UNCERTAIN" ? (
+      {submission?.status === "UNCERTAIN" ? (
+        <>
+          <p className="text-xs text-amber-800 dark:text-amber-200">Check the ATS or confirmation email. ApplyForge will not auto-submit this again until you resolve it.</p>
+          <ReconciliationButtons submission={submission} disabled={reconciling} onReconcile={onReconcile} />
+        </>
+      ) : app.Status === "READY_TO_APPLY" ? (
         <button type="button" onClick={onReview} className="mt-1 rounded-md bg-foreground px-2 py-1.5 text-xs font-medium text-background">Review & apply →</button>
-      ) : next && next.status !== "REJECTED" && next.status !== "WITHDRAWN" && submission?.status !== "UNCERTAIN" ? (
+      ) : next && next.status !== "REJECTED" && next.status !== "WITHDRAWN" ? (
         <button type="button" onClick={() => onAdvance(next.status)} disabled={updating} className="mt-1 rounded-md border border-black/10 px-2 py-1 text-xs disabled:opacity-60 dark:border-white/15">{updating ? "Moving…" : `Move to ${next.label} →`}</button>
       ) : null}
+    </div>
+  );
+}
+
+function ReconciliationButtons({ submission, disabled, onReconcile }: {
+  submission: SubmissionIntent;
+  disabled: boolean;
+  onReconcile: (submission: SubmissionIntent, outcome: ReconciliationOutcome) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button type="button" disabled={disabled} onClick={() => onReconcile(submission, "APPLIED")} className="rounded-md bg-green-700 px-2 py-1 text-[11px] font-medium text-white disabled:opacity-50">Verified applied</button>
+      <button type="button" disabled={disabled} onClick={() => onReconcile(submission, "NOT_SUBMITTED")} className="rounded-md border border-amber-400 px-2 py-1 text-[11px] font-medium disabled:opacity-50">Verified not submitted</button>
     </div>
   );
 }
