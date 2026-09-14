@@ -20,12 +20,23 @@ func TestCompanionHandoffScopesTokenToOneIntentAndConfirms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create submission intent: %v", err)
 	}
+	firstHandoff, err := companion.CreateHandoff(ctx, userID, intent.ID)
+	if err != nil {
+		t.Fatalf("create first companion handoff: %v", err)
+	}
+	if firstHandoff.Token == "" || firstHandoff.IntentID != intent.ID || firstHandoff.PackageID != packageID {
+		t.Fatalf("unexpected first handoff: %+v", firstHandoff)
+	}
+
 	handoff, err := companion.CreateHandoff(ctx, userID, intent.ID)
 	if err != nil {
-		t.Fatalf("create companion handoff: %v", err)
+		t.Fatalf("rotate companion handoff: %v", err)
 	}
-	if handoff.Token == "" || handoff.IntentID != intent.ID || handoff.PackageID != packageID {
-		t.Fatalf("unexpected handoff: %+v", handoff)
+	if handoff.Token == firstHandoff.Token {
+		t.Fatal("rotated companion handoff must use a fresh capability")
+	}
+	if _, err := companion.Bundle(ctx, intent.ID, firstHandoff.Token); !errors.Is(err, applications.ErrCompanionUnauthorized) {
+		t.Fatalf("rotated-out companion token should be rejected, got %v", err)
 	}
 
 	if _, err := companion.Bundle(ctx, intent.ID, "wrong-token"); !errors.Is(err, applications.ErrCompanionUnauthorized) {
