@@ -9,44 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/lalithlochan/applyforge/apps/api/internal/auth"
 	"github.com/lalithlochan/applyforge/apps/api/internal/httpx"
 )
 
 const companionTokenHeader = "X-ApplyForge-Companion-Token"
-
-// CompanionUserHandlers contains session-authenticated endpoints that mint a
-// narrowly scoped capability for the browser extension.
-type CompanionUserHandlers struct {
-	service *CompanionService
-}
-
-func NewCompanionUserHandlers(service *CompanionService) *CompanionUserHandlers {
-	return &CompanionUserHandlers{service: service}
-}
-
-func (h *CompanionUserHandlers) Mount(r chi.Router) {
-	r.Post("/submission-intents/{id}/companion-handoff", h.handleCreateHandoff)
-}
-
-func (h *CompanionUserHandlers) handleCreateHandoff(w http.ResponseWriter, r *http.Request) {
-	u, ok := auth.UserFromContext(r.Context())
-	if !ok {
-		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	intentID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid submission intent id")
-		return
-	}
-	handoff, err := h.service.CreateHandoff(r.Context(), u.ID, intentID)
-	if err != nil {
-		writeCompanionError(w, err)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, handoff)
-}
 
 // CompanionHandlers authenticates itself with an intent-scoped bearer token;
 // it is mounted outside the normal user-session group so ATS pages never need
