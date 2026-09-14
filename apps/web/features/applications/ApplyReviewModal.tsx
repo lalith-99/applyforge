@@ -33,25 +33,9 @@ export function ApplyReviewModal({
   const [companionNotice, setCompanionNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!app.ResumeVersionID) return;
+
     let active = true;
-
-    setPackage(null);
-    setResume(null);
-    setResumeConfirmed(false);
-    setApproval(null);
-    setIntent(null);
-    setAcknowledged(false);
-    setCompanionNotice(null);
-    setError(null);
-
-    if (!app.ResumeVersionID) {
-      setResumeLoading(false);
-      return () => {
-        active = false;
-      };
-    }
-
-    setResumeLoading(true);
     void api
       .get<ResumeVersion>(`/resume-versions/${app.ResumeVersionID}`)
       .then((version) => {
@@ -73,7 +57,7 @@ export function ApplyReviewModal({
     return () => {
       active = false;
     };
-  }, [app.ID, app.JobID, app.ResumeVersionID]);
+  }, [app.JobID, app.ResumeVersionID]);
 
   const buildReview = useMutation({
     mutationFn: async () => {
