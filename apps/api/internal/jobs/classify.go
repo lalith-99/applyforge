@@ -42,8 +42,8 @@ func classifyTitle(title string) RoleClassification {
 	}
 
 	// Specific role/stack families come before generic "developer" handling.
-	// This intentionally includes language-specific titles that job boards use
-	// instead of the generic "Software Engineer" label.
+	// More specific compound families (for example DATA_ENGINEERING's
+	// "data platform engineer") must come before generic platform roles.
 	families := []struct {
 		terms []string
 		name  string
@@ -51,12 +51,12 @@ func classifyTitle(title string) RoleClassification {
 		{[]string{" java full stack ", " java full-stack ", " full stack ", " full-stack ", " fullstack ", " mern ", " mean stack "}, "FULLSTACK"},
 		{[]string{" backend ", " back end ", " java backend ", " spring boot ", " golang ", " go developer ", " go engineer ", " node.js ", " nodejs ", " api engineer ", " api developer ", " microservices engineer ", " microservice engineer ", " microservices developer ", " microservice developer "}, "BACKEND"},
 		{[]string{" frontend ", " front end ", " front-end ", " react developer ", " react engineer ", " angular developer ", " angular engineer ", " vue developer ", " vue engineer ", " ui developer "}, "FRONTEND"},
+		{[]string{" data engineer ", " data platform engineer ", " analytics engineer "}, "DATA_ENGINEERING"},
 		{[]string{" platform engineer ", " platform developer ", " kubernetes engineer ", " container platform "}, "PLATFORM"},
 		{[]string{" infrastructure engineer ", " infrastructure developer ", " database engineer "}, "INFRASTRUCTURE"},
 		{[]string{" site reliability ", " sre "}, "SRE"},
 		{[]string{" devops ", " devsecops ", " build engineer ", " release engineer "}, "DEVOPS"},
 		{[]string{" cloud engineer ", " cloud developer ", " cloud infrastructure "}, "CLOUD"},
-		{[]string{" data engineer ", " data platform engineer ", " analytics engineer "}, "DATA_ENGINEERING"},
 		{[]string{" machine learning ", " ml engineer ", " mlops "}, "ML_ENGINEERING"},
 		{[]string{" ai engineer ", " artificial intelligence ", " generative ai engineer ", " genai engineer "}, "AI_ENGINEERING"},
 		{[]string{" security engineer ", " application security ", " product security engineer "}, "SECURITY_ENGINEERING"},
