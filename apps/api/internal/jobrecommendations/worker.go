@@ -31,15 +31,13 @@ type ComputePayload struct {
 // certainly included, small enough to keep AI reranking costs bounded.
 const PoolSize = 80
 
-const (
-	DailyRecommendationLimit          = 20
-	DailyRecommendationTargetMinimum  = 10
-	DailyRecommendationMaxPerCompany  = 2
-	MinStrongDailyRecommendationScore = 65
-	MinBackfillDailyScore             = 60
-	dailyRecommendationMaxAge         = 24 * time.Hour
-	dailyRecommendationFutureSkew     = 5 * time.Minute
-)
+const DailyRecommendationLimit = 20
+const DailyRecommendationTargetMinimum = 10
+const DailyRecommendationMaxPerCompany = 2
+const MinStrongDailyRecommendationScore = 65
+const MinBackfillDailyScore = 60
+const dailyRecommendationMaxAge = 24 * time.Hour
+const dailyRecommendationFutureSkew = 5 * time.Minute
 
 // ComputeWorker runs the full funnel (Phase G's Recommend + Phase H's
 // airank.Rank) for a user and materializes the result.
