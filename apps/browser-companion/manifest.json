@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyForge Browser Companion",
+  "version": "0.1.0",
+  "description": "Fills and submits one explicitly approved ApplyForge application package.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "ApplyForge Companion"
+  }
+}

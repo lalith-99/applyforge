@@ -22,6 +22,12 @@ RETURNING *;
 -- name: GetSubmissionIntentForUser :one
 SELECT * FROM submission_intents WHERE id = $1 AND user_id = $2;
 
+-- name: ListLatestSubmissionIntentsForUser :many
+SELECT DISTINCT ON (application_id) *
+FROM submission_intents
+WHERE user_id = $1
+ORDER BY application_id, created_at DESC, id DESC;
+
 -- name: ClaimNextSubmissionIntent :one
 WITH expired_submitting AS (
     UPDATE submission_intents

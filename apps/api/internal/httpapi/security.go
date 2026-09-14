@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const companionTokenHeader = "X-ApplyForge-Companion-Token"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -23,6 +25,15 @@ func protectBrowserMutations(webBaseURL string) func(http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Browser-companion requests carry a short-lived, intent-scoped bearer
+			// capability. Only the self-authenticated /companion surface may bypass
+			// normal web Origin checks; regular session endpoints remain protected
+			// even if a caller adds the same header.
+			if strings.HasPrefix(r.URL.Path, "/api/v1/companion/") && strings.TrimSpace(r.Header.Get(companionTokenHeader)) != "" {
 				next.ServeHTTP(w, r)
 				return
 			}

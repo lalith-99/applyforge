@@ -71,9 +71,9 @@ func submissionIntentFromRow(row db.SubmissionIntent) SubmissionIntent {
 	}
 }
 
-// CreateSubmissionIntent is idempotent for a package. The INSERT itself proves
-// that the package still has a live, unrevoked SUBMIT_ONCE approval with an
-// exactly matching package hash.
+// CreateSubmissionIntent is idempotent for a package. A previously CANCELLED
+// or FAILED intent may only return to PENDING after a new live approval exists;
+// UNCERTAIN is deliberately never reactivated automatically.
 func (s *Service) CreateSubmissionIntent(ctx context.Context, userID, packageID uuid.UUID) (SubmissionIntent, error) {
 	pkg, err := s.GetApplicationPackage(ctx, userID, packageID)
 	if err != nil {
@@ -96,6 +96,17 @@ func (s *Service) CreateSubmissionIntent(ctx context.Context, userID, packageID 
 			return SubmissionIntent{}, ErrActiveApprovalRequired
 		}
 		return SubmissionIntent{}, err
+	}
+	if row.Status == SubmissionCancelled || row.Status == SubmissionFailed {
+		row, err = s.repo.q.ReactivateCancelledSubmissionIntent(ctx, db.ReactivateCancelledSubmissionIntentParams{
+			ID: database.UUIDToPG(database.PGToUUID(row.ID)), UserID: database.UUIDToPG(userID),
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return SubmissionIntent{}, ErrActiveApprovalRequired
+			}
+			return SubmissionIntent{}, err
+		}
 	}
 	return submissionIntentFromRow(row), nil
 }

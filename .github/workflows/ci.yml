@@ -94,6 +94,24 @@ jobs:
       - name: Build
         run: pnpm build
 
+  browser-companion:
+    name: Browser Companion
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/browser-companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate manifest
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
+      - name: Check service worker syntax
+        run: node --check background.js
+      - name: Check content script syntax
+        run: node --check content.js
+
   compose:
     name: Docker Compose
     runs-on: ubuntu-latest
