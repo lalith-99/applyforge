@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import { api } from "@/lib/api";
+import { API_BASE_URL, api } from "@/lib/api";
 import type { ApplicationWithJob, ResumeVersion } from "@/types/api";
 import type { ApplicationApproval, ApplicationPackage, SubmissionIntent } from "@/types/apply";
 
@@ -98,12 +98,7 @@ export function ApplyReviewModal({
             <p className="mt-2 text-sm text-black/60 dark:text-white/60">
               ApplyForge will snapshot the job-scoped tailored resume, saved application answers, and the stored ATS destination. Any later change creates a different package and requires another approval.
             </p>
-            <button
-              type="button"
-              onClick={() => buildReview.mutate()}
-              disabled={buildReview.isPending}
-              className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-60"
-            >
+            <button type="button" onClick={() => buildReview.mutate()} disabled={buildReview.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-60">
               {buildReview.isPending ? "Building review…" : "Build review package"}
             </button>
           </div>
@@ -112,51 +107,25 @@ export function ApplyReviewModal({
         {pkg && resume && (
           <div className="space-y-5">
             <section className="grid gap-3 rounded-lg border border-black/10 p-4 text-sm dark:border-white/15 md:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase text-black/50 dark:text-white/50">Destination</p>
-                <p className="mt-1 break-all font-medium">{pkg.destination_origin}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase text-black/50 dark:text-white/50">Package fingerprint</p>
-                <p className="mt-1 break-all font-mono text-xs">{pkg.package_hash}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase text-black/50 dark:text-white/50">Resume version</p>
-                <p className="mt-1">v{resume.VersionNumber} · match {resume.MatchScore ?? "—"}%</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase text-black/50 dark:text-white/50">Approval scope</p>
-                <p className="mt-1">Submit this exact package once</p>
-              </div>
+              <div><p className="text-xs uppercase text-black/50 dark:text-white/50">Destination</p><p className="mt-1 break-all font-medium">{pkg.destination_origin}</p></div>
+              <div><p className="text-xs uppercase text-black/50 dark:text-white/50">Package fingerprint</p><p className="mt-1 break-all font-mono text-xs">{pkg.package_hash}</p></div>
+              <div><p className="text-xs uppercase text-black/50 dark:text-white/50">Resume version</p><p className="mt-1">v{resume.VersionNumber} · match {resume.MatchScore ?? "—"}%</p></div>
+              <div><p className="text-xs uppercase text-black/50 dark:text-white/50">Approval scope</p><p className="mt-1">Submit this exact package once</p></div>
             </section>
 
             <section className="rounded-lg border border-black/10 p-4 dark:border-white/15">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium">Tailored resume preview</h3>
-                <a
-                  href={`/api-proxy/resume-versions/${resume.ID}/download?format=pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm underline"
-                >
-                  Open PDF
-                </a>
+                <a href={`${API_BASE_URL}/resume-versions/${resume.ID}/download?format=pdf`} target="_blank" rel="noreferrer" className="text-sm underline">Open PDF</a>
               </div>
               <div className="mt-3 space-y-3 text-sm">
                 {resume.Content.Summary && <p>{resume.Content.Summary}</p>}
-                {resume.Content.Skills.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-black/50 dark:text-white/50">Skills</p>
-                    <p className="mt-1">{resume.Content.Skills.join(" · ")}</p>
-                  </div>
-                )}
+                {resume.Content.Skills.length > 0 && <div><p className="text-xs font-semibold uppercase text-black/50 dark:text-white/50">Skills</p><p className="mt-1">{resume.Content.Skills.join(" · ")}</p></div>}
                 <div className="space-y-3">
                   {resume.Content.Experiences.map((experience, index) => (
                     <div key={`${experience.Company ?? "experience"}-${index}`}>
                       <p className="font-medium">{experience.Title ?? "Role"} · {experience.Company ?? "Company"}</p>
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-black/70 dark:text-white/70">
-                        {experience.Bullets.slice(0, 4).map((bullet) => <li key={bullet}>{bullet}</li>)}
-                      </ul>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-black/70 dark:text-white/70">{experience.Bullets.slice(0, 4).map((bullet) => <li key={bullet}>{bullet}</li>)}</ul>
                     </div>
                   ))}
                 </div>
@@ -177,57 +146,29 @@ export function ApplyReviewModal({
 
             {step === "review" && (
               <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
-                <label className="flex items-start gap-3">
-                  <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} className="mt-1" />
-                  <span>{CONFIRMATION_TEXT} Approval expires after 24 hours and does not authorize a different resume, answer set, destination, or future package.</span>
-                </label>
-                <button
-                  type="button"
-                  disabled={!acknowledged || approve.isPending}
-                  onClick={() => approve.mutate()}
-                  className="mt-4 rounded-md bg-foreground px-4 py-2 text-background disabled:opacity-50"
-                >
-                  {approve.isPending ? "Approving…" : "Approve exact package"}
-                </button>
+                <label className="flex items-start gap-3"><input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} className="mt-1" /><span>{CONFIRMATION_TEXT} Approval expires after 24 hours and does not authorize a different resume, answer set, destination, or future package.</span></label>
+                <button type="button" disabled={!acknowledged || approve.isPending} onClick={() => approve.mutate()} className="mt-4 rounded-md bg-foreground px-4 py-2 text-background disabled:opacity-50">{approve.isPending ? "Approving…" : "Approve exact package"}</button>
               </section>
             )}
 
             {step === "approved" && (
               <section className="rounded-lg border border-green-300 bg-green-50 p-4 text-sm text-green-950 dark:bg-green-950/20 dark:text-green-100">
-                <p className="font-medium">Package approved.</p>
-                <p className="mt-1">Create the durable one-time submission intent before opening the ATS.</p>
-                <button
-                  type="button"
-                  onClick={() => createIntent.mutate()}
-                  disabled={createIntent.isPending}
-                  className="mt-4 rounded-md bg-foreground px-4 py-2 text-background disabled:opacity-50"
-                >
-                  {createIntent.isPending ? "Preparing…" : "Prepare application"}
-                </button>
+                <p className="font-medium">Package approved.</p><p className="mt-1">Create the durable one-time submission intent before opening the ATS.</p>
+                <button type="button" onClick={() => createIntent.mutate()} disabled={createIntent.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-background disabled:opacity-50">{createIntent.isPending ? "Preparing…" : "Prepare application"}</button>
               </section>
             )}
 
             {step === "ready" && intent && (
               <section className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950 dark:bg-blue-950/20 dark:text-blue-100">
-                <p className="font-medium">Submission intent ready.</p>
-                <p className="mt-1">Intent {intent.id.slice(0, 8)}… is bound to this package with idempotency key {intent.idempotency_key.slice(0, 12)}…</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={launch} className="rounded-md bg-foreground px-4 py-2 text-background">
-                    Open ATS application →
-                  </button>
-                  <a href={pkg.destination_url} target="_blank" rel="noreferrer" className="rounded-md border border-blue-300 px-4 py-2">
-                    Open in new tab
-                  </a>
-                </div>
+                <p className="font-medium">Submission intent ready.</p><p className="mt-1">Intent {intent.id.slice(0, 8)}… is bound to this package with idempotency key {intent.idempotency_key.slice(0, 12)}…</p>
+                <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={launch} className="rounded-md bg-foreground px-4 py-2 text-background">Open ATS application →</button><a href={pkg.destination_url} target="_blank" rel="noreferrer" className="rounded-md border border-blue-300 px-4 py-2">Open in new tab</a></div>
                 <p className="mt-3 text-xs opacity-80">The server will not mark this application as applied merely because the ATS page was opened. A confirmed executor receipt is required.</p>
               </section>
             )}
           </div>
         )}
 
-        {approval && (
-          <p className="mt-4 text-xs text-black/50 dark:text-white/50">Approval expires {new Date(approval.expires_at).toLocaleString()}.</p>
-        )}
+        {approval && <p className="mt-4 text-xs text-black/50 dark:text-white/50">Approval expires {new Date(approval.expires_at).toLocaleString()}.</p>}
         {error && <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>
     </div>
