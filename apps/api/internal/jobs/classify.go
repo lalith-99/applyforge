@@ -13,7 +13,16 @@ func classifyTitle(title string) RoleClassification {
 	if value == "" {
 		return RoleClassification{Family: "UNKNOWN", Classification: "UNKNOWN"}
 	}
-	padded := " " + strings.Join(strings.Fields(value), " ") + " "
+
+	// ATS titles frequently separate role words with punctuation (for example
+	// "Manager/Software Engineering" or "QA|Automation Engineer"). Normalize
+	// separators before cheap classification so obvious non-target roles do not
+	// fall through to AI classification/enrichment just because of typography.
+	normalized := strings.NewReplacer(
+		"/", " ", "|", " ", ",", " ", ":", " ", ";", " ",
+		"(", " ", ")", " ", "[", " ", "]", " ", "{", " ", "}", " ",
+	).Replace(value)
+	padded := " " + strings.Join(strings.Fields(normalized), " ") + " "
 
 	// Exclusions are role-aware phrases/tokens rather than broad substrings.
 	// In particular, do not exclude on "sales" alone: "Salesforce Developer"
@@ -23,7 +32,7 @@ func classifyTitle(title string) RoleClassification {
 	excluded := []string{
 		" intern ", " internship ", " co-op ", " coop ", " apprentice ", " apprenticeship ", " student ",
 		" engineering manager ", " software engineering manager ", " development manager ", " technical manager ",
-		" manager, ", " manager ", " director ", " vice president ", " vp ", " head of ",
+		" manager ", " director ", " vice president ", " vp ", " head of ",
 		" quality assurance ", " qa ", " tester ", " test engineer ", " test automation engineer ",
 		" automation test engineer ", " performance test engineer ", " sdet ",
 		" analyst ", " product manager ", " program manager ", " project manager ", " scrum master ", " product owner ",
@@ -31,6 +40,8 @@ func classifyTitle(title string) RoleClassification {
 		" help desk ", " desktop support ", " technical support ", " it support ", " customer support ",
 		" database administrator ", " db administrator ", " system administrator ", " systems administrator ",
 		" network engineer ", " network administrator ", " network operations ",
+		" product designer ", " ux designer ", " user experience designer ", " visual designer ", " graphic designer ",
+		" data scientist ", " research scientist ",
 		" mechanical engineer ", " civil engineer ", " electrical engineer ", " manufacturing engineer ",
 		" industrial engineer ", " field engineer ", " process engineer ", " hardware engineer ",
 		" quality engineer ", " validation engineer ",
@@ -62,7 +73,7 @@ func classifyTitle(title string) RoleClassification {
 		{[]string{" security engineer ", " application security ", " product security engineer "}, "SECURITY_ENGINEERING"},
 		{[]string{" ios ", " android ", " mobile "}, "MOBILE"},
 		{[]string{" embedded ", " firmware "}, "EMBEDDED"},
-		{[]string{" systems software ", " systems engineer, software ", " distributed systems engineer ", " distributed systems developer "}, "SYSTEMS"},
+		{[]string{" systems software ", " systems engineer software ", " distributed systems engineer ", " distributed systems developer "}, "SYSTEMS"},
 		{[]string{
 			" software engineering consultant ", " software development consultant ", " software consultant ",
 			" application development consultant ", " java consultant ",
