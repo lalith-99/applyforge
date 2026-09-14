@@ -18,13 +18,19 @@ func classifyTitle(title string) RoleClassification {
 	// Exclusions are role-aware phrases/tokens rather than broad substrings.
 	// In particular, do not exclude on "sales" alone: "Salesforce Developer"
 	// is a software role while "Sales Engineer" is not part of this catalog.
+	// Keep this list deliberately high-confidence because EXCLUDED titles skip
+	// role-classification AI and all downstream eager enrichment/embedding work.
 	excluded := []string{
 		" intern ", " internship ", " co-op ", " coop ", " apprentice ", " apprenticeship ", " student ",
-		" engineering manager ", " software engineering manager ", " development manager ",
+		" engineering manager ", " software engineering manager ", " development manager ", " technical manager ",
 		" manager, ", " manager ", " director ", " vice president ", " vp ", " head of ",
-		" quality assurance ", " qa ", " tester ", " test engineer ", " sdet ",
-		" analyst ", " product manager ", " program manager ", " project manager ", " scrum master ",
+		" quality assurance ", " qa ", " tester ", " test engineer ", " test automation engineer ",
+		" automation test engineer ", " performance test engineer ", " sdet ",
+		" analyst ", " product manager ", " program manager ", " project manager ", " scrum master ", " product owner ",
 		" support engineer ", " solutions engineer ", " sales engineer ", " recruiter ",
+		" help desk ", " desktop support ", " technical support ", " it support ", " customer support ",
+		" database administrator ", " db administrator ", " system administrator ", " systems administrator ",
+		" network engineer ", " network administrator ", " network operations ",
 		" mechanical engineer ", " civil engineer ", " electrical engineer ", " manufacturing engineer ",
 		" industrial engineer ", " field engineer ", " process engineer ", " hardware engineer ",
 		" quality engineer ", " validation engineer ",
@@ -42,15 +48,15 @@ func classifyTitle(title string) RoleClassification {
 		terms []string
 		name  string
 	}{
-		{[]string{" java full stack ", " java full-stack ", " full stack ", " fullstack ", " mern ", " mean stack "}, "FULLSTACK"},
-		{[]string{" backend ", " back end ", " java backend ", " spring boot ", " golang ", " go developer ", " go engineer ", " node.js ", " nodejs ", " api engineer ", " api developer ", " microservices engineer ", " microservice engineer "}, "BACKEND"},
-		{[]string{" frontend ", " front end ", " react developer ", " react engineer ", " angular developer ", " angular engineer ", " vue developer ", " vue engineer ", " ui developer "}, "FRONTEND"},
-		{[]string{" platform ", " kubernetes engineer ", " container platform "}, "PLATFORM"},
-		{[]string{" infrastructure ", " database engineer "}, "INFRASTRUCTURE"},
+		{[]string{" java full stack ", " java full-stack ", " full stack ", " full-stack ", " fullstack ", " mern ", " mean stack "}, "FULLSTACK"},
+		{[]string{" backend ", " back end ", " java backend ", " spring boot ", " golang ", " go developer ", " go engineer ", " node.js ", " nodejs ", " api engineer ", " api developer ", " microservices engineer ", " microservice engineer ", " microservices developer ", " microservice developer "}, "BACKEND"},
+		{[]string{" frontend ", " front end ", " front-end ", " react developer ", " react engineer ", " angular developer ", " angular engineer ", " vue developer ", " vue engineer ", " ui developer "}, "FRONTEND"},
+		{[]string{" platform engineer ", " platform developer ", " kubernetes engineer ", " container platform "}, "PLATFORM"},
+		{[]string{" infrastructure engineer ", " infrastructure developer ", " database engineer "}, "INFRASTRUCTURE"},
 		{[]string{" site reliability ", " sre "}, "SRE"},
 		{[]string{" devops ", " devsecops ", " build engineer ", " release engineer "}, "DEVOPS"},
-		{[]string{" cloud engineer ", " cloud infrastructure "}, "CLOUD"},
-		{[]string{" data engineer ", " analytics engineer "}, "DATA_ENGINEERING"},
+		{[]string{" cloud engineer ", " cloud developer ", " cloud infrastructure "}, "CLOUD"},
+		{[]string{" data engineer ", " data platform engineer ", " analytics engineer "}, "DATA_ENGINEERING"},
 		{[]string{" machine learning ", " ml engineer ", " mlops "}, "ML_ENGINEERING"},
 		{[]string{" ai engineer ", " artificial intelligence ", " generative ai engineer ", " genai engineer "}, "AI_ENGINEERING"},
 		{[]string{" security engineer ", " application security ", " product security engineer "}, "SECURITY_ENGINEERING"},
@@ -58,7 +64,7 @@ func classifyTitle(title string) RoleClassification {
 		{[]string{" embedded ", " firmware "}, "EMBEDDED"},
 		{[]string{" systems software ", " systems engineer, software ", " distributed systems engineer ", " distributed systems developer "}, "SYSTEMS"},
 		{[]string{
-			" software engineering consultant ", " software development consultant ",
+			" software engineering consultant ", " software development consultant ", " software consultant ",
 			" application development consultant ", " java consultant ",
 			" cloud engineering consultant ", " devops consultant ",
 			" data engineering consultant ", " integration consultant ",
@@ -74,7 +80,7 @@ func classifyTitle(title string) RoleClassification {
 
 	softwareSpecific := []string{
 		" software engineer ", " software developer ", " software development engineer ",
-		" application engineer ", " application developer ", " web developer ",
+		" application engineer ", " application developer ", " application software engineer ", " web developer ",
 		" java developer ", " java engineer ", " python developer ", " python engineer ",
 		" c# developer ", " c# engineer ", " .net developer ", " .net engineer ",
 		" javascript developer ", " typescript developer ", " ruby developer ", " ruby engineer ",
