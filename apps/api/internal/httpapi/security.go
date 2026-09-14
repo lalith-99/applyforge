@@ -30,10 +30,10 @@ func protectBrowserMutations(webBaseURL string) func(http.Handler) http.Handler 
 			}
 
 			// Browser-companion requests carry a short-lived, intent-scoped bearer
-			// capability. The capability itself provides CSRF protection and is
-			// verified by the companion handler, so extension-origin mutations do
-			// not need to impersonate the normal web app Origin.
-			if strings.TrimSpace(r.Header.Get(companionTokenHeader)) != "" {
+			// capability. Only the self-authenticated /companion surface may bypass
+			// normal web Origin checks; regular session endpoints remain protected
+			// even if a caller adds the same header.
+			if strings.HasPrefix(r.URL.Path, "/api/v1/companion/") && strings.TrimSpace(r.Header.Get(companionTokenHeader)) != "" {
 				next.ServeHTTP(w, r)
 				return
 			}
