@@ -57,6 +57,13 @@ export interface SubmissionIntent {
   completed_at?: string | null;
 }
 
+export interface CompanionHandoff {
+  intent_id: string;
+  package_id: string;
+  token: string;
+  expires_at: string;
+}
+
 export interface ApplyReviewData {
   package: ApplicationPackage;
   resume: ResumeVersion;
