@@ -82,6 +82,8 @@ export default function ApplicationAnswersPage() {
   useEffect(() => {
     const data = answersQuery.data;
     if (!data) return;
+    // Hydrate this editable draft only when the server query value changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm({
       full_name: data.FullName ?? "",
       phone: data.Phone ?? "",
