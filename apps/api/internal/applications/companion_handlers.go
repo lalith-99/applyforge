@@ -3,7 +3,6 @@ package applications
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -62,7 +61,6 @@ func NewCompanionHandlers(service *CompanionService) *CompanionHandlers {
 
 func (h *CompanionHandlers) Mount(r chi.Router) {
 	r.Get("/companion/submissions/{id}", h.handleBundle)
-	r.Get("/companion/submissions/{id}/resume", h.handleResume)
 	r.Post("/companion/submissions/{id}/claim", h.handleClaim)
 	r.Post("/companion/submissions/{id}/begin", h.handleBegin)
 	r.Post("/companion/submissions/{id}/confirm", h.handleConfirm)
@@ -80,23 +78,6 @@ func (h *CompanionHandlers) handleBundle(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, bundle)
-}
-
-func (h *CompanionHandlers) handleResume(w http.ResponseWriter, r *http.Request) {
-	intentID, ok := parseCompanionIntentID(w, r)
-	if !ok {
-		return
-	}
-	data, filename, err := h.service.ResumePDF(r.Context(), intentID, companionToken(r))
-	if err != nil {
-		writeCompanionError(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
 }
 
 func (h *CompanionHandlers) handleClaim(w http.ResponseWriter, r *http.Request) {
@@ -188,8 +169,6 @@ func writeCompanionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrCompanionUnauthorized):
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired companion token")
-	case errors.Is(err, ErrCompanionResumeUnavailable):
-		httpx.WriteError(w, http.StatusConflict, "approved resume PDF is unavailable")
 	case errors.Is(err, ErrSubmissionIntentNotFound), errors.Is(err, ErrApplicationPackageMissing), errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "submission resource not found")
 	case errors.Is(err, ErrStaleSubmissionLease), errors.Is(err, ErrActiveApprovalRequired):
