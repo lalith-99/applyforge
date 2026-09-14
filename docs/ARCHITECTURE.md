@@ -37,8 +37,13 @@ Full-time-only preference is strict: unknown employment type is not assumed to b
 admits explicit role-level transfer/sponsorship support even without historical DOL evidence, while explicit
 denial remains authoritative and employer history remains a useful fallback signal.
 
-Hourly refresh and catalog-change debouncing already exist. Persisted fit-judgment caches and an enforced
-AI spending gate do not yet exist. Review [AI_PIPELINE.md](AI_PIPELINE.md) before expanding volume.
+Hourly refresh and catalog-change debouncing already exist. A durable semantic-input cache now reuses
+provider-backed judgments and sends only misses for AI ranking. Before each external batch, PostgreSQL
+atomically reserves a conservative debit against daily and monthly ranking limits, so concurrent workers
+cannot spend the same remaining allowance. Provider failures, heuristic worker responses, exhausted budgets,
+and cache-store failures retain deterministic recommendations without making an unguarded call. Cache keys
+cover candidate/job inputs, policy version, and ranking model. Review [AI_PIPELINE.md](AI_PIPELINE.md) before
+expanding volume.
 
 ## Resume and application flow
 

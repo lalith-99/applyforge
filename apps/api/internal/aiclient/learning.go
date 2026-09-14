@@ -93,12 +93,20 @@ func (c *Client) postJSON(ctx context.Context, operation, path string, body any,
 	return c.postJSONWithHTTPClient(ctx, c.http, operation, path, body, out)
 }
 
+func (c *Client) postJSONWithResponseHeaders(ctx context.Context, operation, path string, body any, out any) (http.Header, error) {
+	return c.postJSONWithHTTPClientResponseHeaders(ctx, c.http, operation, path, body, out)
+}
+
 // postJSONWithHTTPClient is the common implementation for JSON AI-worker calls.
 // Most operations use the default 60-second client. Long-running background
 // tailoring uses a dedicated bounded client so a healthy multi-stage Sol run is
 // not cancelled before the worker can return response headers.
 func (c *Client) postJSONWithHTTPClient(ctx context.Context, httpClient *http.Client, operation, path string, body any, out any) (err error) {
-	var responseHeaders http.Header
+	_, err = c.postJSONWithHTTPClientResponseHeaders(ctx, httpClient, operation, path, body, out)
+	return err
+}
+
+func (c *Client) postJSONWithHTTPClientResponseHeaders(ctx context.Context, httpClient *http.Client, operation, path string, body any, out any) (responseHeaders http.Header, err error) {
 	if c.detailedUsageRecorder != nil {
 		defer c.trackDetailed(ctx, operation, &responseHeaders)(&err)
 	} else {
@@ -107,12 +115,12 @@ func (c *Client) postJSONWithHTTPClient(ctx context.Context, httpClient *http.Cl
 
 	reqBody, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(reqBody))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -121,13 +129,13 @@ func (c *Client) postJSONWithHTTPClient(ctx context.Context, httpClient *http.Cl
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("call ai-worker %s: %w", path, err)
+		return nil, fmt.Errorf("call ai-worker %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 	responseHeaders = resp.Header.Clone()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ai-worker %s failed: %s: %s", path, resp.Status, readBody(resp.Body))
+		return responseHeaders, fmt.Errorf("ai-worker %s failed: %s: %s", path, resp.Status, readBody(resp.Body))
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return responseHeaders, json.NewDecoder(resp.Body).Decode(out)
 }

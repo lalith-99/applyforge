@@ -400,7 +400,21 @@ func run() error {
 		WithImmigrationEvidence(immigrationRepo)
 	matchingHandlers := matching.NewHandlers(matchingService)
 
-	airankService := airank.NewService(aiWorkerClient)
+	rankingBudget, rankingCacheVersion, rankingCacheTTL, err := rankingPolicyFromEnv()
+	if err != nil {
+		return err
+	}
+	airankRepo := airank.NewRepository(db)
+	airankService := airank.NewService(aiWorkerClient).
+		WithPolicyStore(airankRepo, rankingCacheVersion, rankingCacheTTL, rankingBudget).
+		WithUsageTracking(aiUsageRepo)
+	slog.Info("AI ranking cost policy configured",
+		"daily_budget_usd", rankingBudget.DailyUSD,
+		"monthly_budget_usd", rankingBudget.MonthlyUSD,
+		"estimated_batch_usd", rankingBudget.EstimatedBatchUSD,
+		"cache_ttl_days", int(rankingCacheTTL.Hours()/24),
+		"cache_version", rankingCacheVersion,
+	)
 	jobRecommendationsRepo := jobrecommendations.NewRepository(db)
 	jobRecommendationsHandlers := jobrecommendations.NewHandlers(jobRecommendationsRepo)
 	jobRecommendationsWorker := jobrecommendations.NewComputeWorker(matchingService, airankService, candidateProfileRepo, jobRecommendationsRepo)
@@ -629,4 +643,48 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func rankingPolicyFromEnv() (airank.BudgetConfig, string, time.Duration, error) {
+	parseNonNegative := func(key string, fallback float64) (float64, error) {
+		raw := strings.TrimSpace(getenv(key, strconv.FormatFloat(fallback, 'f', -1, 64)))
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil || value < 0 {
+			return 0, fmt.Errorf("%s must be a non-negative number", key)
+		}
+		return value, nil
+	}
+
+	daily, err := parseNonNegative("AI_RANKING_DAILY_BUDGET_USD", 1)
+	if err != nil {
+		return airank.BudgetConfig{}, "", 0, err
+	}
+	monthly, err := parseNonNegative("AI_RANKING_MONTHLY_BUDGET_USD", 10)
+	if err != nil {
+		return airank.BudgetConfig{}, "", 0, err
+	}
+	estimatedBatch, err := parseNonNegative("AI_RANKING_ESTIMATED_USD_PER_BATCH", 0.01)
+	if err != nil {
+		return airank.BudgetConfig{}, "", 0, err
+	}
+	if daily > monthly {
+		return airank.BudgetConfig{}, "", 0, errors.New("AI_RANKING_DAILY_BUDGET_USD cannot exceed monthly budget")
+	}
+
+	ttlDays, err := strconv.Atoi(strings.TrimSpace(getenv("AI_RANKING_CACHE_TTL_DAYS", "30")))
+	if err != nil || ttlDays < 1 || ttlDays > 365 {
+		return airank.BudgetConfig{}, "", 0, errors.New("AI_RANKING_CACHE_TTL_DAYS must be between 1 and 365")
+	}
+	policyVersion := strings.TrimSpace(getenv("AI_RANKING_CACHE_VERSION", "rank-v1"))
+	if policyVersion == "" {
+		return airank.BudgetConfig{}, "", 0, errors.New("AI_RANKING_CACHE_VERSION cannot be blank")
+	}
+	model := strings.TrimSpace(getenv("OPENAI_RANKING_MODEL", "gpt-5.6-luna"))
+	cacheVersion := policyVersion + ":" + model
+	return airank.BudgetConfig{
+		DailyUSD:            daily,
+		MonthlyUSD:          monthly,
+		EstimatedBatchUSD:   estimatedBatch,
+		ReservationLifetime: 10 * time.Minute,
+	}, cacheVersion, time.Duration(ttlDays) * 24 * time.Hour, nil
 }

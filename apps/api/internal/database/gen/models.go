@@ -9,6 +9,25 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+type AiBudgetDebit struct {
+	ID               pgtype.UUID        `json:"id"`
+	Operation        string             `json:"operation"`
+	Status           string             `json:"status"`
+	EstimatedCostUsd pgtype.Numeric     `json:"estimated_cost_usd"`
+	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	ConsumedAt       pgtype.Timestamptz `json:"consumed_at"`
+}
+
+type AiRankingJudgmentCache struct {
+	InputHash    string             `json:"input_hash"`
+	JobID        pgtype.UUID        `json:"job_id"`
+	CacheVersion string             `json:"cache_version"`
+	Judgment     []byte             `json:"judgment"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	LastUsedAt   pgtype.Timestamptz `json:"last_used_at"`
+}
+
 type AiUsage struct {
 	ID               pgtype.UUID        `json:"id"`
 	Operation        string             `json:"operation"`
