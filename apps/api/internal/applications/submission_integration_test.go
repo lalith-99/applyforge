@@ -132,15 +132,15 @@ func fixtureApprovedPackage(t *testing.T, ctx context.Context, q *db.Queries) (*
 		t.Fatalf("create resume: %v", err)
 	}
 	version, err := q.CreateResumeVersion(ctx, db.CreateResumeVersionParams{
-		UserID:          database.UUIDToPG(user.ID),
-		BaseResumeID:    database.UUIDToPG(master.ID),
-		JobID:           database.UUIDToPG(upserted.Job.ID),
-		TailoringRunID:  pgtype.UUID{},
-		VersionNumber:   1,
-		ContentJson:     []byte(`{"summary":"Platform engineer"}`),
-		MatchScore:      pgtype.Int4{},
-		AlignmentScore:  pgtype.Int4{},
-		TailoringMode:   pgtype.Text{},
+		UserID:         database.UUIDToPG(user.ID),
+		BaseResumeID:   database.UUIDToPG(master.ID),
+		JobID:          database.UUIDToPG(upserted.Job.ID),
+		TailoringRunID: pgtype.UUID{},
+		VersionNumber:  1,
+		ContentJson:    []byte(`{"summary":"Platform engineer"}`),
+		MatchScore:     pgtype.Int4{},
+		AlignmentScore: pgtype.Int4{},
+		TailoringMode:  pgtype.Text{},
 	})
 	if err != nil {
 		t.Fatalf("create resume version: %v", err)
