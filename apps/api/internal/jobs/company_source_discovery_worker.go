@@ -255,6 +255,7 @@ func (w *CompanySourceDiscoveryWorker) Handle(ctx context.Context, job backgroun
 			"FAILED",
 			24*time.Hour,
 			err,
+			true,
 		); markErr != nil {
 			return markErr
 		}
