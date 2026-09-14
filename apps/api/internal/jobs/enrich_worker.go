@@ -19,10 +19,8 @@ import (
 // content_hash, so this is safe to enqueue redundantly on every poll).
 const JobTypeEnrich = "enrich_job"
 
-const (
-	eagerEnrichmentMaxAge       = 24 * time.Hour
-	eagerEnrichmentFutureSkew   = 5 * time.Minute
-)
+const eagerEnrichmentMaxAge = 24 * time.Hour
+const eagerEnrichmentFutureSkew = 5 * time.Minute
 
 // EnrichPayload is the JSON payload enqueued for an enrich_job job.
 type EnrichPayload struct {
