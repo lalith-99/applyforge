@@ -18,11 +18,16 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// Mounter registers a set of routes onto a chi.Router. auth.Handlers,
-// profile.Handlers, and preferences.Handlers all satisfy this via their
-// Mount method.
+// Mounter registers a set of routes onto a chi.Router.
 type Mounter interface {
 	Mount(r chi.Router)
+}
+
+// PublicMounter is optional. Domain handlers may expose narrowly scoped,
+// self-authenticating machine routes in addition to their normal session routes.
+// These routes are mounted outside RequireAuth and must authenticate themselves.
+type PublicMounter interface {
+	MountPublic(r chi.Router)
 }
 
 // Config bundles everything NewRouter needs to wire up routes. It exists so
@@ -53,7 +58,7 @@ func NewRouter(cfg Config) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{cfg.WebBaseURL},
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "X-ApplyForge-Admin-Token"},
+		AllowedHeaders:   []string{"Content-Type", "X-ApplyForge-Admin-Token", "X-ApplyForge-Companion-Token"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -77,14 +82,19 @@ func NewRouter(cfg Config) http.Handler {
 			})
 		}
 
-		// Machine-to-machine admin endpoints.
-		// These authenticate themselves using ADMIN_SYNC_TOKEN
-		// and do not require a user session cookie.
+		// Self-authenticated machine endpoints. Admin mounters authenticate with
+		// their own configured credential; optional PublicMounters use a narrow
+		// domain capability such as the one-intent browser-companion token.
 		r.Group(func(r chi.Router) {
 			r.Use(apiRateLimiter.middleware)
 
 			for _, m := range cfg.Admin {
 				m.Mount(r)
+			}
+			for _, m := range cfg.Authed {
+				if publicMounter, ok := m.(PublicMounter); ok {
+					publicMounter.MountPublic(r)
+				}
 			}
 		})
 
