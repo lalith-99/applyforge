@@ -13,7 +13,7 @@ async function handleMessage(message) {
     case "STORE_HANDOFF":
       return storeHandoff(message.payload);
     case "GET_HANDOFF":
-      return getHandoff();
+      return publicHandoff(await getHandoff());
     case "GET_WORKER_ID":
       return getWorkerId();
     case "GET_BUNDLE":
@@ -24,7 +24,7 @@ async function handleMessage(message) {
         method: "POST",
         body: { worker_id: workerId },
       });
-      const handoff = await getHandoff();
+      const handoff = await requireHandoff();
       await chrome.storage.session.set({
         [HANDOFF_KEY]: {
           ...handoff,
@@ -113,6 +113,20 @@ async function getHandoff() {
     return null;
   }
   return handoff;
+}
+
+function publicHandoff(handoff) {
+  if (!handoff) return null;
+  return {
+    intentId: handoff.intentId,
+    packageId: handoff.packageId,
+    expiresAt: handoff.expiresAt,
+    destinationUrl: handoff.destinationUrl,
+    destinationOrigin: handoff.destinationOrigin,
+    resumeFilename: handoff.resumeFilename,
+    resumePdfBase64: handoff.resumePdfBase64,
+    execution: handoff.execution || null,
+  };
 }
 
 async function requireHandoff() {
