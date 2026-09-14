@@ -30,6 +30,10 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Get("/applications/{id}", h.handleGet)
 	r.Patch("/applications/{id}", h.handleUpdate)
 	r.Get("/applications/{id}/events", h.handleListEvents)
+	r.Post("/applications/{id}/package", h.handleBuildPackage)
+	r.Get("/application-packages/{id}", h.handleGetPackage)
+	r.Post("/application-packages/{id}/approve", h.handleApprovePackage)
+	r.Post("/application-packages/{id}/revoke", h.handleRevokePackageApproval)
 	r.Get("/application-answers", h.handleGetAnswers)
 	r.Patch("/application-answers", h.handleUpdateAnswers)
 }
