@@ -90,7 +90,15 @@ func TestReserveCompanySourceInspectionTargetsPrioritizesSponsorValue(t *testing
 	if err != nil {
 		t.Fatalf("reserve second inspection target: %v", err)
 	}
-	if len(second) != 1 || second[0].CompanyName != "Retrying Hot Inspection" {
-		t.Fatalf("expected HOT retry before lower-value custom WARM source, got %+v", second)
+	if len(second) != 1 || second[0].CompanyName != "Custom Warm Inspection" {
+		t.Fatalf("expected fresh WARM fallback source before repeatedly failed HOT candidate, got %+v", second)
+	}
+
+	third, err := repo.ReserveCompanySourceInspectionTargets(ctx, 1, time.Hour)
+	if err != nil {
+		t.Fatalf("reserve third inspection target: %v", err)
+	}
+	if len(third) != 1 || third[0].CompanyName != "Retrying Hot Inspection" {
+		t.Fatalf("expected repeatedly failed HOT candidate to remain eligible after fresher WARM candidates, got %+v", third)
 	}
 }
