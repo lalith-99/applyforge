@@ -23,17 +23,26 @@ func CheckEligibility(in Input) EligibilityResult {
 		}
 	}
 
-	if len(in.PreferredEmploymentTypes) > 0 && in.EmploymentType != "" {
-		matched := false
-		for _, t := range in.PreferredEmploymentTypes {
-			if normalizeEmploymentType(t) == normalizeEmploymentType(in.EmploymentType) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
+	if len(in.PreferredEmploymentTypes) > 0 {
+		if strings.TrimSpace(in.EmploymentType) == "" {
+			// Employment-type preferences are hard shortlist constraints. Keeping
+			// unknown inventory is useful for acquisition/inspection, but an
+			// unverified type must not enter a strict recommendation shortlist or
+			// proceed toward submission as though it satisfied the preference.
 			result.Eligible = false
-			result.HardFailures = append(result.HardFailures, "employment type does not match your preferences")
+			result.HardFailures = append(result.HardFailures, "employment type is unknown and cannot be verified against your preferences")
+		} else {
+			matched := false
+			for _, t := range in.PreferredEmploymentTypes {
+				if normalizeEmploymentType(t) == normalizeEmploymentType(in.EmploymentType) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				result.Eligible = false
+				result.HardFailures = append(result.HardFailures, "employment type does not match your preferences")
+			}
 		}
 	}
 
