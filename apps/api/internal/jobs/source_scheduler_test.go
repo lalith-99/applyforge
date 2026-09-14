@@ -37,6 +37,7 @@ func TestSourceScheduleScoreLetsOverdueSourcesCatchUp(t *testing.T) {
 		sponsorTier:         "HOT",
 		lastPolledAt:        &oneHourAgo,
 		pollIntervalMinutes: 60,
+		usefulFreshJobs24h:  100,
 	}
 	coldDirectVeryOverdue := scheduledJobSource{
 		config:              JobSourceConfig{SourceType: "LEVER"},
@@ -46,7 +47,7 @@ func TestSourceScheduleScoreLetsOverdueSourcesCatchUp(t *testing.T) {
 	}
 
 	if sourceScheduleScore(coldDirectVeryOverdue, now) <= sourceScheduleScore(hotDirect, now) {
-		t.Fatalf("expected sufficiently overdue COLD source to outrank newly due HOT source")
+		t.Fatalf("expected sufficiently overdue COLD source to outrank productive newly due HOT source")
 	}
 }
 
@@ -67,5 +68,40 @@ func TestSourceScheduleScoreNeverPolledDoesNotBeatDueHotDirectByDefault(t *testi
 
 	if sourceScheduleScore(newBroad, now) >= sourceScheduleScore(hotDirect, now) {
 		t.Fatalf("expected newly discovered broad source to remain behind a due HOT direct ATS source")
+	}
+}
+
+func TestSourceScheduleScoreRewardsUsefulFreshYield(t *testing.T) {
+	now := time.Date(2026, 9, 14, 20, 0, 0, 0, time.UTC)
+	oneHourAgo := now.Add(-time.Hour)
+
+	productive := scheduledJobSource{
+		config:              JobSourceConfig{SourceType: "GREENHOUSE"},
+		sponsorTier:         "WARM",
+		lastPolledAt:        &oneHourAgo,
+		pollIntervalMinutes: 60,
+		usefulFreshJobs24h:  7,
+	}
+	quiet := scheduledJobSource{
+		config:              JobSourceConfig{SourceType: "GREENHOUSE"},
+		sponsorTier:         "WARM",
+		lastPolledAt:        &oneHourAgo,
+		pollIntervalMinutes: 60,
+	}
+
+	if sourceScheduleScore(productive, now) <= sourceScheduleScore(quiet, now) {
+		t.Fatalf("expected productive source to outrank otherwise equivalent quiet source")
+	}
+}
+
+func TestSourceYieldScheduleBonusIsBounded(t *testing.T) {
+	if got := sourceYieldScheduleBonus(0); got != 0 {
+		t.Fatalf("expected zero yield bonus for no useful jobs, got %v", got)
+	}
+	if got := sourceYieldScheduleBonus(7); got != 1.5 {
+		t.Fatalf("expected seven useful jobs to reach 1.5 cap, got %v", got)
+	}
+	if got := sourceYieldScheduleBonus(10000); got != 1.5 {
+		t.Fatalf("expected huge source yield to remain capped at 1.5, got %v", got)
 	}
 }

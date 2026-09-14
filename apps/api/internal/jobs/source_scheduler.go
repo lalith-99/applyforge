@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"math"
 	"sort"
 	"time"
 )
@@ -14,19 +15,34 @@ type scheduledJobSource struct {
 	lastPolledAt        *time.Time
 	pollIntervalMinutes int
 	createdAt           time.Time
+	usefulFreshJobs24h  int64
 }
 
 // ListPrioritizedDueJobSources returns every source that is currently due,
 // ordered so high-value direct ATS boards for H-1B sponsor employers are
 // enqueued first while sufficiently overdue lower-tier sources can still
-// overtake them. This avoids starvation while improving fresh-job coverage
-// when the source-sync queue is backlogged.
+// overtake them. Recent useful yield is deliberately bounded: a productive
+// source gets a small boost, but raw posting volume can never defeat fairness.
 func (r *Repository) ListPrioritizedDueJobSources(ctx context.Context) ([]JobSourceConfig, error) {
 	if r.pool == nil {
 		return r.ListDueJobSources(ctx)
 	}
 
 	rows, err := r.pool.Query(ctx, `
+		WITH useful_yield AS (
+			SELECT company_id,
+			       source,
+			       count(*)::bigint AS useful_fresh_jobs_24h
+			FROM jobs
+			WHERE status = 'ACTIVE'
+			  AND canonical_job_id IS NULL
+			  AND country_code = 'US'
+			  AND role_classification = 'IC_SOFTWARE'
+			  AND employment_type = 'FullTime'
+			  AND posted_at IS NOT NULL
+			  AND posted_at >= now() - INTERVAL '24 hours'
+			GROUP BY company_id, source
+		)
 		SELECT js.id,
 		       js.source_type,
 		       js.board_token,
@@ -35,10 +51,14 @@ func (r *Repository) ListPrioritizedDueJobSources(ctx context.Context) ([]JobSou
 		       COALESCE(w.tier, ''),
 		       js.last_polled_at,
 		       js.poll_interval_minutes,
-		       js.created_at
+		       js.created_at,
+		       COALESCE(y.useful_fresh_jobs_24h, 0)
 		FROM job_sources js
 		JOIN companies c ON c.id = js.company_id
 		LEFT JOIN company_sponsor_watchlist w ON w.company_id = js.company_id
+		LEFT JOIN useful_yield y
+		  ON y.company_id = js.company_id
+		 AND y.source = js.source_type
 		WHERE js.enabled = true
 		  AND (
 		      js.last_polled_at IS NULL
@@ -64,6 +84,7 @@ func (r *Repository) ListPrioritizedDueJobSources(ctx context.Context) ([]JobSou
 			&source.lastPolledAt,
 			&source.pollIntervalMinutes,
 			&source.createdAt,
+			&source.usefulFreshJobs24h,
 		); err != nil {
 			return nil, err
 		}
@@ -107,7 +128,10 @@ func sourceScheduleScore(source scheduledJobSource, now time.Time) float64 {
 		}
 	}
 
-	return overdueIntervals + sponsorTierScheduleBonus(source.sponsorTier) + sourceTypeScheduleBonus(source.config.SourceType)
+	return overdueIntervals +
+		sponsorTierScheduleBonus(source.sponsorTier) +
+		sourceTypeScheduleBonus(source.config.SourceType) +
+		sourceYieldScheduleBonus(source.usefulFreshJobs24h)
 }
 
 func sponsorTierScheduleBonus(tier string) float64 {
@@ -134,4 +158,16 @@ func sourceTypeScheduleBonus(sourceType string) float64 {
 	default:
 		return 0
 	}
+}
+
+func sourceYieldScheduleBonus(usefulFreshJobs24h int64) float64 {
+	if usefulFreshJobs24h <= 0 {
+		return 0
+	}
+
+	// Log scaling rewards sources that are currently producing jobs users can
+	// actually apply to, without letting a huge employer monopolize polling.
+	// Seven useful jobs reaches the cap; additional raw volume is irrelevant.
+	bonus := 0.5 * math.Log2(float64(usefulFreshJobs24h)+1)
+	return math.Min(bonus, 1.5)
 }
