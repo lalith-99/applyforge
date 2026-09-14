@@ -92,6 +92,64 @@ func TestService_Rank_FallsBackToTotalScoreOnAIFailure(t *testing.T) {
 	}
 }
 
+func TestService_RankCapsColdProviderJudgmentsAndKeepsFallbacks(t *testing.T) {
+	var calls atomic.Int32
+	var judged atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var req aiclient.RankJobsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		judged.Add(int32(len(req.Jobs)))
+		rankings := make([]map[string]any, 0, len(req.Jobs))
+		for _, job := range req.Jobs {
+			rankings = append(rankings, map[string]any{
+				"job_id": job.JobID, "fit_score": 90, "recommendation": "STRONG_CONSIDER",
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-ApplyForge-AI-Mode", "provider")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": map[string]any{"rankings": rankings},
+		})
+	}))
+	defer server.Close()
+
+	candidates := make([]matching.RankedJob, 0, 55)
+	for i := 0; i < 55; i++ {
+		candidates = append(candidates, matching.RankedJob{
+			Job:    jobStub(uuid.New(), "Backend Engineer"),
+			Result: matching.Result{TotalScore: 100 - i},
+		})
+	}
+
+	ranked, err := airank.NewService(aiclient.New(server.URL)).Rank(
+		context.Background(), "Senior backend engineer", []string{"Backend Engineer"}, candidates,
+	)
+	if err != nil {
+		t.Fatalf("Rank: %v", err)
+	}
+	if len(ranked) != len(candidates) {
+		t.Fatalf("expected all %d candidates preserved, got %d", len(candidates), len(ranked))
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("expected two provider batches for the capped cold pool, got %d", got)
+	}
+	if got := judged.Load(); got != 40 {
+		t.Fatalf("expected exactly 40 provider-judged candidates, got %d", got)
+	}
+	judgmentCount := 0
+	for _, candidate := range ranked {
+		if candidate.HasJudgment {
+			judgmentCount++
+		}
+	}
+	if judgmentCount != 40 {
+		t.Fatalf("expected 40 AI judgments with deterministic fallback for the remainder, got %d", judgmentCount)
+	}
+}
+
 func TestService_RankCachesUnchangedSemanticInputs(t *testing.T) {
 	var calls atomic.Int32
 	jobID := uuid.New()

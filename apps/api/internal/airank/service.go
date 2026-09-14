@@ -21,11 +21,20 @@ import (
 	"github.com/lalithlochan/applyforge/apps/api/internal/matching"
 )
 
-// batchSize caps how many jobs go into a single AI ranking call, per the
-// "batch 10-20 jobs together" guidance - one request judging many jobs at
-// once is both cheaper and lets the model compare/prioritize across them,
-// versus one request per job.
-const batchSize = 20
+const (
+	// batchSize caps how many jobs go into a single AI ranking call, per the
+	// "batch 10-20 jobs together" guidance - one request judging many jobs at
+	// once is both cheaper and lets the model compare/prioritize across them,
+	// versus one request per job.
+	batchSize = 20
+
+	// maxProviderRankCandidates bounds worst-case model spend on a cold cache.
+	// Recommend already sends candidates in deterministic/pre-AI priority order,
+	// so judging the first 40 preserves the strongest opportunities while the
+	// remainder stays available through deterministic fallback. Cached judgments
+	// are still used for every candidate and do not consume this provider budget.
+	maxProviderRankCandidates = 40
+)
 
 // Judgment is the AI's fit assessment for one job.
 type Judgment struct {
@@ -136,6 +145,19 @@ func (s *Service) Rank(ctx context.Context, candidateSummary string, targetRoles
 		}
 	} else if !cacheAvailable {
 		misses = nil
+	}
+
+	// Keep provider spend bounded on cold/mostly-cold runs. The caller supplies
+	// candidates in descending pre-AI priority, so truncating misses here judges
+	// the strongest uncached opportunities first. Every omitted candidate remains
+	// in ranked and continues through deterministic fallback; nothing is dropped.
+	if len(misses) > maxProviderRankCandidates {
+		slog.Info("capping AI ranking cache misses",
+			"cache_misses", len(misses),
+			"provider_candidates", maxProviderRankCandidates,
+			"deterministic_fallback_candidates", len(misses)-maxProviderRankCandidates,
+		)
+		misses = misses[:maxProviderRankCandidates]
 	}
 
 	for start := 0; start < len(misses); start += batchSize {
