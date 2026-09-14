@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { API_BASE_URL, api } from "@/lib/api";
 import type { ApplicationWithJob, ResumeVersion } from "@/types/api";
@@ -23,6 +23,8 @@ export function ApplyReviewModal({
 }) {
   const [pkg, setPackage] = useState<ApplicationPackage | null>(null);
   const [resume, setResume] = useState<ResumeVersion | null>(null);
+  const [resumeLoading, setResumeLoading] = useState(Boolean(app.ResumeVersionID));
+  const [resumeConfirmed, setResumeConfirmed] = useState(false);
   const [approval, setApproval] = useState<ApplicationApproval | null>(null);
   const [intent, setIntent] = useState<SubmissionIntent | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -30,10 +32,50 @@ export function ApplyReviewModal({
   const [companionStarting, setCompanionStarting] = useState(false);
   const [companionNotice, setCompanionNotice] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!app.ResumeVersionID) return;
+
+    let active = true;
+    void api
+      .get<ResumeVersion>(`/resume-versions/${app.ResumeVersionID}`)
+      .then((version) => {
+        if (!active) return;
+        if (version.JobID !== app.JobID) {
+          setError("The resume linked to this application is not tailored for this job. Tailor and attach a job-scoped resume before building the application package.");
+          return;
+        }
+        setResume(version);
+      })
+      .catch((e) => {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : "Could not load the resume linked to this application.");
+      })
+      .finally(() => {
+        if (active) setResumeLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [app.JobID, app.ResumeVersionID]);
+
   const buildReview = useMutation({
     mutationFn: async () => {
+      if (!resume || !resumeConfirmed) {
+        throw new Error("Confirm the job-scoped resume before building the application package.");
+      }
+      if (resume.ID !== app.ResumeVersionID || resume.JobID !== app.JobID) {
+        throw new Error("The application resume changed. Review the latest job-scoped resume before continuing.");
+      }
+
       const built = await api.post<ApplicationPackage>(`/applications/${app.ID}/package`);
+      if (built.resume_version_id !== resume.ID) {
+        throw new Error("The application resume changed while the package was being built. Reopen the review and confirm the latest resume.");
+      }
       const version = await api.get<ResumeVersion>(`/resume-versions/${built.resume_version_id}`);
+      if (version.JobID !== app.JobID) {
+        throw new Error("The packaged resume is not scoped to this job.");
+      }
       return { built, version };
     },
     onSuccess: ({ built, version }) => {
@@ -77,6 +119,7 @@ export function ApplyReviewModal({
 
   const step: Step = intent ? "ready" : approval ? "approved" : "review";
   const answers = useMemo(() => pkg?.answers_json ?? {}, [pkg]);
+  const resumeReady = Boolean(resume && resume.JobID === app.JobID && resume.ID === app.ResumeVersionID);
 
   const launchCompanion = async () => {
     if (!pkg || !resume || !intent || companionStarting) return;
@@ -143,10 +186,52 @@ export function ApplyReviewModal({
         </div>
 
         {!pkg && (
-          <div className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-            <h3 className="font-medium">Build exact application package</h3>
-            <p className="mt-2 text-sm text-black/60 dark:text-white/60">ApplyForge will snapshot the job-scoped tailored resume, saved application answers, and the stored ATS destination. Any later change creates a different package and requires another approval.</p>
-            <button type="button" onClick={() => buildReview.mutate()} disabled={buildReview.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:opacity-60">{buildReview.isPending ? "Building review…" : "Build review package"}</button>
+          <div className="space-y-5">
+            <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-medium">Resume for this application</h3>
+                  <p className="mt-1 text-sm text-black/60 dark:text-white/60">A package can only be built from a resume version tailored to this exact job.</p>
+                </div>
+                <a href={`/jobs/${app.JobID}/tailor`} className="text-sm underline">Tailor again</a>
+              </div>
+
+              {resumeLoading && <p className="mt-4 text-sm text-black/60 dark:text-white/60">Loading linked resume…</p>}
+
+              {!resumeLoading && !app.ResumeVersionID && (
+                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+                  <p className="font-medium">No job-scoped resume is attached.</p>
+                  <p className="mt-1">Tailor a resume for this job and attach that generated version to the application before continuing.</p>
+                  <a href={`/jobs/${app.JobID}/tailor`} className="mt-3 inline-block rounded-md bg-foreground px-4 py-2 text-background">Tailor resume for this job →</a>
+                </div>
+              )}
+
+              {!resumeLoading && resumeReady && resume && (
+                <div className="mt-4 rounded-md bg-black/[0.03] p-4 text-sm dark:bg-white/[0.05]">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Tailored resume v{resume.VersionNumber}</p>
+                      <p className="mt-1 text-black/60 dark:text-white/60">Match {resume.MatchScore ?? "—"}% · created {new Date(resume.CreatedAt).toLocaleString()}</p>
+                      <p className="mt-1 text-xs font-medium text-green-700 dark:text-green-300">Verified for this exact job</p>
+                    </div>
+                    <a href={`${API_BASE_URL}/resume-versions/${resume.ID}/download?format=pdf`} target="_blank" rel="noreferrer" className="text-sm underline">Preview PDF</a>
+                  </div>
+
+                  {!resumeConfirmed ? (
+                    <button type="button" onClick={() => { setResumeConfirmed(true); setError(null); }} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background">Use this resume for application</button>
+                  ) : (
+                    <p className="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900 dark:bg-green-950/20 dark:text-green-100">This exact job-scoped resume version will be included in the application package.</p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
+              <h3 className="font-medium">Build exact application package</h3>
+              <p className="mt-2 text-sm text-black/60 dark:text-white/60">ApplyForge will snapshot the confirmed job-scoped resume version, saved application answers, and stored ATS destination. Any later resume, answer, or destination change creates a different package and requires another approval.</p>
+              <button type="button" onClick={() => buildReview.mutate()} disabled={!resumeReady || !resumeConfirmed || buildReview.isPending} className="mt-4 rounded-md bg-foreground px-4 py-2 text-sm text-background disabled:cursor-not-allowed disabled:opacity-50">{buildReview.isPending ? "Building review…" : "Build review package"}</button>
+              {!resumeConfirmed && resumeReady && <p className="mt-2 text-xs text-black/50 dark:text-white/50">Confirm the resume above to enable package creation.</p>}
+            </section>
           </div>
         )}
 
