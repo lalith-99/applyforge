@@ -15,10 +15,10 @@ LIMIT 1;
 -- ATS polls and AI work. Exhausted jobs become DEAD_LETTER; retryable jobs are
 -- returned to PENDING and can be claimed on the next poll iteration.
 --
--- Interactive, user-triggered job types (parse_resume, build_candidate_profile,
--- compute_recommendations, process_tailoring_run) are claimed ahead of bulk
--- background ingestion (enrich_job, embed_job, sync_job_source), so a large
--- ingestion backlog never stalls a user actively waiting on a result.
+-- Interactive, user-triggered work stays first. Fresh source acquisition is
+-- next so a burst of enrich/embed/classification jobs emitted by early source
+-- polls cannot starve the remaining ATS boards and shrink 24-hour coverage.
+-- Bulk AI/background work follows after source syncs.
 WITH expired_leases AS (
     UPDATE background_jobs
     SET status = CASE
@@ -38,7 +38,11 @@ WHERE id = (
     SELECT id FROM background_jobs
     WHERE status = 'PENDING' AND available_at <= now()
     ORDER BY
-        CASE WHEN job_type IN ('parse_resume', 'build_candidate_profile', 'compute_recommendations', 'process_tailoring_run') THEN 0 ELSE 1 END,
+        CASE
+            WHEN job_type IN ('parse_resume', 'build_candidate_profile', 'compute_recommendations', 'process_tailoring_run') THEN 0
+            WHEN job_type = 'sync_job_source' THEN 1
+            ELSE 2
+        END,
         available_at ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
