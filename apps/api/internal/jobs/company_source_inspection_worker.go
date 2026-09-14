@@ -51,8 +51,36 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		WITH candidates AS (
-			SELECT csr.id
+		WITH ranked AS (
+			SELECT
+				csr.id,
+				ROW_NUMBER() OVER (
+					ORDER BY
+						(
+							CASE w.tier
+								WHEN 'HOT' THEN 0.0
+								WHEN 'WARM' THEN 1.0
+								WHEN 'COOL' THEN 2.0
+								ELSE 3.0
+							END
+							+ LEAST(csr.inspection_attempt_count, 4) * 0.35
+							+ CASE
+								WHEN csr.source_type IN ('SMARTRECRUITERS', 'WORKDAY', 'ICIMS', 'SUCCESSFACTORS') THEN 0.0
+								ELSE 0.25
+							END
+							- LEAST(csr.confidence, 1.0) * 0.25
+							- LEAST(
+								GREATEST(
+									EXTRACT(EPOCH FROM (now() - COALESCE(csr.next_inspection_at, csr.first_seen_at))) / 604800.0,
+									0.0
+								),
+								6.0
+							) * 0.25
+						),
+						w.watchlist_rank,
+						csr.confidence DESC,
+						csr.first_seen_at
+				) AS priority_order
 			FROM company_source_registry csr
 			JOIN company_sponsor_watchlist w ON w.company_id = csr.company_id
 			WHERE csr.monitorable = false
@@ -62,16 +90,20 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 			      csr.next_inspection_at IS NULL
 			      OR csr.next_inspection_at <= now()
 			  )
-			ORDER BY w.watchlist_rank, csr.confidence DESC, csr.first_seen_at
+		),
+		candidates AS (
+			SELECT id, priority_order
+			FROM ranked
+			ORDER BY priority_order
 			LIMIT $1
-			FOR UPDATE OF csr SKIP LOCKED
+			FOR UPDATE SKIP LOCKED
 		),
 		reserved AS (
 			UPDATE company_source_registry csr
 			SET next_inspection_at = now() + make_interval(secs => $2)
 			FROM candidates c
 			WHERE csr.id = c.id
-			RETURNING csr.id, csr.company_id, csr.source_type, csr.board_token, csr.source_url
+			RETURNING csr.id, csr.company_id, csr.source_type, csr.board_token, csr.source_url, c.priority_order
 		)
 		SELECT
 			reserved.id,
@@ -84,7 +116,7 @@ func (r *Repository) ReserveCompanySourceInspectionTargets(
 		FROM reserved
 		JOIN companies c ON c.id = reserved.company_id
 		JOIN company_sponsor_watchlist w ON w.company_id = reserved.company_id
-		ORDER BY w.watchlist_rank
+		ORDER BY reserved.priority_order
 	`, limit, int(hold.Seconds()))
 	if err != nil {
 		return nil, err
@@ -259,7 +291,7 @@ func (w *CompanySourceInspectionWorker) Handle(ctx context.Context, job backgrou
 			registryID,
 			"FAILED",
 			7*24*time.Hour,
-			err,
+			 err,
 		); markErr != nil {
 			return markErr
 		}
