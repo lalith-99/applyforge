@@ -347,6 +347,16 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 	ranked := make([]RankedJob, 0, len(candidateOrder))
 	for _, jobID := range candidateOrder {
 		job := candidateByID[jobID]
+
+		// Seniority is derivable from the title and candidate profile, so reject
+		// obvious mismatches before requirement parsing or immigration-evidence
+		// lookups. Match() remains unchanged for explicit user-requested matches;
+		// this optimization applies only to the recommendation funnel.
+		if !recommendationSeniorityEligible(job.Title, candidateProfile) {
+			seniorityRejected++
+			continue
+		}
+
 		result, err := s.matchJobWithContext(ctx, job, userID, candidateCtx)
 		if err != nil {
 			slog.Error("match failed during recommend", "job_id", job.ID, "user_id", userID, "error", err)
@@ -356,10 +366,6 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 			continue
 		}
 		eligibleCandidates++
-		if !recommendationSeniorityEligible(job.Title, candidateProfile) {
-			seniorityRejected++
-			continue
-		}
 		ranked = append(ranked, RankedJob{Job: job, Result: result})
 	}
 
