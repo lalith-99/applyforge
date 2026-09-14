@@ -26,32 +26,18 @@ func NewService(repo *Repository) *Service {
 // (unique on user_id+job_id) so calling this again just updates the resume
 // version link without resetting an in-progress application's status.
 func (s *Service) Save(ctx context.Context, userID, jobID uuid.UUID, resumeVersionID *uuid.UUID, matchScore *int32) (Application, error) {
+	if err := s.repo.ValidateResumeVersionForJob(ctx, userID, jobID, resumeVersionID); err != nil {
+		return Application{}, err
+	}
 	return s.repo.Create(ctx, userID, jobID, resumeVersionID, StatusSaved, matchScore)
 }
 
 // ChangeStatus transitions an application to a new status and records the
-// transition as an event.
+// transition atomically as an event. The repository locks the application row
+// so the event always records the real prior status under concurrent updates.
 func (s *Service) ChangeStatus(ctx context.Context, userID, applicationID uuid.UUID, newStatus string, notes *string) (Application, error) {
 	if !ValidStatuses[newStatus] {
 		return Application{}, ErrInvalidStatus
 	}
-
-	current, err := s.repo.GetForUser(ctx, applicationID, userID)
-	if err != nil {
-		return Application{}, err
-	}
-
-	updated, err := s.repo.UpdateStatus(ctx, applicationID, userID, newStatus)
-	if err != nil {
-		return Application{}, err
-	}
-
-	if current.Status != newStatus {
-		fromStatus := current.Status
-		if _, err := s.repo.CreateEvent(ctx, applicationID, "STATUS_CHANGE", &fromStatus, &newStatus, notes); err != nil {
-			return Application{}, err
-		}
-	}
-
-	return updated, nil
+	return s.repo.ChangeStatusWithEvent(ctx, applicationID, userID, newStatus, notes)
 }
