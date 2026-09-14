@@ -34,21 +34,21 @@ var (
 // real-world submission. LeaseGeneration is a fencing token: every state
 // mutation after claim must present the generation that was actually claimed.
 type SubmissionIntent struct {
-	ID              uuid.UUID       `json:"id"`
-	ApplicationID   uuid.UUID       `json:"application_id"`
-	PackageID       uuid.UUID       `json:"package_id"`
-	ApprovalID      uuid.UUID       `json:"approval_id"`
-	PackageHash     string          `json:"package_hash"`
-	IdempotencyKey  string          `json:"idempotency_key"`
-	Status          string          `json:"status"`
-	LeaseGeneration int64           `json:"lease_generation"`
-	LeaseOwner      *string         `json:"lease_owner,omitempty"`
-	LeaseExpiresAt  *time.Time      `json:"lease_expires_at,omitempty"`
-	AttemptCount    int32           `json:"attempt_count"`
-	LastError       *string         `json:"last_error,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
-	CompletedAt     *time.Time      `json:"completed_at,omitempty"`
+	ID              uuid.UUID  `json:"id"`
+	ApplicationID   uuid.UUID  `json:"application_id"`
+	PackageID       uuid.UUID  `json:"package_id"`
+	ApprovalID      uuid.UUID  `json:"approval_id"`
+	PackageHash     string     `json:"package_hash"`
+	IdempotencyKey  string     `json:"idempotency_key"`
+	Status          string     `json:"status"`
+	LeaseGeneration int64      `json:"lease_generation"`
+	LeaseOwner      *string    `json:"lease_owner,omitempty"`
+	LeaseExpiresAt  *time.Time `json:"lease_expires_at,omitempty"`
+	AttemptCount    int32      `json:"attempt_count"`
+	LastError       *string    `json:"last_error,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 }
 
 func submissionIntentFromRow(row db.SubmissionIntent) SubmissionIntent {
