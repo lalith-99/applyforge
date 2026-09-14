@@ -111,6 +111,10 @@ jobs:
         run: node --check background.js
       - name: Check content script syntax
         run: node --check content.js
+      - name: Check resume upload helper syntax
+        run: node --check resume_upload.js
+      - name: Test resume upload input scoring
+        run: node resume_upload.test.js
 
   compose:
     name: Docker Compose
@@ -121,4 +125,3 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config
-
