@@ -19,6 +19,33 @@ SET status = $3, applied_at = CASE WHEN $3 = 'APPLIED' AND applied_at IS NULL TH
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
+-- name: ChangeApplicationStatusWithEvent :one
+WITH current AS (
+    SELECT id, status
+    FROM applications
+    WHERE id = $1 AND user_id = $2
+    FOR UPDATE
+), updated AS (
+    UPDATE applications a
+    SET status = $3,
+        applied_at = CASE WHEN $3 = 'APPLIED' AND a.applied_at IS NULL THEN now() ELSE a.applied_at END,
+        updated_at = now()
+    FROM current c
+    WHERE a.id = c.id
+    RETURNING a.*, c.status AS from_status
+), event_write AS (
+    INSERT INTO application_events (application_id, event_type, from_status, to_status, notes)
+    SELECT id, 'STATUS_CHANGE', from_status, status, $4
+    FROM updated
+    WHERE from_status <> status
+    RETURNING application_id
+)
+SELECT u.id, u.user_id, u.job_id, u.resume_version_id, u.status, u.match_score,
+       u.notes, u.next_action, u.applied_at, u.created_at, u.updated_at
+FROM updated u
+LEFT JOIN event_write e ON e.application_id = u.id
+LIMIT 1;
+
 -- name: UpdateApplicationNotes :one
 UPDATE applications SET notes = $3, next_action = $4, updated_at = now()
 WHERE id = $1 AND user_id = $2
