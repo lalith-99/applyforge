@@ -343,10 +343,19 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 
 	retrievedCandidates := len(candidateOrder)
 	eligibleCandidates := 0
+	roleDirectionRejected := 0
 	seniorityRejected := 0
 	ranked := make([]RankedJob, 0, len(candidateOrder))
 	for _, jobID := range candidateOrder {
 		job := candidateByID[jobID]
+
+		// Distinct specialty direction is derivable from the title and explicit
+		// target roles. Reject only high-confidence mismatches before JD parsing;
+		// generic and adjacent software roles remain eligible for richer scoring.
+		if !recommendationRoleDirectionEligible(job.Title, candidateProfile.TargetRoles) {
+			roleDirectionRejected++
+			continue
+		}
 
 		// Seniority is derivable from the title and candidate profile, so reject
 		// obvious mismatches before requirement parsing or immigration-evidence
@@ -384,6 +393,7 @@ func (s *Service) Recommend(ctx context.Context, userID uuid.UUID, limit int) ([
 		"user_id", userID,
 		"retrieved_candidates", retrievedCandidates,
 		"eligible_candidates", eligibleCandidates,
+		"role_direction_rejected", roleDirectionRejected,
 		"seniority_rejected", seniorityRejected,
 		"pre_ai_candidates", preAICandidates,
 		"returned_candidates", len(ranked),
