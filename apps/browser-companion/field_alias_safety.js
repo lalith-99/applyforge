@@ -23,6 +23,14 @@ function normalizeAlias(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+// content.js and resume_upload.js are classic content scripts in the same
+// isolated world, so their top-level lexical alias maps are visible here.
+// Harden both drivers: runApprovedApplication() uses FIELD_ALIASES while the
+// richer resume/combobox driver uses APPROVED_FIELD_ALIASES.
+if (typeof FIELD_ALIASES !== "undefined") {
+  removeUnsafeExactAliases(FIELD_ALIASES);
+}
+
 if (typeof APPROVED_FIELD_ALIASES !== "undefined") {
   removeUnsafeExactAliases(APPROVED_FIELD_ALIASES);
 }
