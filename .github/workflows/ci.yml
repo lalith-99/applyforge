@@ -111,12 +111,16 @@ jobs:
         run: node --check background.js
       - name: Check content script syntax
         run: node --check content.js
+      - name: Check ATS adapter safety syntax
+        run: node --check adapter_safety.js
       - name: Check resume upload helper syntax
         run: node --check resume_upload.js
       - name: Test resume upload input scoring
         run: node resume_upload.test.js
       - name: Test field alias safety
         run: node field_alias_safety.test.js
+      - name: Test ATS adapter host boundary
+        run: node adapter_safety_test.js
 
   compose:
     name: Docker Compose
