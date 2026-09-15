@@ -63,11 +63,18 @@ function fillKnownFields(answers) {
 
 function shouldDriveCustomCombobox(key, value) {
   if (key !== "work_authorization" && key !== "sponsorship") return false;
-  return normalizeCompanionBoolean(value) !== null;
+  return normalizeCustomBoolean(value) !== null;
+}
+
+function normalizeCustomBoolean(value) {
+  const text = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (["yes", "true", "y", "1"].includes(text) || text.startsWith("yes ")) return "yes";
+  if (["no", "false", "n", "0"].includes(text) || text.startsWith("no ")) return "no";
+  return null;
 }
 
 function setApprovedCombobox(field, desired) {
-  const desiredBoolean = normalizeCompanionBoolean(desired);
+  const desiredBoolean = normalizeCustomBoolean(desired);
   if (!desiredBoolean || !(field instanceof HTMLElement)) return false;
 
   const normalizedDesired = normalizeCompanionText(desiredBoolean);
@@ -97,7 +104,7 @@ function setApprovedCombobox(field, desired) {
 
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, composed: true }));
     field.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    if (normalizeCompanionBoolean(field.value) === desiredBoolean) return true;
+    if (normalizeCustomBoolean(field.value) === desiredBoolean) return true;
   }
 
   // Do not leave an unrelated/stale ATS menu open after an unsuccessful match.
