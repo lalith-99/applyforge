@@ -23,7 +23,15 @@ assert.equal(
   "work_authorization",
 );
 assert.equal(
+  matchApprovedAnswerKey("are you authorized to lawfully work for roku in the country to which you are applying", answers),
+  "work_authorization",
+);
+assert.equal(
   matchApprovedAnswerKey("will you now or in the future require visa sponsorship", answers),
+  "sponsorship",
+);
+assert.equal(
+  matchApprovedAnswerKey("do you now or will you in the future require employment visa sponsorship or support including renewals and transfers", answers),
   "sponsorship",
 );
 assert.equal(
