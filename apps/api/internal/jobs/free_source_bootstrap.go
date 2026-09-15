@@ -64,20 +64,20 @@ type FreeSourceBootstrapConfig struct {
 
 // FreeSourceBootstrapResult summarizes one best-effort sponsor-watchlist pass.
 type FreeSourceBootstrapResult struct {
-	PriorityCompanies    int
-	HotCompanies         int
-	WarmCompanies        int
-	CoolCompanies        int
-	ColdCompanies        int
-	DirectoryEntries     int
-	MatchedCompanies     int
-	ResolvedCompanies    int
-	PartialCompanies     int
-	EnabledJobSources    int
-	RegistryCandidates   int
-	FetchFailures        int
-	EmployerListEntries  int
-	EmployerListMatched  int
+	PriorityCompanies     int
+	HotCompanies          int
+	WarmCompanies         int
+	CoolCompanies         int
+	ColdCompanies         int
+	DirectoryEntries      int
+	MatchedCompanies      int
+	ResolvedCompanies     int
+	PartialCompanies      int
+	EnabledJobSources     int
+	RegistryCandidates    int
+	FetchFailures         int
+	EmployerListEntries   int
+	EmployerListMatched   int
 	ExternalLinksRecorded int
 }
 
