@@ -244,13 +244,13 @@ func (r *Repository) upsertEmployerListExternalLinks(
 ) (int, error) {
 	metadata, err := json.Marshal(map[string]any{
 		"provider_updated": datasetUpdated,
-		"employer_name":   strings.TrimSpace(row.Name),
-		"headquarters":    strings.TrimSpace(row.Headquarters),
-		"states":          row.States,
-		"industry":        strings.TrimSpace(row.Industry),
-		"h1b_approvals":   row.Approvals,
-		"fiscal_year":     row.FiscalYear,
-		"volume_tier":     strings.TrimSpace(row.Tier),
+		"employer_name":    strings.TrimSpace(row.Name),
+		"headquarters":     strings.TrimSpace(row.Headquarters),
+		"states":           row.States,
+		"industry":         strings.TrimSpace(row.Industry),
+		"h1b_approvals":    row.Approvals,
+		"fiscal_year":      row.FiscalYear,
+		"volume_tier":      strings.TrimSpace(row.Tier),
 	})
 	if err != nil {
 		return 0, err
