@@ -3,6 +3,7 @@ const {
   scoreResumeDescriptor,
   matchApprovedAnswerKey,
   normalizeApprovedAnswer,
+  isUsableApprovedAnswer,
 } = require("./resume_upload.js");
 
 assert(scoreResumeDescriptor("Upload Resume PDF") > 0);
@@ -42,5 +43,17 @@ assert.equal(normalizeApprovedAnswer("work_authorization", "H-1B"), "yes");
 assert.equal(normalizeApprovedAnswer("sponsorship", "H-1B transfer required"), "yes");
 assert.equal(normalizeApprovedAnswer("sponsorship", "Do not require sponsorship"), "no");
 assert.equal(normalizeApprovedAnswer("work_authorization", "Not authorized"), "no");
+
+// Validation/placeholder strings must never become application answers.
+for (const rejected of ["Required", "required field", "Optional", "Select one", "Please select", "Choose", "Not provided"]) {
+  assert.equal(isUsableApprovedAnswer("linkedin_url", rejected), false, rejected);
+  assert.equal(normalizeApprovedAnswer("linkedin_url", rejected), null, rejected);
+}
+
+assert.equal(isUsableApprovedAnswer("linkedin_url", "https://www.linkedin.com/in/example"), true);
+assert.equal(isUsableApprovedAnswer("linkedin_url", "https://example.com/profile"), false);
+assert.equal(isUsableApprovedAnswer("github_url", "https://github.com/example"), true);
+assert.equal(isUsableApprovedAnswer("github_url", "Required"), false);
+assert.equal(isUsableApprovedAnswer("portfolio_url", "https://example.dev"), true);
 
 console.log("browser companion resume and approved-answer mapping tests passed");
