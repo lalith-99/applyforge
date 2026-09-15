@@ -9,16 +9,17 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const (
-	defaultEmployerListURL          = "https://raw.githubusercontent.com/Deepakvutla9/employers-list/main/employers.json"
-	employerListProvider            = "DEEPAK_EMPLOYERS_LIST"
-	maxEmployerListResponseBytes    = 4 << 20
-	maxEmployerListRows             = 20000
-	employerListGenericCareerToken  = "EMPLOYERS_LIST"
+	defaultEmployerListURL         = "https://raw.githubusercontent.com/Deepakvutla9/employers-list/main/employers.json"
+	employerListProvider           = "DEEPAK_EMPLOYERS_LIST"
+	maxEmployerListResponseBytes   = 4 << 20
+	maxEmployerListRows            = 20000
+	employerListGenericCareerToken = "EMPLOYERS_LIST"
 )
 
 type employerListDataset struct {
@@ -27,15 +28,15 @@ type employerListDataset struct {
 }
 
 type employerListRow struct {
-	Name          string   `json:"n"`
-	CareersURL    string   `json:"u"`
-	Headquarters  string   `json:"hq"`
-	States        []string `json:"st"`
-	Industry      string   `json:"ind"`
-	Approvals     *int     `json:"a"`
-	FiscalYear    *int     `json:"fy"`
-	LinkedInURL   string   `json:"li"`
-	Tier          string   `json:"tier"`
+	Name         string   `json:"n"`
+	CareersURL   string   `json:"u"`
+	Headquarters string   `json:"hq"`
+	States       []string `json:"st"`
+	Industry     string   `json:"ind"`
+	Approvals    *int     `json:"a"`
+	FiscalYear   *int     `json:"fy"`
+	LinkedInURL  string   `json:"li"`
+	Tier         string   `json:"tier"`
 }
 
 type employerListBootstrapResult struct {
@@ -125,17 +126,14 @@ func (r *Repository) bootstrapEmployerList(
 }
 
 func fetchEmployerListDataset(ctx context.Context, cfg FreeSourceBootstrapConfig) (employerListDataset, error) {
-	endpoint := strings.TrimSpace(cfg.EmployerListURL)
-	if endpoint == "" {
-		endpoint = defaultEmployerListURL
-	}
+	endpoint := defaultEmployerListURL
 	if _, err := validatePublicHTTPURL(endpoint); err != nil {
 		return employerListDataset{}, fmt.Errorf("invalid employers-list endpoint: %w", err)
 	}
 
 	client := cfg.HTTPClient
 	if client == nil {
-		client = newPublicHTTPClient(25 * 1e9)
+		client = newPublicHTTPClient(25 * time.Second)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
