@@ -3,6 +3,7 @@ package applications
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,12 +19,9 @@ type Handlers struct {
 }
 
 // NewHandlers builds applications Handlers.
-func NewHandlers(svc *Service, repo *Repository) *Handlers {
-	return &Handlers{svc: svc, repo: repo}
-}
+func NewHandlers(svc *Service, repo *Repository) *Handlers { return &Handlers{svc: svc, repo: repo} }
 
-// Mount registers applications routes onto r. Callers must apply
-// auth.RequireAuth before mounting.
+// Mount registers applications routes onto r. Callers must apply auth.RequireAuth before mounting.
 func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/applications", h.handleSave)
 	r.Get("/applications", h.handleList)
@@ -59,7 +57,6 @@ func (h *Handlers) handleSave(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	var req saveRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
@@ -75,7 +72,6 @@ func (h *Handlers) handleSave(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid resume_version_id")
 		return
 	}
-
 	app, err := h.svc.Save(r.Context(), u.ID, jobID, resumeVersionID, req.MatchScore)
 	if err != nil {
 		if errors.Is(err, ErrResumeVersionMismatch) {
@@ -94,7 +90,6 @@ func (h *Handlers) handleList(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	apps, err := h.repo.ListWithJobForUser(r.Context(), u.ID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not list applications")
@@ -109,13 +104,11 @@ func (h *Handlers) handleGet(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid application id")
 		return
 	}
-
 	app, err := h.repo.GetForUser(r.Context(), id, u.ID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusNotFound, "application not found")
@@ -136,19 +129,16 @@ func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid application id")
 		return
 	}
-
 	var req updateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	var app Application
 	if req.Status != nil {
 		app, err = h.svc.ChangeStatus(r.Context(), u.ID, id, *req.Status, req.Notes)
@@ -183,7 +173,6 @@ func (h *Handlers) handleUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	httpx.WriteJSON(w, http.StatusOK, app)
 }
 
@@ -193,7 +182,6 @@ func (h *Handlers) handleListEvents(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid application id")
@@ -203,7 +191,6 @@ func (h *Handlers) handleListEvents(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "application not found")
 		return
 	}
-
 	events, err := h.repo.ListEvents(r.Context(), id)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not list application events")
@@ -218,7 +205,6 @@ func (h *Handlers) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	answers, err := h.repo.GetAnswers(r.Context(), u.ID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -237,19 +223,40 @@ func (h *Handlers) handleUpdateAnswers(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-
 	var req UpsertAnswersInput
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
+	if !validReusableBinaryAnswer(req.WorkAuthorization) {
+		httpx.WriteError(w, http.StatusBadRequest, "work_authorization must be yes, no, or null")
+		return
+	}
+	if !validReusableBinaryAnswer(req.Sponsorship) {
+		httpx.WriteError(w, http.StatusBadRequest, "sponsorship must be yes, no, or null")
+		return
+	}
 	answers, err := h.repo.UpsertAnswers(r.Context(), u.ID, req)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save application answers")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, answers)
+}
+
+// validReusableBinaryAnswer prevents API clients from bypassing the explicit
+// user-approved Yes/No model for sensitive authorization and sponsorship data.
+// Blank values remain allowed so the employer-site question can stay manual.
+func validReusableBinaryAnswer(value *string) bool {
+	if value == nil {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(*value)) {
+	case "", "yes", "no":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseOptionalUUID(s *string) (*uuid.UUID, error) {
