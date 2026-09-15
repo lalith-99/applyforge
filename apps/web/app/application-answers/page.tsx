@@ -60,13 +60,26 @@ const FIELDS: { key: keyof FormState; label: string; hint?: string; type?: strin
   { key: "phone", label: "Phone" },
   { key: "location", label: "Current location" },
   { key: "desired_location", label: "Desired / preferred location" },
-  { key: "work_authorization", label: "Work authorization", hint: "Use the wording you want submitted on application forms." },
-  { key: "sponsorship", label: "Sponsorship answer", hint: "Use the exact answer you want submitted when an employer asks whether sponsorship is required." },
   { key: "salary_expectation", label: "Salary expectation", hint: "Leave blank if you prefer to answer job-by-job." },
   { key: "notice_period", label: "Notice period / availability" },
   { key: "linkedin_url", label: "LinkedIn URL", type: "url" },
   { key: "github_url", label: "GitHub URL", type: "url" },
   { key: "portfolio_url", label: "Portfolio URL", type: "url" },
+];
+
+const BINARY_ANSWERS: { key: "work_authorization" | "sponsorship"; label: string; question: string; hint: string }[] = [
+  {
+    key: "work_authorization",
+    label: "US work authorization",
+    question: "Are you currently authorized to work in the United States?",
+    hint: "Choose the answer ApplyForge may reuse for equivalent work-authorization questions.",
+  },
+  {
+    key: "sponsorship",
+    label: "Visa sponsorship / support",
+    question: "Do you now, or will you in the future, require employment visa sponsorship or support, including a transfer or renewal?",
+    hint: "Choose the answer ApplyForge may reuse only for equivalent sponsorship/support questions.",
+  },
 ];
 
 export default function ApplicationAnswersPage() {
@@ -90,8 +103,8 @@ export default function ApplicationAnswersPage() {
       email: data.Email ?? "",
       location: data.Location ?? "",
       desired_location: data.DesiredLocation ?? "",
-      work_authorization: data.WorkAuthorization ?? "",
-      sponsorship: data.Sponsorship ?? "",
+      work_authorization: normalizeBinarySavedAnswer(data.WorkAuthorization),
+      sponsorship: normalizeBinarySavedAnswer(data.Sponsorship),
       salary_expectation: data.SalaryExpectation ?? "",
       notice_period: data.NoticePeriod ?? "",
       linkedin_url: data.LinkedinURL ?? "",
@@ -149,6 +162,37 @@ export default function ApplicationAnswersPage() {
               </label>
             ))}
 
+            <div className="grid gap-5 border-t border-black/10 pt-5 md:col-span-2 md:grid-cols-2 dark:border-white/15">
+              {BINARY_ANSWERS.map((field) => (
+                <fieldset key={field.key} className="rounded-lg border border-black/10 p-4 dark:border-white/15">
+                  <legend className="px-1 text-sm font-medium">{field.label}</legend>
+                  <p className="mt-1 text-sm">{field.question}</p>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    {["yes", "no"].map((answer) => (
+                      <label key={answer} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name={field.key}
+                          value={answer}
+                          checked={form[field.key] === answer}
+                          onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                        />
+                        {answer === "yes" ? "Yes" : "No"}
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      className="text-xs underline underline-offset-2 opacity-70"
+                      onClick={() => setForm((current) => ({ ...current, [field.key]: "" }))}
+                    >
+                      Clear / answer manually
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-black/50 dark:text-white/50">{field.hint}</p>
+                </fieldset>
+              ))}
+            </div>
+
             <div className="flex items-center gap-3 border-t border-black/10 pt-5 md:col-span-2 dark:border-white/15">
               <button type="submit" disabled={save.isPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
                 {save.isPending ? "Saving…" : "Save application answers"}
@@ -166,4 +210,11 @@ export default function ApplicationAnswersPage() {
       </main>
     </>
   );
+}
+
+export function normalizeBinarySavedAnswer(value?: string | null): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["yes", "true", "y", "1"].includes(normalized)) return "yes";
+  if (["no", "false", "n", "0"].includes(normalized)) return "no";
+  return "";
 }
