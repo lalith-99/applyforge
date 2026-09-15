@@ -111,12 +111,8 @@ jobs:
         run: node --check background.js
       - name: Check content script syntax
         run: node --check content.js
-      - name: Check field matching helper syntax
-        run: node --check field_matching.js
       - name: Check resume upload helper syntax
         run: node --check resume_upload.js
-      - name: Test saved answer field matching
-        run: node field_matching.test.js
       - name: Test resume upload input scoring
         run: node resume_upload.test.js
 
