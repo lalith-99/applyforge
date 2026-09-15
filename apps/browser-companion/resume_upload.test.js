@@ -5,6 +5,7 @@ const {
   normalizeApprovedAnswer,
   isUsableApprovedAnswer,
 } = require("./resume_upload.js");
+const { shouldDriveCustomCombobox } = require("./custom_combobox_fix.js");
 
 assert(scoreResumeDescriptor("Upload Resume PDF") > 0);
 assert(scoreResumeDescriptor("Curriculum Vitae attachment") > 0);
@@ -55,5 +56,14 @@ assert.equal(isUsableApprovedAnswer("linkedin_url", "https://example.com/profile
 assert.equal(isUsableApprovedAnswer("github_url", "https://github.com/example"), true);
 assert.equal(isUsableApprovedAnswer("github_url", "Required"), false);
 assert.equal(isUsableApprovedAnswer("portfolio_url", "https://example.dev"), true);
+
+// Custom ATS widgets are intentionally driven only for high-confidence binary
+// authorization/sponsorship answers. Location/autocomplete widgets stay manual
+// so one popup cannot steal another question's selection.
+assert.equal(shouldDriveCustomCombobox("work_authorization", "yes"), true);
+assert.equal(shouldDriveCustomCombobox("sponsorship", "no"), true);
+assert.equal(shouldDriveCustomCombobox("location", "Austin, Texas"), false);
+assert.equal(shouldDriveCustomCombobox("desired_location", "San Jose, California"), false);
+assert.equal(shouldDriveCustomCombobox("linkedin_url", "https://www.linkedin.com/in/example"), false);
 
 console.log("browser companion resume and approved-answer mapping tests passed");
