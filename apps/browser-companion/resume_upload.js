@@ -34,9 +34,6 @@ function chooseResumeFileInput(inputs) {
   const best = ranked[0];
   if (!best) return null;
 
-  // A single file control is a reasonable fallback on a job-application form.
-  // With multiple controls, require positive resume/CV evidence so we do not
-  // accidentally attach a resume to a cover-letter or portfolio uploader.
   if (inputs.length === 1) return best.input;
   return best.score > 0 ? best.input : null;
 }
@@ -79,15 +76,14 @@ function normalizeResumeDescriptor(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-// This intentionally overrides the basic fillKnownFields implementation in
-// content.js. resume_upload.js is loaded after content.js by the manifest, the
-// same pattern already used above to override uploadResume with the safer
-// resume-input scoring implementation.
 function fillKnownFields(answers) {
   let filled = 0;
-  for (const field of document.querySelectorAll("input, textarea, select")) {
-    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue;
-    if (!isCompanionVisible(field) || field.disabled) continue;
+  const fields = document.querySelectorAll("input, textarea, select, [role='combobox']");
+  for (const field of fields) {
+    const isNative = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement;
+    const isCombobox = field instanceof HTMLElement && field.getAttribute("role") === "combobox";
+    if (!isNative && !isCombobox) continue;
+    if (!isCompanionVisible(field) || field.disabled === true) continue;
     if (field instanceof HTMLInputElement && ["hidden", "submit", "button", "reset", "file", "password", "search"].includes(field.type)) continue;
 
     const descriptor = buildCompanionFieldDescriptor(field);
@@ -109,9 +105,16 @@ function fillKnownFields(answers) {
       continue;
     }
 
-    if (!String(field.value || "").trim()) {
-      setCompanionNativeValue(field, String(value));
-      filled += 1;
+    if (isCombobox || (field instanceof HTMLInputElement && field.getAttribute("aria-haspopup") === "listbox")) {
+      if (setApprovedCombobox(field, String(value))) filled += 1;
+      continue;
+    }
+
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      if (!String(field.value || "").trim()) {
+        setCompanionNativeValue(field, String(value));
+        filled += 1;
+      }
     }
   }
   return { filled };
@@ -128,10 +131,14 @@ const APPROVED_FIELD_ALIASES = {
     "now or in the future require",
     "immigration sponsorship",
     "employment sponsorship",
+    "employment visa sponsorship",
+    "work visa support",
   ],
   work_authorization: [
     "work authorization",
     "authorized to work",
+    "authorized to lawfully work",
+    "lawfully work",
     "legally authorized",
     "eligible to work",
     "permission to work",
@@ -189,6 +196,8 @@ function buildCompanionFieldDescriptor(field) {
     field.id,
     field.getAttribute?.("aria-label"),
     field.getAttribute?.("placeholder"),
+    field.getAttribute?.("data-label"),
+    field.getAttribute?.("data-question"),
     typeof labelText === "function" ? labelText(field) : "",
     companionQuestionText(field),
   ];
@@ -204,27 +213,48 @@ function companionQuestionText(field) {
 
   const group = field.closest?.('[role="group"], [role="radiogroup"], [data-question], [data-field], .application-question, .form-field, .field');
   if (group) {
-    const labelledBy = group.getAttribute?.("aria-labelledby");
-    if (labelledBy) {
-      for (const id of labelledBy.split(/\s+/).filter(Boolean)) {
-        const label = document.getElementById(id);
-        if (label?.textContent) parts.push(label.textContent);
-      }
-    }
-
-    const question = group.querySelector?.("legend, [data-question-label], .question-label, .field-label, .label, label");
-    if (question?.textContent) parts.push(question.textContent);
+    collectLabelledByText(group, parts);
+    collectQuestionLikeText(group, parts);
   }
 
-  const labelledBy = field.getAttribute?.("aria-labelledby");
-  if (labelledBy) {
-    for (const id of labelledBy.split(/\s+/).filter(Boolean)) {
-      const label = document.getElementById(id);
-      if (label?.textContent) parts.push(label.textContent);
-    }
+  collectLabelledByText(field, parts);
+
+  let node = field;
+  for (let depth = 0; depth < 3; depth += 1) {
+    const parent = node.parentElement;
+    if (!parent || parent === document.body || parent.tagName === "FORM") break;
+
+    collectQuestionLikeText(parent, parts);
+
+    const previous = node.previousElementSibling;
+    if (previous) addCompactText(previous, parts);
+
+    node = parent;
   }
 
-  return parts.join(" ").slice(0, 800);
+  return [...new Set(parts.map((value) => String(value).trim()).filter(Boolean))].join(" ").slice(0, 1200);
+}
+
+function collectLabelledByText(element, parts) {
+  const labelledBy = element.getAttribute?.("aria-labelledby");
+  if (!labelledBy) return;
+  for (const id of labelledBy.split(/\s+/).filter(Boolean)) {
+    const label = document.getElementById(id);
+    if (label?.textContent) parts.push(label.textContent);
+  }
+}
+
+function collectQuestionLikeText(container, parts) {
+  const candidates = container.querySelectorAll?.(
+    ":scope > legend, :scope > label, :scope > [data-question-label], :scope > .question-label, :scope > .field-label, :scope > [class*='question'], :scope > [class*='label']",
+  );
+  if (!candidates) return;
+  for (const candidate of candidates) addCompactText(candidate, parts);
+}
+
+function addCompactText(element, parts) {
+  const text = String(element?.textContent || "").replace(/\s+/g, " ").trim();
+  if (text && text.length <= 600) parts.push(text);
 }
 
 function setApprovedSelect(select, desired) {
@@ -259,18 +289,65 @@ function setApprovedChoice(input, desired, key) {
     return true;
   }
 
-  // Only handle checkboxes when the option itself communicates a boolean.
-  // We intentionally avoid guessing agreement/consent checkboxes.
   if (input.type === "checkbox" && desiredBoolean && optionBoolean) {
     const shouldCheck = desiredBoolean === optionBoolean;
     if (input.checked !== shouldCheck) input.click();
     return true;
   }
 
-  // Sensitive authorization/sponsorship checkboxes without explicit Yes/No
-  // wording are left for the user rather than inferred from a sentence polarity.
   if (key === "sponsorship" || key === "work_authorization") return false;
   return false;
+}
+
+function setApprovedCombobox(field, desired) {
+  const desiredBoolean = normalizeCompanionBoolean(desired);
+  const normalizedDesired = normalizeCompanionText(desired);
+
+  if (field instanceof HTMLInputElement) {
+    setCompanionNativeValue(field, desired);
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, composed: true }));
+  } else if (field instanceof HTMLElement) {
+    field.click();
+  }
+
+  const tryPick = () => {
+    const option = findMatchingComboboxOption(field, normalizedDesired, desiredBoolean);
+    if (option) {
+      option.click();
+      return true;
+    }
+    return false;
+  };
+
+  if (tryPick()) return true;
+  queueMicrotask(tryPick);
+  setTimeout(tryPick, 25);
+  setTimeout(tryPick, 100);
+  return field instanceof HTMLInputElement && String(field.value || "").trim() !== "";
+}
+
+function findMatchingComboboxOption(field, normalizedDesired, desiredBoolean) {
+  const roots = [];
+  const controls = field.getAttribute?.("aria-controls");
+  if (controls) {
+    for (const id of controls.split(/\s+/).filter(Boolean)) {
+      const controlled = document.getElementById(id);
+      if (controlled) roots.push(controlled);
+    }
+  }
+  roots.push(document);
+
+  for (const root of roots) {
+    const options = root.querySelectorAll?.("[role='option'], option, li[data-value], [data-value][role], [class*='option']") || [];
+    for (const option of options) {
+      if (!(option instanceof HTMLElement) || !isCompanionVisible(option)) continue;
+      const text = normalizeCompanionText(`${option.textContent || ""} ${option.getAttribute?.("data-value") || ""} ${option.getAttribute?.("value") || ""}`);
+      if (!text) continue;
+      if (text === normalizedDesired || text.includes(normalizedDesired)) return option;
+      if (desiredBoolean && normalizeCompanionBoolean(text) === desiredBoolean) return option;
+    }
+  }
+  return null;
 }
 
 function setCompanionNativeValue(field, value) {
