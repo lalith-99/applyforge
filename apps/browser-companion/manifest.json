@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js", "resume_upload.js", "custom_combobox_fix.js", "field_alias_safety.js", "panel_ux.js"],
+      "js": ["content.js", "adapter_safety.js", "resume_upload.js", "custom_combobox_fix.js", "field_alias_safety.js", "panel_ux.js"],
       "run_at": "document_idle"
     }
   ],
