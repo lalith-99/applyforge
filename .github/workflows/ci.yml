@@ -115,6 +115,8 @@ jobs:
         run: node --check resume_upload.js
       - name: Test resume upload input scoring
         run: node resume_upload.test.js
+      - name: Test field alias safety
+        run: node field_alias_safety.test.js
 
   compose:
     name: Docker Compose
