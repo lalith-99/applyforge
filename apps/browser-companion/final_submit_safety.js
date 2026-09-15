@@ -13,17 +13,24 @@ function isExplicitFinalSubmitLabel(rawText) {
     || text === "send my application";
 }
 
+function isEnabledFinalSubmitControl(control) {
+  if (!control) return false;
+  if (control.disabled === true) return false;
+  if (String(control.getAttribute?.("aria-disabled") || "").toLowerCase() === "true") return false;
+  return true;
+}
+
 // Loaded after content.js so this intentionally replaces the permissive
 // fallback that accepted any button containing the word "apply".
 function findFinalSubmitButton() {
   const controls = [...document.querySelectorAll('button[type="submit"], input[type="submit"], button')];
   return controls.find((control) => {
-    if (!(control instanceof HTMLElement) || !isVisible(control)) return false;
+    if (!(control instanceof HTMLElement) || !isVisible(control) || !isEnabledFinalSubmitControl(control)) return false;
     const text = control instanceof HTMLInputElement ? control.value : control.textContent || "";
     return isExplicitFinalSubmitLabel(text);
   }) || null;
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { isExplicitFinalSubmitLabel };
+  module.exports = { isExplicitFinalSubmitLabel, isEnabledFinalSubmitControl };
 }
