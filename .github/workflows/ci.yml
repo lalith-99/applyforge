@@ -117,6 +117,8 @@ jobs:
         run: node --check success_signal.js
       - name: Check final submit safety syntax
         run: node --check final_submit_safety.js
+      - name: Check required field safety syntax
+        run: node --check required_field_safety.js
       - name: Check resume upload helper syntax
         run: node --check resume_upload.js
       - name: Test resume upload input scoring
@@ -129,6 +131,8 @@ jobs:
         run: node success_signal.test.js
       - name: Test final submit label safety
         run: node final_submit_safety.test.js
+      - name: Test required field safety
+        run: node required_field_safety.test.js
 
   compose:
     name: Docker Compose
