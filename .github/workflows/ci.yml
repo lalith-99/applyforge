@@ -115,6 +115,8 @@ jobs:
         run: node --check adapter_safety.js
       - name: Check success signal helper syntax
         run: node --check success_signal.js
+      - name: Check final submit safety syntax
+        run: node --check final_submit_safety.js
       - name: Check resume upload helper syntax
         run: node --check resume_upload.js
       - name: Test resume upload input scoring
@@ -125,6 +127,8 @@ jobs:
         run: node adapter_safety_test.js
       - name: Test ATS success URL boundary
         run: node success_signal.test.js
+      - name: Test final submit label safety
+        run: node final_submit_safety.test.js
 
   compose:
     name: Docker Compose
