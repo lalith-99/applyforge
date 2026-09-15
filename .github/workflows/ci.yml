@@ -6,9 +6,12 @@ on:
   pull_request:
 
 jobs:
-  go-api:
+  api:
     name: Go API
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -22,34 +25,27 @@ jobs:
           --health-cmd "pg_isready -U applyforge -d applyforge"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 20
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    defaults:
-      run:
-        working-directory: apps/api
+          --health-retries 10
     env:
       DATABASE_URL: postgres://applyforge:applyforge@localhost:5432/applyforge?sslmode=disable
-      REDIS_ADDR: localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: apps/api/go.mod
+          go-version: "1.26"
           cache-dependency-path: apps/api/go.sum
       - name: Install goose
-        run: go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.28.0
       - name: Run migrations
-        run: goose -dir ../../db/migrations postgres "$DATABASE_URL" up
+        run: goose -dir internal/database/migrations postgres "$DATABASE_URL" up
       - name: gofmt
-        run: test -z "$(gofmt -l .)"
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "The following Go files need gofmt:"
+            echo "$files"
+            exit 1
+          fi
       - name: go vet
         run: go vet ./...
       - name: go test
@@ -57,7 +53,7 @@ jobs:
       - name: go build
         run: go build ./...
 
-  python-ai-worker:
+  ai-worker:
     name: Python AI Worker
     runs-on: ubuntu-latest
     defaults:
@@ -68,14 +64,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/ai-worker/requirements.txt
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
       - name: ruff
         run: ruff check .
       - name: pytest
-        run: pytest
+        run: python -m pytest -q
 
   web:
     name: Next.js Web
@@ -87,11 +81,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: pnpm
+          cache: "pnpm"
           cache-dependency-path: apps/web/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
