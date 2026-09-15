@@ -14,6 +14,16 @@ const HANDOFF_ACK = "APPLYFORGE_COMPANION_ACK";
 
 type Step = "review" | "approved" | "ready";
 
+type ReviewResumeContent = {
+  Summary: string | null;
+  Skills: string[];
+  Experiences: Array<{
+    Company: string | null;
+    Title: string | null;
+    Bullets: string[];
+  }>;
+};
+
 export function ApplyReviewModal({
   app,
   onClose,
@@ -119,6 +129,7 @@ export function ApplyReviewModal({
 
   const step: Step = intent ? "ready" : approval ? "approved" : "review";
   const answers = useMemo(() => pkg?.answers_json ?? {}, [pkg]);
+  const reviewResumeContent = useMemo(() => normalizeReviewResumeContent(resume?.Content), [resume]);
   const resumeReady = Boolean(resume && resume.JobID === app.JobID && resume.ID === app.ResumeVersionID);
 
   const launchCompanion = async () => {
@@ -250,10 +261,10 @@ export function ApplyReviewModal({
                 <a href={`${API_BASE_URL}/resume-versions/${resume.ID}/download?format=pdf`} target="_blank" rel="noreferrer" className="text-sm underline">Open PDF</a>
               </div>
               <div className="mt-3 space-y-3 text-sm">
-                {resume.Content.Summary && <p>{resume.Content.Summary}</p>}
-                {resume.Content.Skills.length > 0 && <div><p className="text-xs font-semibold uppercase text-black/50 dark:text-white/50">Skills</p><p className="mt-1">{resume.Content.Skills.join(" · ")}</p></div>}
+                {reviewResumeContent.Summary && <p>{reviewResumeContent.Summary}</p>}
+                {reviewResumeContent.Skills.length > 0 && <div><p className="text-xs font-semibold uppercase text-black/50 dark:text-white/50">Skills</p><p className="mt-1">{reviewResumeContent.Skills.join(" · ")}</p></div>}
                 <div className="space-y-3">
-                  {resume.Content.Experiences.map((experience, index) => (
+                  {reviewResumeContent.Experiences.map((experience, index) => (
                     <div key={`${experience.Company ?? "experience"}-${index}`}>
                       <p className="font-medium">{experience.Title ?? "Role"} · {experience.Company ?? "Company"}</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5 text-black/70 dark:text-white/70">{experience.Bullets.slice(0, 4).map((bullet) => <li key={bullet}>{bullet}</li>)}</ul>
@@ -309,6 +320,38 @@ export function ApplyReviewModal({
       </div>
     </div>
   );
+}
+
+function normalizeReviewResumeContent(content: unknown): ReviewResumeContent {
+  const raw = asRecord(content);
+  const rawExperiences = raw.Experiences ?? raw.experiences;
+
+  return {
+    Summary: stringValue(raw.Summary ?? raw.summary),
+    Skills: stringArray(raw.Skills ?? raw.skills),
+    Experiences: Array.isArray(rawExperiences)
+      ? rawExperiences.map((experience) => {
+          const item = asRecord(experience);
+          return {
+            Company: stringValue(item.Company ?? item.company),
+            Title: stringValue(item.Title ?? item.title),
+            Bullets: stringArray(item.Bullets ?? item.bullets),
+          };
+        })
+      : [],
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
 async function downloadResumeBase64(resumeVersionID: string): Promise<string> {
