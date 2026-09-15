@@ -78,10 +78,16 @@ function normalizeResumeDescriptor(value) {
 
 function fillKnownFields(answers) {
   let filled = 0;
-  const fields = document.querySelectorAll("input, textarea, select, [role='combobox']");
+  const fields = document.querySelectorAll(
+    "input, textarea, select, [role='combobox'], [aria-haspopup='listbox'], [aria-haspopup='menu']",
+  );
   for (const field of fields) {
     const isNative = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement;
-    const isCombobox = field instanceof HTMLElement && field.getAttribute("role") === "combobox";
+    const isCombobox = field instanceof HTMLElement && (
+      field.getAttribute("role") === "combobox"
+      || field.getAttribute("aria-haspopup") === "listbox"
+      || field.getAttribute("aria-haspopup") === "menu"
+    );
     if (!isNative && !isCombobox) continue;
     if (!isCompanionVisible(field) || field.disabled === true) continue;
     if (field instanceof HTMLInputElement && ["hidden", "submit", "button", "reset", "file", "password", "search"].includes(field.type)) continue;
@@ -90,8 +96,10 @@ function fillKnownFields(answers) {
     const key = matchApprovedAnswerKey(descriptor, answers);
     if (!key) continue;
 
+    clearRejectedPlaceholderValue(field);
+
     const rawValue = answers[key];
-    if (rawValue == null || String(rawValue).trim() === "") continue;
+    if (!isUsableApprovedAnswer(key, rawValue)) continue;
     const value = normalizeApprovedAnswer(key, rawValue);
     if (value == null || String(value).trim() === "") continue;
 
@@ -105,7 +113,7 @@ function fillKnownFields(answers) {
       continue;
     }
 
-    if (isCombobox || (field instanceof HTMLInputElement && field.getAttribute("aria-haspopup") === "listbox")) {
+    if (isCombobox) {
       if (setApprovedCombobox(field, String(value))) filled += 1;
       continue;
     }
@@ -158,6 +166,22 @@ const APPROVED_FIELD_ALIASES = {
   notice_period: ["notice period", "start date", "available to start", "availability"],
 };
 
+const REJECTED_ANSWER_TOKENS = new Set([
+  "required",
+  "required field",
+  "optional",
+  "select",
+  "select one",
+  "please select",
+  "choose",
+  "choose one",
+  "please choose",
+  "not provided",
+  "not set",
+  "unknown",
+  "placeholder",
+]);
+
 function matchApprovedAnswerKey(descriptor, answers) {
   const normalizedDescriptor = normalizeCompanionText(descriptor);
   for (const [key, aliases] of Object.entries(APPROVED_FIELD_ALIASES)) {
@@ -172,7 +196,29 @@ function matchApprovedAnswerKey(descriptor, answers) {
   return null;
 }
 
+function isUsableApprovedAnswer(key, value) {
+  if (value == null || typeof value === "object") return false;
+  const text = String(value).trim();
+  if (!text) return false;
+  const normalized = normalizeCompanionText(text);
+  if (!normalized || REJECTED_ANSWER_TOKENS.has(normalized)) return false;
+
+  if (["linkedin_url", "github_url", "portfolio_url"].includes(key)) {
+    try {
+      const parsed = new URL(text);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+      if (key === "linkedin_url" && !parsed.hostname.toLowerCase().includes("linkedin.com")) return false;
+      if (key === "github_url" && !parsed.hostname.toLowerCase().includes("github.com")) return false;
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function normalizeApprovedAnswer(key, value) {
+  if (!isUsableApprovedAnswer(key, value)) return null;
   const text = normalizeCompanionText(value);
   const booleanValue = normalizeCompanionBoolean(value);
   if (booleanValue) return booleanValue;
@@ -218,12 +264,15 @@ function companionQuestionText(field) {
   }
 
   collectLabelledByText(field, parts);
+  collectDescribedByText(field, parts);
 
   let node = field;
-  for (let depth = 0; depth < 3; depth += 1) {
+  for (let depth = 0; depth < 7; depth += 1) {
     const parent = node.parentElement;
     if (!parent || parent === document.body || parent.tagName === "FORM") break;
 
+    collectLabelledByText(parent, parts);
+    collectDescribedByText(parent, parts);
     collectQuestionLikeText(parent, parts);
 
     const previous = node.previousElementSibling;
@@ -232,7 +281,7 @@ function companionQuestionText(field) {
     node = parent;
   }
 
-  return [...new Set(parts.map((value) => String(value).trim()).filter(Boolean))].join(" ").slice(0, 1200);
+  return [...new Set(parts.map((value) => String(value).trim()).filter(Boolean))].join(" ").slice(0, 1800);
 }
 
 function collectLabelledByText(element, parts) {
@@ -241,6 +290,15 @@ function collectLabelledByText(element, parts) {
   for (const id of labelledBy.split(/\s+/).filter(Boolean)) {
     const label = document.getElementById(id);
     if (label?.textContent) parts.push(label.textContent);
+  }
+}
+
+function collectDescribedByText(element, parts) {
+  const describedBy = element.getAttribute?.("aria-describedby");
+  if (!describedBy) return;
+  for (const id of describedBy.split(/\s+/).filter(Boolean)) {
+    const description = document.getElementById(id);
+    if (description?.textContent) parts.push(description.textContent);
   }
 }
 
@@ -302,28 +360,39 @@ function setApprovedChoice(input, desired, key) {
 function setApprovedCombobox(field, desired) {
   const desiredBoolean = normalizeCompanionBoolean(desired);
   const normalizedDesired = normalizeCompanionText(desired);
+  const priorValue = field instanceof HTMLInputElement ? String(field.value || "") : "";
 
-  if (field instanceof HTMLInputElement) {
-    setCompanionNativeValue(field, desired);
-    field.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, composed: true }));
-  } else if (field instanceof HTMLElement) {
+  if (field instanceof HTMLElement) {
+    field.focus?.();
     field.click();
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, composed: true }));
   }
 
   const tryPick = () => {
     const option = findMatchingComboboxOption(field, normalizedDesired, desiredBoolean);
-    if (option) {
-      option.click();
-      return true;
-    }
-    return false;
+    if (!option) return false;
+    option.click();
+    return true;
   };
 
   if (tryPick()) return true;
-  queueMicrotask(tryPick);
-  setTimeout(tryPick, 25);
-  setTimeout(tryPick, 100);
-  return field instanceof HTMLInputElement && String(field.value || "").trim() !== "";
+
+  setTimeout(() => {
+    if (tryPick()) return;
+    if (field instanceof HTMLInputElement && desiredBoolean) {
+      setCompanionNativeValue(field, desiredBoolean === "yes" ? "Yes" : "No");
+      field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, composed: true }));
+    }
+  }, 40);
+
+  setTimeout(() => {
+    if (tryPick()) return;
+    if (field instanceof HTMLInputElement && !String(field.value || "").trim() && priorValue) {
+      setCompanionNativeValue(field, priorValue);
+    }
+  }, 180);
+
+  return false;
 }
 
 function findMatchingComboboxOption(field, normalizedDesired, desiredBoolean) {
@@ -335,10 +404,22 @@ function findMatchingComboboxOption(field, normalizedDesired, desiredBoolean) {
       if (controlled) roots.push(controlled);
     }
   }
+
+  const popupRoots = document.querySelectorAll(
+    "[role='listbox'], [role='menu'], [role='dialog'], [class*='dropdown'], [class*='menu'], [class*='popover']",
+  );
+  for (const popup of popupRoots) {
+    if (popup instanceof HTMLElement && isCompanionVisible(popup)) roots.push(popup);
+  }
   roots.push(document);
 
+  const seen = new Set();
   for (const root of roots) {
-    const options = root.querySelectorAll?.("[role='option'], option, li[data-value], [data-value][role], [class*='option']") || [];
+    if (seen.has(root)) continue;
+    seen.add(root);
+    const options = root.querySelectorAll?.(
+      "[role='option'], [role='menuitemradio'], [role='menuitem'], [role='radio'], option, li[data-value], [data-value][role], [class*='option']",
+    ) || [];
     for (const option of options) {
       if (!(option instanceof HTMLElement) || !isCompanionVisible(option)) continue;
       const text = normalizeCompanionText(`${option.textContent || ""} ${option.getAttribute?.("data-value") || ""} ${option.getAttribute?.("value") || ""}`);
@@ -348,6 +429,13 @@ function findMatchingComboboxOption(field, normalizedDesired, desiredBoolean) {
     }
   }
   return null;
+}
+
+function clearRejectedPlaceholderValue(field) {
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return;
+  const current = String(field.value || "").trim();
+  if (!current || !REJECTED_ANSWER_TOKENS.has(normalizeCompanionText(current))) return;
+  setCompanionNativeValue(field, "");
 }
 
 function setCompanionNativeValue(field, value) {
@@ -384,5 +472,6 @@ if (typeof module !== "undefined" && module.exports) {
     scoreResumeDescriptor,
     matchApprovedAnswerKey,
     normalizeApprovedAnswer,
+    isUsableApprovedAnswer,
   };
 }
