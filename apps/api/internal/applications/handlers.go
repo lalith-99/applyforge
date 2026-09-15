@@ -3,6 +3,7 @@ package applications
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -236,6 +237,18 @@ func (h *Handlers) handleUpdateAnswers(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "sponsorship must be yes, no, or null")
 		return
 	}
+	if !validReusableProfileURL(req.LinkedinURL, "linkedin.com") {
+		httpx.WriteError(w, http.StatusBadRequest, "linkedin_url must be a valid LinkedIn http(s) URL or null")
+		return
+	}
+	if !validReusableProfileURL(req.GithubURL, "github.com") {
+		httpx.WriteError(w, http.StatusBadRequest, "github_url must be a valid GitHub http(s) URL or null")
+		return
+	}
+	if !validReusableProfileURL(req.PortfolioURL, "") {
+		httpx.WriteError(w, http.StatusBadRequest, "portfolio_url must be a valid http(s) URL or null")
+		return
+	}
 	answers, err := h.repo.UpsertAnswers(r.Context(), u.ID, req)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "could not save application answers")
@@ -257,6 +270,24 @@ func validReusableBinaryAnswer(value *string) bool {
 	default:
 		return false
 	}
+}
+
+// validReusableProfileURL prevents malformed or lookalike profile links from
+// being snapshotted into an approved package. Blank values stay manual.
+func validReusableProfileURL(value *string, requiredHost string) bool {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return true
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(*value))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return false
+	}
+	if requiredHost == "" {
+		return true
+	}
+	host := strings.ToLower(parsed.Hostname())
+	requiredHost = strings.ToLower(requiredHost)
+	return host == requiredHost || strings.HasSuffix(host, "."+requiredHost)
 }
 
 func parseOptionalUUID(s *string) (*uuid.UUID, error) {
