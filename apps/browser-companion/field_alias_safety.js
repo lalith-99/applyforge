@@ -1,12 +1,19 @@
 // Tighten broad reusable-answer aliases after the field driver loads.
-// A bare "name" token is unsafe on employer forms because it can match fields
-// such as company name, preferred name, reference name, or school name.
+// Bare tokens such as "name", "location", and "city" are unsafe on employer
+// forms because substring matching can target unrelated questions such as
+// company name, job location, preferred location, relocation, or school city.
+
+const UNSAFE_EXACT_ALIASES = {
+  full_name: new Set(["name"]),
+  location: new Set(["location", "city"]),
+};
 
 function removeUnsafeExactAliases(aliasMap) {
   if (!aliasMap || typeof aliasMap !== "object") return aliasMap;
 
-  if (Array.isArray(aliasMap.full_name)) {
-    aliasMap.full_name = aliasMap.full_name.filter((alias) => normalizeAlias(alias) !== "name");
+  for (const [key, unsafeAliases] of Object.entries(UNSAFE_EXACT_ALIASES)) {
+    if (!Array.isArray(aliasMap[key])) continue;
+    aliasMap[key] = aliasMap[key].filter((alias) => !unsafeAliases.has(normalizeAlias(alias)));
   }
 
   return aliasMap;
