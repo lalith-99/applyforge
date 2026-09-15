@@ -64,18 +64,21 @@ type FreeSourceBootstrapConfig struct {
 
 // FreeSourceBootstrapResult summarizes one best-effort sponsor-watchlist pass.
 type FreeSourceBootstrapResult struct {
-	PriorityCompanies  int
-	HotCompanies       int
-	WarmCompanies      int
-	CoolCompanies      int
-	ColdCompanies      int
-	DirectoryEntries   int
-	MatchedCompanies   int
-	ResolvedCompanies  int
-	PartialCompanies   int
-	EnabledJobSources  int
-	RegistryCandidates int
-	FetchFailures      int
+	PriorityCompanies    int
+	HotCompanies         int
+	WarmCompanies        int
+	CoolCompanies        int
+	ColdCompanies        int
+	DirectoryEntries     int
+	MatchedCompanies     int
+	ResolvedCompanies    int
+	PartialCompanies     int
+	EnabledJobSources    int
+	RegistryCandidates   int
+	FetchFailures        int
+	EmployerListEntries  int
+	EmployerListMatched  int
+	ExternalLinksRecorded int
 }
 
 type freeSourceCompany struct {
@@ -147,14 +150,14 @@ var workdayReviewOnlyTokens = []string{
 	"university", "early_career", "early-career",
 }
 
-// BootstrapFreePriorityCompanySources uses the public MIT-licensed ats-scrapers
-// company inventories as a discovery accelerator for the complete H-1B sponsor
-// watchlist. Tier-specific poll intervals keep lower-priority COOL/COLD sources
-// cheap after discovery (8 hours and 24 hours respectively).
+// BootstrapFreePriorityCompanySources uses free public directories as discovery
+// accelerators for the complete H-1B sponsor watchlist. ApplyForge's DOL data
+// remains the sponsor-ranking authority; external directories only help locate
+// career pages/ATS tenants and navigation links.
 //
-// The directory is not treated as authoritative identity evidence: only exact
-// normalized company-name matches are accepted automatically. Supported ATS
-// types can become job_sources, while unsupported portals are retained in
+// The directories are not treated as authoritative identity evidence: only
+// exact normalized company-name matches are accepted automatically. Supported
+// ATS types can become job_sources, while unsupported portals are retained in
 // company_source_registry for future connectors. The operation is best-effort
 // and should never gate API startup.
 func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cfg FreeSourceBootstrapConfig) (FreeSourceBootstrapResult, error) {
@@ -165,7 +168,7 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 		cfg.BaseURL = defaultFreeSourceDirectoryBaseURL
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = &http.Client{Timeout: 25 * time.Second}
+		cfg.HTTPClient = newPublicHTTPClient(25 * time.Second)
 	}
 	if cfg.RefreshAfter <= 0 {
 		cfg.RefreshAfter = defaultFreeSourceRefreshAfter
@@ -192,10 +195,35 @@ func (r *Repository) BootstrapFreePriorityCompanySources(ctx context.Context, cf
 		return result, nil
 	}
 
+	// First use the sponsor-focused employers-list directory. It provides
+	// careers and LinkedIn navigation URLs for thousands of historical sponsors,
+	// which can resolve a company without spending a search-provider request.
+	employerListResult, employerListErr := r.bootstrapEmployerList(ctx, cfg, companies)
+	if employerListErr != nil {
+		result.FetchFailures++
+		slog.Warn("employers-list sponsor source bootstrap failed", "error", employerListErr)
+	} else {
+		result.EmployerListEntries = employerListResult.DirectoryEntries
+		result.EmployerListMatched = employerListResult.MatchedCompanies
+		result.ExternalLinksRecorded = employerListResult.ExternalLinks
+		result.RegistryCandidates += employerListResult.RegistryCandidates
+		result.EnabledJobSources += employerListResult.EnabledJobSources
+		slog.Info("employers-list sponsor source bootstrap completed",
+			"directory_entries", employerListResult.DirectoryEntries,
+			"matched_companies", employerListResult.MatchedCompanies,
+			"external_links", employerListResult.ExternalLinks,
+			"registry_candidates", employerListResult.RegistryCandidates,
+			"enabled_job_sources", employerListResult.EnabledJobSources,
+		)
+	}
+
 	entries, failures := fetchFreeSourceInventories(ctx, cfg)
-	result.FetchFailures = failures
+	result.FetchFailures += failures
 	result.DirectoryEntries = len(entries)
 	if len(entries) == 0 {
+		if result.EmployerListMatched > 0 {
+			return result, nil
+		}
 		return result, errors.New("free source bootstrap could not load any source inventories")
 	}
 
