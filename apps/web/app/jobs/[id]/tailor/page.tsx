@@ -6,7 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { api, ApiError, API_BASE_URL } from "@/lib/api";
 import { DefendBulletDrawer } from "@/features/learning/DefendBulletDrawer";
 import { QuickPrepDrawer } from "@/features/learning/QuickPrepDrawer";
-import type { ResumeSummary, ResumeVersion, ResumeVersionContent, TailoringRun, TailoringSuggestion } from "@/types/api";
+import type { Application, ResumeSummary, ResumeVersion, ResumeVersionContent, TailoringRun, TailoringSuggestion } from "@/types/api";
 
 const MODES = ["STRICT", "GROWTH", "MAX_MATCH"] as const;
 
@@ -19,6 +19,8 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
   const [editOpen, setEditOpen] = useState(false);
   const [editedContent, setEditedContent] = useState<ResumeVersionContent | null>(null);
   const [latestVersion, setLatestVersion] = useState<ResumeVersion | null>(null);
+  const [bindingApplication, setBindingApplication] = useState(false);
+  const [applicationBindError, setApplicationBindError] = useState<string | null>(null);
 
   const resumesQuery = useQuery({
     queryKey: ["resumes"],
@@ -76,10 +78,27 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
         tailoring_run_id: run!.id,
         ...(editedContent ? { content: serializeResumeContent(editedContent) } : {}),
       }),
-    onSuccess: (version) => {
+    onSuccess: async (version) => {
       setLatestVersion(version);
       setEditedContent(normalizeResumeContent(version.Content));
       setPreviewOpen(true);
+      setApplicationBindError(null);
+      setBindingApplication(true);
+      try {
+        await api.post<Application>("/applications", {
+          job_id: jobId,
+          resume_version_id: version.ID,
+          ...(version.MatchScore !== null ? { match_score: version.MatchScore } : {}),
+        });
+      } catch (error) {
+        setApplicationBindError(
+          error instanceof Error
+            ? error.message
+            : "Resume was created, but ApplyForge could not attach it to this application.",
+        );
+      } finally {
+        setBindingApplication(false);
+      }
     },
   });
 
@@ -194,10 +213,10 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                 <button
                   type="button"
                   onClick={() => generateResume.mutate()}
-                  disabled={generateResume.isPending}
+                  disabled={generateResume.isPending || bindingApplication}
                   className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
                 >
-                  {generateResume.isPending ? "Generating…" : "Generate PDF/DOCX"}
+                  {generateResume.isPending ? "Generating…" : bindingApplication ? "Attaching…" : "Generate PDF/DOCX"}
                 </button>
               </div>
               {generateResume.isError && (
@@ -207,6 +226,25 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
               )}
               {generateResume.data && (
                 <div className="flex flex-col gap-4 text-sm">
+                  {bindingApplication && (
+                    <p className="rounded-md border border-blue-300 bg-blue-50 p-3 text-blue-900 dark:bg-blue-950/20 dark:text-blue-100">
+                      Resume created. Attaching this exact job-scoped version to the application…
+                    </p>
+                  )}
+                  {!bindingApplication && applicationBindError && (
+                    <p className="rounded-md border border-red-300 bg-red-50 p-3 text-red-700 dark:bg-red-950/20 dark:text-red-100">
+                      Resume created, but it was not attached to the application: {applicationBindError}
+                    </p>
+                  )}
+                  {!bindingApplication && !applicationBindError && (
+                    <div className="rounded-md border border-green-300 bg-green-50 p-4 text-green-900 dark:bg-green-950/20 dark:text-green-100">
+                      <p className="font-medium">Resume created and attached to this application.</p>
+                      <p className="mt-1 text-xs">Application review will now use resume version v{latestVersion?.VersionNumber ?? generateResume.data.VersionNumber} for this exact job.</p>
+                      <a href="/applications" className="mt-3 inline-block rounded-md bg-foreground px-4 py-2 text-sm text-background">
+                        Continue to application review →
+                      </a>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPreviewOpen((open) => !open)}
@@ -226,22 +264,22 @@ export default function TailorResumePage({ params }: { params: Promise<{ id: str
                     <ResumeEditor content={editedContent} onChange={setEditedContent} />
                   )}
                   <div className="flex gap-4">
-                  <a
-                    href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
-                  >
-                    Download PDF
-                  </a>
-                  <a
-                    href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=docx`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
-                  >
-                    Download DOCX
-                  </a>
+                    <a
+                      href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
+                    >
+                      Download PDF
+                    </a>
+                    <a
+                      href={`${API_BASE_URL}/resume-versions/${latestVersion?.ID ?? generateResume.data.ID}/download?format=docx`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-black/10 px-3 py-1.5 dark:border-white/15"
+                    >
+                      Download DOCX
+                    </a>
                   </div>
                 </div>
               )}
