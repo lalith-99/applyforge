@@ -1,10 +1,12 @@
 // Tighten broad reusable-answer aliases after the field driver loads.
-// Bare tokens such as "name", "location", and "city" are unsafe on employer
-// forms because substring matching can target unrelated questions such as
-// company name, job location, preferred location, relocation, or school city.
+// Bare tokens such as "name", "location", "city", and "phone" are unsafe on
+// employer forms because substring matching can target unrelated questions
+// such as company name, job location, preferred location, relocation, school
+// city, or a phone country/area-code field that must not receive a full number.
 
 const UNSAFE_EXACT_ALIASES = {
   full_name: new Set(["name"]),
+  phone: new Set(["phone"]),
   location: new Set(["location", "city"]),
 };
 
