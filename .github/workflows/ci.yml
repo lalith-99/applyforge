@@ -113,6 +113,8 @@ jobs:
         run: node --check content.js
       - name: Check ATS adapter safety syntax
         run: node --check adapter_safety.js
+      - name: Check success signal helper syntax
+        run: node --check success_signal.js
       - name: Check resume upload helper syntax
         run: node --check resume_upload.js
       - name: Test resume upload input scoring
@@ -121,6 +123,8 @@ jobs:
         run: node field_alias_safety.test.js
       - name: Test ATS adapter host boundary
         run: node adapter_safety_test.js
+      - name: Test ATS success URL boundary
+        run: node success_signal.test.js
 
   compose:
     name: Docker Compose
