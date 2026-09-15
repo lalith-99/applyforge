@@ -1,15 +1,21 @@
-// Required radio buttons are satisfied by one checked member of their group,
-// but HTML required checkboxes are independent controls. Treating another
-// checkbox with the same name as satisfying a required checkbox can cross the
-// final-submit boundary with an unchecked consent/acknowledgement control.
-function isRequiredChoiceResolved(field, checkedRadioNames = new Set()) {
+// Required radio buttons are satisfied by one checked member of their HTML
+// radio group, but that group is scoped by both name and form owner. A checked
+// radio in another form must never satisfy a required field in the application
+// form. Required checkboxes remain independent controls.
+function isRequiredChoiceResolved(field, checkedRadios = []) {
   if (!field) return false;
   const type = String(field.type || "").toLowerCase();
   if (type === "checkbox") return field.checked === true;
   if (type === "radio") {
     if (field.checked === true) return true;
     const name = String(field.name || "");
-    return Boolean(name && checkedRadioNames.has(name));
+    if (!name) return false;
+    return checkedRadios.some((candidate) =>
+      candidate &&
+      candidate.checked === true &&
+      String(candidate.name || "") === name &&
+      candidate.form === field.form
+    );
   }
   return false;
 }
@@ -17,11 +23,7 @@ function isRequiredChoiceResolved(field, checkedRadioNames = new Set()) {
 function unresolvedRequiredFields() {
   const unresolved = [];
   const required = [...document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']")];
-  const checkedRadioNames = new Set(
-    [...document.querySelectorAll('input[type="radio"]:checked')]
-      .map((field) => String(field.name || ""))
-      .filter(Boolean),
-  );
+  const checkedRadios = [...document.querySelectorAll('input[type="radio"]:checked')];
 
   for (const field of required) {
     if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue;
@@ -29,7 +31,7 @@ function unresolvedRequiredFields() {
     if (field instanceof HTMLInputElement && ["hidden", "submit", "button"].includes(field.type)) continue;
 
     if (field instanceof HTMLInputElement && (field.type === "radio" || field.type === "checkbox")) {
-      if (isRequiredChoiceResolved(field, checkedRadioNames)) continue;
+      if (isRequiredChoiceResolved(field, checkedRadios)) continue;
     } else if (String(field.value || "").trim()) {
       continue;
     }
