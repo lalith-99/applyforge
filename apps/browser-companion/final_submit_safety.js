@@ -1,5 +1,5 @@
 // A supported ATS may contain multiple submit-like controls across its flow.
-// Only controls whose visible label explicitly describes final application
+// Only controls whose visible or accessible label explicitly describes final application
 // submission are eligible to cross ApplyForge's approved-submit boundary.
 function isExplicitFinalSubmitLabel(rawText) {
   const text = normalize(String(rawText || ""));
@@ -20,17 +20,23 @@ function isEnabledFinalSubmitControl(control) {
   return true;
 }
 
+function finalSubmitControlLabel(control) {
+  if (!control) return "";
+  const visibleLabel = control instanceof HTMLInputElement ? control.value : control.textContent || "";
+  if (String(visibleLabel || "").trim()) return visibleLabel;
+  return control.getAttribute?.("aria-label") || "";
+}
+
 // Loaded after content.js so this intentionally replaces the permissive
 // fallback that accepted any button containing the word "apply".
 function findFinalSubmitButton() {
   const controls = [...document.querySelectorAll('button[type="submit"], input[type="submit"], button')];
   return controls.find((control) => {
     if (!(control instanceof HTMLElement) || !isVisible(control) || !isEnabledFinalSubmitControl(control)) return false;
-    const text = control instanceof HTMLInputElement ? control.value : control.textContent || "";
-    return isExplicitFinalSubmitLabel(text);
+    return isExplicitFinalSubmitLabel(finalSubmitControlLabel(control));
   }) || null;
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { isExplicitFinalSubmitLabel, isEnabledFinalSubmitControl };
+  module.exports = { isExplicitFinalSubmitLabel, isEnabledFinalSubmitControl, finalSubmitControlLabel };
 }
