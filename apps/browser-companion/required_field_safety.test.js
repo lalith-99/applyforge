@@ -72,6 +72,14 @@ assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "TRUE" })
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget()), true);
 
+// Conditional ATS widgets may remain mounted but explicitly hidden from the
+// accessibility tree. Treat only aria-hidden=true as inactive; false/missing
+// states still participate in the fail-closed required-field guard.
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "true" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "TRUE" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "false" })), true);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "" })), true);
+
 // Non-native aria-required widgets must fail closed unless the ATS exposes a
 // committed value. Placeholder/question text is intentionally not considered.
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget()), false);
