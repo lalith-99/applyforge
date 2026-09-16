@@ -35,6 +35,14 @@ function shouldValidateRequiredField(field) {
   return true;
 }
 
+// ARIA token values are case-insensitive. Query aria-required by presence and
+// normalize the value in JavaScript so an ATS emitting TRUE cannot bypass the
+// fail-closed required-field guard. Explicit false/empty states are not required.
+function isAriaRequired(field) {
+  if (!field || typeof field.getAttribute !== "function") return false;
+  return String(field.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
+}
+
 // Custom ATS comboboxes and listbox-backed controls are often non-native
 // elements marked only with aria-required. They are outside native constraint
 // validation, so fail closed unless the widget exposes an explicit selected
@@ -52,11 +60,13 @@ function isRequiredAriaWidgetResolved(field) {
 
 function unresolvedRequiredFields() {
   const unresolved = [];
-  const required = [...document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']")];
+  const required = [...document.querySelectorAll("input[required], textarea[required], select[required], [aria-required]")];
   const checkedRadios = [...document.querySelectorAll('input[type="radio"]:checked')];
 
   for (const field of required) {
     const isNative = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement;
+    const isNativeRequired = isNative && field.required === true;
+    if (!isNativeRequired && !isAriaRequired(field)) continue;
     if (!isVisible(field) || !shouldValidateRequiredField(field)) continue;
 
     if (!isNative) {
@@ -78,5 +88,5 @@ function unresolvedRequiredFields() {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { isRequiredChoiceResolved, shouldValidateRequiredField, isRequiredAriaWidgetResolved };
+  module.exports = { isRequiredChoiceResolved, shouldValidateRequiredField, isAriaRequired, isRequiredAriaWidgetResolved };
 }
