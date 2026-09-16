@@ -64,6 +64,14 @@ function ariaWidget(attributes = {}) {
   };
 }
 
+// ARIA-disabled custom widgets are not actionable application requirements and
+// must not create an impossible pre-submit blocker. Only the explicit true
+// state is skipped; enabled or missing states remain conservative.
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "true" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "TRUE" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "false" })), true);
+assert.equal(shouldValidateRequiredField(ariaWidget()), true);
+
 // Non-native aria-required widgets must fail closed unless the ATS exposes a
 // committed value. Placeholder/question text is intentionally not considered.
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget()), false);
