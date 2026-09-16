@@ -30,14 +30,36 @@ function shouldValidateRequiredField(field) {
   return true;
 }
 
+// Custom ATS comboboxes and listbox-backed controls are often non-native
+// elements marked only with aria-required. They are outside native constraint
+// validation, so fail closed unless the widget exposes an explicit selected
+// value. Do not infer a selection from textContent because it commonly contains
+// the question/placeholder label rather than a committed answer.
+function isRequiredAriaWidgetResolved(field) {
+  if (!field || typeof field.getAttribute !== "function") return false;
+  const explicitValue = [
+    field.getAttribute("aria-valuetext"),
+    field.getAttribute("data-value"),
+    field.getAttribute("value"),
+  ];
+  return explicitValue.some((value) => String(value || "").trim() !== "");
+}
+
 function unresolvedRequiredFields() {
   const unresolved = [];
   const required = [...document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']")];
   const checkedRadios = [...document.querySelectorAll('input[type="radio"]:checked')];
 
   for (const field of required) {
-    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue;
+    const isNative = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement;
     if (!isVisible(field) || !shouldValidateRequiredField(field)) continue;
+
+    if (!isNative) {
+      if (isRequiredAriaWidgetResolved(field)) continue;
+      unresolved.push(labelText(field) || field.getAttribute("aria-label") || field.getAttribute("name") || field.id || "required field");
+      continue;
+    }
+
     if (field instanceof HTMLInputElement && ["hidden", "submit", "button"].includes(field.type)) continue;
 
     if (field instanceof HTMLInputElement && (field.type === "radio" || field.type === "checkbox")) {
@@ -51,5 +73,5 @@ function unresolvedRequiredFields() {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { isRequiredChoiceResolved, shouldValidateRequiredField };
+  module.exports = { isRequiredChoiceResolved, shouldValidateRequiredField, isRequiredAriaWidgetResolved };
 }

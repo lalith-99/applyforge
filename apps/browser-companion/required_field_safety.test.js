@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { isRequiredChoiceResolved, shouldValidateRequiredField } = require("./required_field_safety.js");
+const { isRequiredChoiceResolved, shouldValidateRequiredField, isRequiredAriaWidgetResolved } = require("./required_field_safety.js");
 
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: true }), true);
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: false }), false);
@@ -55,5 +55,22 @@ assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOn
 assert.equal(shouldValidateRequiredField({ type: "checkbox", disabled: false, readOnly: true }), true);
 assert.equal(shouldValidateRequiredField({ type: "radio", disabled: false, readOnly: true }), true);
 assert.equal(shouldValidateRequiredField({ type: "file", disabled: false, readOnly: true }), true);
+
+function ariaWidget(attributes = {}) {
+  return {
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null;
+    },
+  };
+}
+
+// Non-native aria-required widgets must fail closed unless the ATS exposes a
+// committed value. Placeholder/question text is intentionally not considered.
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget()), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "aria-valuetext": "Yes" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "data-value": "No" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ value: "United States" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "aria-valuetext": "   " })), false);
+assert.equal(isRequiredAriaWidgetResolved({ textContent: "Are you authorized to work?" }), false);
 
 console.log("required field safety tests passed");
