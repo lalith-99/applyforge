@@ -21,10 +21,11 @@ function isRequiredChoiceResolved(field, checkedRadios = []) {
 }
 
 // Native constraint validation excludes disabled controls and readonly text
-// controls. Keep the companion's pre-submit guard aligned with the browser so
-// an ATS-owned readonly/required field cannot permanently block a valid form.
+// controls. ARIA widgets use aria-disabled instead of the native disabled
+// property, so skip those too rather than creating an impossible blocker.
 function shouldValidateRequiredField(field) {
   if (!field || field.disabled === true) return false;
+  if (typeof field.getAttribute === "function" && String(field.getAttribute("aria-disabled") || "").toLowerCase() === "true") return false;
   const type = String(field.type || "").toLowerCase();
   if (field.readOnly === true && !["radio", "checkbox", "file"].includes(type)) return false;
   return true;
