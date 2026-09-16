@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { isRequiredChoiceResolved, shouldValidateRequiredField, isRequiredAriaWidgetResolved } = require("./required_field_safety.js");
+const { isRequiredChoiceResolved, shouldValidateRequiredField, isAriaRequired, isRequiredAriaWidgetResolved } = require("./required_field_safety.js");
 
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: true }), true);
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: false }), false);
@@ -14,8 +14,6 @@ assert.equal(isRequiredChoiceResolved({ type: "radio", name: "sponsorship", chec
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "", checked: true, form: applicationForm }, checkedRadios), true);
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "", checked: false, form: applicationForm }, checkedRadios), false);
 
-// Regression: same-name radios in different forms are distinct HTML radio
-// groups. A checked control elsewhere on the page cannot satisfy this form.
 assert.equal(
   isRequiredChoiceResolved(
     { type: "radio", name: "work_authorization", checked: false, form: applicationForm },
@@ -23,8 +21,6 @@ assert.equal(
   ),
   false,
 );
-
-// Form-less radios can still satisfy each other when they share the same name.
 assert.equal(
   isRequiredChoiceResolved(
     { type: "radio", name: "remote", checked: false, form: null },
@@ -32,9 +28,6 @@ assert.equal(
   ),
   true,
 );
-
-// Regression: another checked checkbox with the same name must never satisfy a
-// required consent checkbox. Checkbox resolution deliberately ignores groups.
 assert.equal(
   isRequiredChoiceResolved(
     { type: "checkbox", name: "consents", checked: false },
@@ -43,15 +36,10 @@ assert.equal(
   false,
 );
 
-// Native HTML constraint validation ignores disabled and readonly text-like
-// controls. The companion should not create a stricter, impossible-to-resolve
-// blocker for ATS-owned readonly fields.
 assert.equal(shouldValidateRequiredField({ type: "text", disabled: true, readOnly: false }), false);
 assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOnly: true }), false);
 assert.equal(shouldValidateRequiredField({ type: "email", disabled: false, readOnly: true }), false);
 assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOnly: false }), true);
-// Keep choice/file controls conservative even if a synthetic page sets the
-// readonly property; readonly has no native constraint-validation meaning for them.
 assert.equal(shouldValidateRequiredField({ type: "checkbox", disabled: false, readOnly: true }), true);
 assert.equal(shouldValidateRequiredField({ type: "radio", disabled: false, readOnly: true }), true);
 assert.equal(shouldValidateRequiredField({ type: "file", disabled: false, readOnly: true }), true);
@@ -64,24 +52,25 @@ function ariaWidget(attributes = {}) {
   };
 }
 
-// ARIA-disabled custom widgets are not actionable application requirements and
-// must not create an impossible pre-submit blocker. Only the explicit true
-// state is skipped; enabled or missing states remain conservative.
+// ARIA-required token values are case-insensitive. An ATS emitting uppercase or
+// padded true must not bypass the fail-closed required-field guard.
+assert.equal(isAriaRequired(ariaWidget({ "aria-required": "true" })), true);
+assert.equal(isAriaRequired(ariaWidget({ "aria-required": "TRUE" })), true);
+assert.equal(isAriaRequired(ariaWidget({ "aria-required": " True " })), true);
+assert.equal(isAriaRequired(ariaWidget({ "aria-required": "false" })), false);
+assert.equal(isAriaRequired(ariaWidget({ "aria-required": "" })), false);
+assert.equal(isAriaRequired(ariaWidget()), false);
+
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "true" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "TRUE" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget()), true);
 
-// Conditional ATS widgets may remain mounted but explicitly hidden from the
-// accessibility tree. Treat only aria-hidden=true as inactive; false/missing
-// states still participate in the fail-closed required-field guard.
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "true" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "TRUE" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "" })), true);
 
-// Non-native aria-required widgets must fail closed unless the ATS exposes a
-// committed value. Placeholder/question text is intentionally not considered.
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget()), false);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "aria-valuetext": "Yes" })), true);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "data-value": "No" })), true);
