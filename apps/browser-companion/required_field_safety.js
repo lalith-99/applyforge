@@ -20,6 +20,16 @@ function isRequiredChoiceResolved(field, checkedRadios = []) {
   return false;
 }
 
+// Native constraint validation excludes disabled controls and readonly text
+// controls. Keep the companion's pre-submit guard aligned with the browser so
+// an ATS-owned readonly/required field cannot permanently block a valid form.
+function shouldValidateRequiredField(field) {
+  if (!field || field.disabled === true) return false;
+  const type = String(field.type || "").toLowerCase();
+  if (field.readOnly === true && !["radio", "checkbox", "file"].includes(type)) return false;
+  return true;
+}
+
 function unresolvedRequiredFields() {
   const unresolved = [];
   const required = [...document.querySelectorAll("input[required], textarea[required], select[required], [aria-required='true']")];
@@ -27,7 +37,7 @@ function unresolvedRequiredFields() {
 
   for (const field of required) {
     if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue;
-    if (!isVisible(field) || field.disabled) continue;
+    if (!isVisible(field) || !shouldValidateRequiredField(field)) continue;
     if (field instanceof HTMLInputElement && ["hidden", "submit", "button"].includes(field.type)) continue;
 
     if (field instanceof HTMLInputElement && (field.type === "radio" || field.type === "checkbox")) {
@@ -41,5 +51,5 @@ function unresolvedRequiredFields() {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { isRequiredChoiceResolved };
+  module.exports = { isRequiredChoiceResolved, shouldValidateRequiredField };
 }

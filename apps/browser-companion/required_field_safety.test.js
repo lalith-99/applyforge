@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { isRequiredChoiceResolved } = require("./required_field_safety.js");
+const { isRequiredChoiceResolved, shouldValidateRequiredField } = require("./required_field_safety.js");
 
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: true }), true);
 assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: false }), false);
@@ -42,5 +42,18 @@ assert.equal(
   ),
   false,
 );
+
+// Native HTML constraint validation ignores disabled and readonly text-like
+// controls. The companion should not create a stricter, impossible-to-resolve
+// blocker for ATS-owned readonly fields.
+assert.equal(shouldValidateRequiredField({ type: "text", disabled: true, readOnly: false }), false);
+assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOnly: true }), false);
+assert.equal(shouldValidateRequiredField({ type: "email", disabled: false, readOnly: true }), false);
+assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOnly: false }), true);
+// Keep choice/file controls conservative even if a synthetic page sets the
+// readonly property; readonly has no native constraint-validation meaning for them.
+assert.equal(shouldValidateRequiredField({ type: "checkbox", disabled: false, readOnly: true }), true);
+assert.equal(shouldValidateRequiredField({ type: "radio", disabled: false, readOnly: true }), true);
+assert.equal(shouldValidateRequiredField({ type: "file", disabled: false, readOnly: true }), true);
 
 console.log("required field safety tests passed");
