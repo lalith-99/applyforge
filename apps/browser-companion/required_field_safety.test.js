@@ -63,11 +63,13 @@ assert.equal(isAriaRequired(ariaWidget()), false);
 
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "true" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "TRUE" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": " True " })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget()), true);
 
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "true" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "TRUE" })), false);
+assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": " True " })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "" })), true);
 
