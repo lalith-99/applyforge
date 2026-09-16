@@ -27,8 +27,8 @@ function isRequiredChoiceResolved(field, checkedRadios = []) {
 function shouldValidateRequiredField(field) {
   if (!field || field.disabled === true) return false;
   if (typeof field.getAttribute === "function") {
-    if (String(field.getAttribute("aria-disabled") || "").toLowerCase() === "true") return false;
-    if (String(field.getAttribute("aria-hidden") || "").toLowerCase() === "true") return false;
+    if (String(field.getAttribute("aria-disabled") || "").trim().toLowerCase() === "true") return false;
+    if (String(field.getAttribute("aria-hidden") || "").trim().toLowerCase() === "true") return false;
   }
   const type = String(field.type || "").toLowerCase();
   if (field.readOnly === true && !["radio", "checkbox", "file"].includes(type)) return false;
