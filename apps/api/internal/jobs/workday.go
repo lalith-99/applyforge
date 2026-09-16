@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -113,6 +114,9 @@ func (s *WorkdaySource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor
 	var out []RawJob
 	offset := 0
 	total := -1
+	detailAttempts := 0
+	detailFailures := 0
+	var firstDetailErr error
 
 	for {
 		page, err := s.fetchListPage(ctx, offset)
@@ -146,9 +150,22 @@ func (s *WorkdaySource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor
 				continue
 			}
 
+			detailAttempts++
 			raw, err := s.fetchDetail(ctx, posting.ExternalPath, externalID, postedAt, posting.Title, posting.LocationsText)
 			if err != nil {
-				return nil, nil, err
+				// A single stale/deleted posting, malformed externalPath, transient EOF,
+				// or per-job 5xx must not discard an otherwise valid board snapshot.
+				// Keep the listing ID in seenExternal so existing rows are not falsely
+				// closed, and retry hydration on the next source poll. Parent-context
+				// cancellation remains fatal so shutdown/deadline semantics are intact.
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, nil, ctxErr
+				}
+				detailFailures++
+				if firstDetailErr == nil {
+					firstDetailErr = err
+				}
+				continue
 			}
 			out = append(out, raw)
 		}
@@ -164,6 +181,25 @@ func (s *WorkdaySource) Fetch(ctx context.Context, _ *Cursor) ([]RawJob, *Cursor
 				total,
 			)
 		}
+	}
+
+	if detailFailures > 0 {
+		slog.Warn("Workday detail hydration partially failed",
+			"host", s.Host,
+			"tenant", s.Tenant,
+			"site", s.Site,
+			"attempted", detailAttempts,
+			"failed", detailFailures,
+			"hydrated", len(out),
+			"first_error", firstDetailErr,
+		)
+	}
+	if detailAttempts > 0 && detailFailures == detailAttempts {
+		return nil, nil, fmt.Errorf(
+			"Workday detail hydration failed for all %d fresh postings: %w",
+			detailAttempts,
+			firstDetailErr,
+		)
 	}
 
 	return out, nil, nil
