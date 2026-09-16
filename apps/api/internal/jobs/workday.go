@@ -95,8 +95,11 @@ func NewWorkdaySource(boardToken string) (*WorkdaySource, error) {
 		BaseURL:      "https://" + host,
 		MaxJobs:      maxJobs,
 		DetailMaxAge: time.Duration(detailAgeDays) * 24 * time.Hour,
-		http:         &http.Client{Timeout: 30 * time.Second},
-		now:          time.Now,
+		http: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: newWorkdayRetryTransport(http.DefaultTransport),
+		},
+		now: time.Now,
 	}, nil
 }
 
