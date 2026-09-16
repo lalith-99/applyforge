@@ -20,12 +20,16 @@ function isRequiredChoiceResolved(field, checkedRadios = []) {
   return false;
 }
 
-// Native constraint validation excludes disabled controls and readonly text
-// controls. ARIA widgets use aria-disabled instead of the native disabled
-// property, so skip those too rather than creating an impossible blocker.
+// Native constraint validation excludes disabled and readonly text controls.
+// Custom ATS widgets can also remain mounted while explicitly removed from the
+// accessibility tree. Skip only explicit aria-disabled/aria-hidden true states
+// so stale conditional widgets cannot create an impossible submit blocker.
 function shouldValidateRequiredField(field) {
   if (!field || field.disabled === true) return false;
-  if (typeof field.getAttribute === "function" && String(field.getAttribute("aria-disabled") || "").toLowerCase() === "true") return false;
+  if (typeof field.getAttribute === "function") {
+    if (String(field.getAttribute("aria-disabled") || "").toLowerCase() === "true") return false;
+    if (String(field.getAttribute("aria-hidden") || "").toLowerCase() === "true") return false;
+  }
   const type = String(field.type || "").toLowerCase();
   if (field.readOnly === true && !["radio", "checkbox", "file"].includes(type)) return false;
   return true;
