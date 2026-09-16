@@ -12,7 +12,11 @@ if (typeof document !== "undefined") {
   });
 }
 
-function unresolvedRequiredFields() {
+// Keep panel diagnostics separate from unresolvedRequiredFields(), which is the
+// canonical pre-submit safety guard loaded from required_field_safety.js. This
+// file is loaded later by the extension, so reusing that global function name
+// would silently replace the stricter submit guard with display-only logic.
+function panelUnresolvedRequiredFields() {
   const unresolved = [];
   const selector = [
     "input[required]",
@@ -105,7 +109,7 @@ function setPanelStatus(message, kind) {
   const status = document.querySelector(`#${PANEL_ID} [data-applyforge-status="true"]`);
   if (!(status instanceof HTMLElement)) return;
 
-  const enriched = appendUnresolvedDetails(message, unresolvedRequiredFields());
+  const enriched = appendUnresolvedDetails(message, panelUnresolvedRequiredFields());
   status.textContent = enriched;
   status.style.whiteSpace = "pre-line";
   status.style.color = kind === "error" ? "#fecaca" : kind === "success" ? "#bbf7d0" : kind === "attention" ? "#fde68a" : "#fff";
