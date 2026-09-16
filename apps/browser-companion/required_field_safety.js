@@ -43,13 +43,17 @@ function isAriaRequired(field) {
   return String(field.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
 }
 
-// Custom ATS comboboxes and listbox-backed controls are often non-native
-// elements marked only with aria-required. They are outside native constraint
-// validation, so fail closed unless the widget exposes an explicit selected
-// value. Do not infer a selection from textContent because it commonly contains
-// the question/placeholder label rather than a committed answer.
+// Custom ATS comboboxes, listboxes, checkboxes, and radios are often non-native
+// elements marked only with ARIA attributes. They are outside native constraint
+// validation, so fail closed unless the widget exposes an explicit committed
+// state/value. Do not infer a selection from textContent because it commonly
+// contains the question/placeholder label rather than a committed answer.
 function isRequiredAriaWidgetResolved(field) {
   if (!field || typeof field.getAttribute !== "function") return false;
+  const role = String(field.getAttribute("role") || "").trim().toLowerCase();
+  if (["checkbox", "radio"].includes(role)) {
+    return String(field.getAttribute("aria-checked") || "").trim().toLowerCase() === "true";
+  }
   const explicitValue = [
     field.getAttribute("aria-valuetext"),
     field.getAttribute("data-value"),

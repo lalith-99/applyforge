@@ -78,4 +78,13 @@ assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ value: "United States" })
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "aria-valuetext": "   " })), false);
 assert.equal(isRequiredAriaWidgetResolved({ textContent: "Are you authorized to work?" }), false);
 
+// Custom ARIA checkbox/radio controls expose committed state via aria-checked,
+// not value. Only an explicit checked=true state resolves a required choice.
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "true" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "TRUE" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "false", value: "yes" })), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "mixed" })), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "true" })), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "false", "data-value": "yes" })), false);
+
 console.log("required field safety tests passed");
