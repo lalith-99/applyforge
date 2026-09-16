@@ -1,7 +1,8 @@
 const assert = require("node:assert/strict");
 
 global.normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const { isExplicitFinalSubmitLabel, isEnabledFinalSubmitControl } = require("./final_submit_safety.js");
+global.HTMLInputElement = class HTMLInputElement {};
+const { isExplicitFinalSubmitLabel, isEnabledFinalSubmitControl, finalSubmitControlLabel } = require("./final_submit_safety.js");
 
 for (const label of [
   "Submit",
@@ -41,5 +42,19 @@ assert.equal(isEnabledFinalSubmitControl(control({ disabled: true })), false, "d
 assert.equal(isEnabledFinalSubmitControl(control({ ariaDisabled: "true" })), false, "aria-disabled submit control must not be eligible");
 assert.equal(isEnabledFinalSubmitControl(control({ ariaDisabled: "TRUE" })), false, "aria-disabled matching should be case insensitive");
 assert.equal(isEnabledFinalSubmitControl(null), false, "missing submit control must not be eligible");
+
+function labeledControl({ textContent = "", ariaLabel = null } = {}) {
+  return {
+    textContent,
+    getAttribute(name) {
+      return name === "aria-label" ? ariaLabel : null;
+    },
+  };
+}
+
+assert.equal(finalSubmitControlLabel(labeledControl({ textContent: "Submit Application", ariaLabel: "Continue" })), "Submit Application", "visible label should take precedence");
+assert.equal(finalSubmitControlLabel(labeledControl({ ariaLabel: "Submit Application" })), "Submit Application", "explicit aria-label should be used when visible text is empty");
+assert.equal(isExplicitFinalSubmitLabel(finalSubmitControlLabel(labeledControl({ ariaLabel: "Continue" }))), false, "non-final aria-label must remain ineligible");
+assert.equal(isExplicitFinalSubmitLabel(finalSubmitControlLabel(labeledControl({ ariaLabel: "Apply now" }))), false, "generic apply aria-label must remain ineligible");
 
 console.log("final submit label safety tests passed");
