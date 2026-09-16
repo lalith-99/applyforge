@@ -52,6 +52,12 @@ function ariaWidget(attributes = {}) {
   };
 }
 
+function ariaRadioGroup(radios = []) {
+  const group = ariaWidget({ role: "radiogroup" });
+  group.querySelectorAll = (selector) => selector === '[role="radio"]' ? radios : [];
+  return group;
+}
+
 // ARIA-required token values are case-insensitive. An ATS emitting uppercase or
 // padded true must not bypass the fail-closed required-field guard.
 assert.equal(isAriaRequired(ariaWidget({ "aria-required": "true" })), true);
@@ -88,5 +94,12 @@ assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-c
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "mixed" })), false);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "true" })), true);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "false", "data-value": "yes" })), false);
+
+// Radiogroups must apply the same token normalization as standalone radios.
+// A padded/case-varied explicit true is committed state; false/mixed stay blocked.
+assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": " True " })])), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": "FALSE" })])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": "mixed" })])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([])), false);
 
 console.log("required field safety tests passed");
