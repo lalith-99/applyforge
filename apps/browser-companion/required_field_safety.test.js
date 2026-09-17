@@ -6,35 +6,14 @@ assert.equal(isRequiredChoiceResolved({ type: "checkbox", checked: false }), fal
 
 const applicationForm = { id: "application" };
 const otherForm = { id: "newsletter" };
-const checkedRadios = [
-  { type: "radio", name: "work_authorization", checked: true, form: applicationForm },
-];
+const checkedRadios = [{ type: "radio", name: "work_authorization", checked: true, form: applicationForm }];
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "work_authorization", checked: false, form: applicationForm }, checkedRadios), true);
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "sponsorship", checked: false, form: applicationForm }, checkedRadios), false);
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "", checked: true, form: applicationForm }, checkedRadios), true);
 assert.equal(isRequiredChoiceResolved({ type: "radio", name: "", checked: false, form: applicationForm }, checkedRadios), false);
-
-assert.equal(
-  isRequiredChoiceResolved(
-    { type: "radio", name: "work_authorization", checked: false, form: applicationForm },
-    [{ type: "radio", name: "work_authorization", checked: true, form: otherForm }],
-  ),
-  false,
-);
-assert.equal(
-  isRequiredChoiceResolved(
-    { type: "radio", name: "remote", checked: false, form: null },
-    [{ type: "radio", name: "remote", checked: true, form: null }],
-  ),
-  true,
-);
-assert.equal(
-  isRequiredChoiceResolved(
-    { type: "checkbox", name: "consents", checked: false },
-    [{ type: "checkbox", name: "consents", checked: true }],
-  ),
-  false,
-);
+assert.equal(isRequiredChoiceResolved({ type: "radio", name: "work_authorization", checked: false, form: applicationForm }, [{ type: "radio", name: "work_authorization", checked: true, form: otherForm }]), false);
+assert.equal(isRequiredChoiceResolved({ type: "radio", name: "remote", checked: false, form: null }, [{ type: "radio", name: "remote", checked: true, form: null }]), true);
+assert.equal(isRequiredChoiceResolved({ type: "checkbox", name: "consents", checked: false }, [{ type: "checkbox", name: "consents", checked: true }]), false);
 
 assert.equal(shouldValidateRequiredField({ type: "text", disabled: true, readOnly: false }), false);
 assert.equal(shouldValidateRequiredField({ type: "text", disabled: false, readOnly: true }), false);
@@ -52,14 +31,12 @@ function ariaWidget(attributes = {}) {
   };
 }
 
-function ariaRadioGroup(radios = []) {
-  const group = ariaWidget({ role: "radiogroup" });
-  group.querySelectorAll = (selector) => selector === '[role="radio"]' ? radios : [];
-  return group;
+function ariaContainer(role, children = []) {
+  const container = ariaWidget({ role });
+  container.querySelectorAll = (selector) => selector === "[role]" ? children : [];
+  return container;
 }
 
-// ARIA-required token values are case-insensitive. An ATS emitting uppercase or
-// padded true must not bypass the fail-closed required-field guard.
 assert.equal(isAriaRequired(ariaWidget({ "aria-required": "true" })), true);
 assert.equal(isAriaRequired(ariaWidget({ "aria-required": "TRUE" })), true);
 assert.equal(isAriaRequired(ariaWidget({ "aria-required": " True " })), true);
@@ -72,7 +49,6 @@ assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "TRUE" })
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": " True " })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-disabled": "false" })), true);
 assert.equal(shouldValidateRequiredField(ariaWidget()), true);
-
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "true" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": "TRUE" })), false);
 assert.equal(shouldValidateRequiredField(ariaWidget({ "aria-hidden": " True " })), false);
@@ -86,8 +62,6 @@ assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ value: "United States" })
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ "aria-valuetext": "   " })), false);
 assert.equal(isRequiredAriaWidgetResolved({ textContent: "Are you authorized to work?" }), false);
 
-// Custom ARIA checkbox/radio controls expose committed state via aria-checked,
-// not value. Only an explicit checked=true state resolves a required choice.
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "true" })), true);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "TRUE" })), true);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-checked": "false", value: "yes" })), false);
@@ -95,11 +69,15 @@ assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "checkbox", "aria-c
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "true" })), true);
 assert.equal(isRequiredAriaWidgetResolved(ariaWidget({ role: "radio", "aria-checked": "false", "data-value": "yes" })), false);
 
-// Radiogroups must apply the same token normalization as standalone radios.
-// A padded/case-varied explicit true is committed state; false/mixed stay blocked.
-assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": " True " })])), true);
-assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": "FALSE" })])), false);
-assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([ariaWidget({ "aria-checked": "mixed" })])), false);
-assert.equal(isRequiredAriaWidgetResolved(ariaRadioGroup([])), false);
+// Descendant role tokens receive the same normalization as the container role.
+// This avoids false blockers from ATS markup such as role=" Radio " while still
+// requiring an explicit committed checked/selected state.
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("radiogroup", [ariaWidget({ role: " Radio ", "aria-checked": " True " })])), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("radiogroup", [ariaWidget({ role: "checkbox", "aria-checked": "true" })])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("radiogroup", [ariaWidget({ role: "RADIO", "aria-checked": "false" })])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("radiogroup", [])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("listbox", [ariaWidget({ role: " OPTION ", "aria-selected": "TRUE" })])), true);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("listbox", [ariaWidget({ role: "radio", "aria-selected": "true" })])), false);
+assert.equal(isRequiredAriaWidgetResolved(ariaContainer("listbox", [ariaWidget({ role: "option", "aria-selected": "false" })])), false);
 
 console.log("required field safety tests passed");

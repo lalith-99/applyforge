@@ -20,10 +20,6 @@ function isRequiredChoiceResolved(field, checkedRadios = []) {
   return false;
 }
 
-// Native constraint validation excludes disabled and readonly text controls.
-// Custom ATS widgets can also remain mounted while explicitly removed from the
-// accessibility tree. Skip only explicit aria-disabled/aria-hidden true states
-// so stale conditional widgets cannot create an impossible submit blocker.
 function shouldValidateRequiredField(field) {
   if (!field || field.disabled === true) return false;
   if (typeof field.getAttribute === "function") {
@@ -35,20 +31,24 @@ function shouldValidateRequiredField(field) {
   return true;
 }
 
-// ARIA token values are case-insensitive. Query aria-required by presence and
-// normalize the value in JavaScript so an ATS emitting TRUE cannot bypass the
-// fail-closed required-field guard. Explicit false/empty states are not required.
 function isAriaRequired(field) {
   if (!field || typeof field.getAttribute !== "function") return false;
   return String(field.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
 }
 
+function hasAriaDescendantState(field, role, stateAttribute) {
+  if (!field || typeof field.querySelectorAll !== "function") return false;
+  return [...field.querySelectorAll("[role]")].some((candidate) =>
+    String(candidate.getAttribute("role") || "").trim().toLowerCase() === role &&
+    String(candidate.getAttribute(stateAttribute) || "").trim().toLowerCase() === "true"
+  );
+}
+
 // Custom ATS comboboxes, listboxes, checkboxes, radios, and radiogroups are
 // often non-native elements marked only with ARIA attributes. They are outside
 // native constraint validation, so fail closed unless the widget exposes an
-// explicit committed state/value. Do not infer a selection from textContent
-// because it commonly contains the question/placeholder label rather than a
-// committed answer.
+// explicit committed state/value. Normalize descendant role tokens too: ATS
+// markup is not always consistently cased or padded.
 function isRequiredAriaWidgetResolved(field) {
   if (!field || typeof field.getAttribute !== "function") return false;
   const role = String(field.getAttribute("role") || "").trim().toLowerCase();
@@ -56,16 +56,10 @@ function isRequiredAriaWidgetResolved(field) {
     return String(field.getAttribute("aria-checked") || "").trim().toLowerCase() === "true";
   }
   if (role === "radiogroup") {
-    if (typeof field.querySelectorAll !== "function") return false;
-    return [...field.querySelectorAll('[role="radio"]')].some((radio) =>
-      String(radio.getAttribute("aria-checked") || "").trim().toLowerCase() === "true"
-    );
+    return hasAriaDescendantState(field, "radio", "aria-checked");
   }
   if (role === "listbox") {
-    if (typeof field.querySelectorAll !== "function") return false;
-    return [...field.querySelectorAll('[role="option"]')].some((option) =>
-      String(option.getAttribute("aria-selected") || "").trim().toLowerCase() === "true"
-    );
+    return hasAriaDescendantState(field, "option", "aria-selected");
   }
   const explicitValue = [
     field.getAttribute("aria-valuetext"),
