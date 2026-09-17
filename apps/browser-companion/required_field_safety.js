@@ -56,8 +56,10 @@ function isRequiredAriaWidgetResolved(field) {
     return String(field.getAttribute("aria-checked") || "").trim().toLowerCase() === "true";
   }
   if (role === "radiogroup") {
-    if (typeof field.querySelector !== "function") return false;
-    return Boolean(field.querySelector('[role="radio"][aria-checked="true" i]'));
+    if (typeof field.querySelectorAll !== "function") return false;
+    return [...field.querySelectorAll('[role="radio"]')].some((radio) =>
+      String(radio.getAttribute("aria-checked") || "").trim().toLowerCase() === "true"
+    );
   }
   const explicitValue = [
     field.getAttribute("aria-valuetext"),
