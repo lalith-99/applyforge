@@ -61,6 +61,12 @@ function isRequiredAriaWidgetResolved(field) {
       String(radio.getAttribute("aria-checked") || "").trim().toLowerCase() === "true"
     );
   }
+  if (role === "listbox") {
+    if (typeof field.querySelectorAll !== "function") return false;
+    return [...field.querySelectorAll('[role="option"]')].some((option) =>
+      String(option.getAttribute("aria-selected") || "").trim().toLowerCase() === "true"
+    );
+  }
   const explicitValue = [
     field.getAttribute("aria-valuetext"),
     field.getAttribute("data-value"),
